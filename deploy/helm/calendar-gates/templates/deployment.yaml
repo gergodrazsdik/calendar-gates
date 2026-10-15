@@ -21,7 +21,7 @@ spec:
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
-        runAsUser: 1654 # the `app` user of the .NET images
+        runAsUser: 0
         runAsGroup: 1654
         seccompProfile:
           type: RuntimeDefault
