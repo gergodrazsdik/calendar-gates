@@ -1,0 +1,12 @@
+# grype config for `just scan` and the `grype` CI gate.
+fail-on-severity: high
+
+# Accepted risks. Every entry needs a reason with an expiry date and gets reviewed when it expires;
+# an ignore is a gate change, so say so in the PR (AGENTS.md).
+#
+# - vulnerability: GHSA-xxxx-xxxx-xxxx      # or CVE-YYYY-NNNNN
+#   package:
+#     name: example.package
+#     version: 1.2.3
+#   reason: "Not reachable: <why>. Expires 2026-12-31."
+ignore: []

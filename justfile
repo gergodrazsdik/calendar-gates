@@ -1,6 +1,7 @@
 # calendar-gates: the single entry point, locally and in CI. `just` lists the recipes.
 
 repo := "gergodrazsdik/calendar-gates"
+image := "localhost/calendar-gates:dev"
 
 # List recipes
 default:
@@ -23,6 +24,37 @@ fmt-check:
     dotnet csharpier check .
     dotnet format style --verify-no-changes
     dotnet format analyzers --verify-no-changes
+
+# Build the container image localhost/calendar-gates:dev (version from MinVer, commit from git)
+[group('container')]
+image:
+    docker build -t {{ image }} \
+        --build-arg VERSION="$(dotnet minver -t v -v e)" \
+        --build-arg COMMIT="$(git rev-parse --short HEAD)" .
+
+# Run the image on host port 8081 (kind-local owns 8080) and run the HTTP contract tests against it
+[group('container')]
+http-docker:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    docker run -d --rm --name calendar-gates-http -p 8081:8080 {{ image }} >/dev/null
+    trap 'docker stop calendar-gates-http >/dev/null' EXIT
+    if ! scripts/wait-for-health.sh http://localhost:8081/health 60; then
+        docker logs calendar-gates-http >&2
+        exit 1
+    fi
+    just http docker
+
+# Vulnerability gate: grype on the image, fails on high or worse (.grype.yaml)
+[group('container')]
+scan:
+    grype podman:{{ image }} --config .grype.yaml
+
+# SPDX SBOM of the image into reports/
+[group('container')]
+sbom:
+    mkdir -p reports
+    syft podman:{{ image }} -o spdx-json=reports/sbom.spdx.json
 
 # Local equivalent of the deterministic CI gates; run before calling a change done
 [group('test')]

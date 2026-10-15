@@ -1,0 +1,22 @@
+# Build context = what the Dockerfile needs: props, global.json and src/
+.git
+.github
+.claude
+.config
+.vscode
+.idea
+**/bin/
+**/obj/
+tests/
+tools/
+deploy/
+docs/
+http/
+scripts/
+reports/
+TestResults/
+.llm-gate/
+*.md
+Dockerfile
+.dockerignore
+.env*
