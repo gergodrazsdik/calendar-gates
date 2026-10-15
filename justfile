@@ -56,9 +56,21 @@ sbom:
     mkdir -p reports
     syft podman:{{ image }} -o spdx-json=reports/sbom.spdx.json
 
+# The `lint` gate: workflows, Dockerfile, YAML, shell and Python (CI pins the same tools)
+[group('format')]
+lint:
+    actionlint
+    # SSL_CERT_DIR here lists two dirs (the .NET dev cert); zizmor's TLS stack only reads one
+    GH_TOKEN="$(gh auth token)" env -u SSL_CERT_DIR uvx zizmor@1.30.1 .github/
+    hadolint Dockerfile
+    uvx yamllint@1.38.0 --strict .
+    shellcheck scripts/*.sh .claude/hooks/*.sh
+    uvx ruff@0.16.10 check scripts/
+    uvx ruff@0.16.10 format --check scripts/
+
 # Local equivalent of the deterministic CI gates; run before calling a change done
 [group('test')]
-ci: fmt-check build test
+ci: fmt-check lint build test
 
 # Build the solution (warnings are errors)
 [group('dev')]
