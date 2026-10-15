@@ -117,6 +117,18 @@ def test_api_engine_wraps_sdk_errors(tmp_path: Path) -> None:
         ApiEngine(stub_client(StubMessages(error=error))).review(request(tmp_path))
 
 
+def test_api_engine_without_credentials_is_an_engine_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def no_credentials(*_: Any, **__: Any) -> Any:
+        raise anthropic.AnthropicError("The api_key client option must be set")
+
+    monkeypatch.setattr(anthropic, "Anthropic", no_credentials)
+
+    with pytest.raises(EngineError, match="client error: The api_key"):
+        ApiEngine().review(request(tmp_path))
+
+
 # --- Agent engine -------------------------------------------------------------------------
 
 
