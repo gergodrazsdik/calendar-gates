@@ -1,5 +1,6 @@
 """Review prompts live in .claude/commands/llm-<check>.md, shared with interactive Claude Code."""
 
+import re
 from pathlib import Path
 
 _FENCE = "---"
@@ -16,7 +17,7 @@ def strip_frontmatter(text: str) -> str:
 
 
 def load_prompt(path: Path) -> str:
-    """The prompt body, without frontmatter (the agent engine reads the file itself)."""
+    """The prompt body, without frontmatter; both engines get the diff inline after it."""
     return strip_frontmatter(path.read_text(encoding="utf-8"))
 
 
@@ -31,4 +32,8 @@ DIFF_REFERENCE = "the unified diff inside the <diff> element below"
 
 
 def diff_block(base: str, text: str) -> str:
-    return f'<diff base="{base}">\n{text}\n</diff>'
+    """Wrap the diff in one <diff> element. A literal `</diff` inside the diff is escaped, so a
+    change can't close the element early and put text outside it (where it would read as
+    instructions rather than data)."""
+    escaped = re.sub(r"</(diff)", r"<\\/\1", text, flags=re.IGNORECASE)
+    return f'<diff base="{base}">\n{escaped}\n</diff>'

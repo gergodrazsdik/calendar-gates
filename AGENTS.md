@@ -56,7 +56,8 @@ Details, fixes and overrides: `docs/gates.md`.
 4. `build-test / dotnet`: build + unit + integration tests.
 5. `http-tests`: ijhttp against the built container.
 6. `grype`: image vulnerability scan, fails on high.
-7. `llm / <check>`: LLM review (`tools/llm-gate`, prompts in `.claude/commands/llm-*.md`); blocking
+7. `llm / <check>`: LLM review (`tools/llm-gate`, prompts in `.claude/commands/llm-*.md`, both run
+   from the PR's base commit, [ADR 0004](docs/adr/0004-gate-tooling-from-base-branch.md)); blocking
    checks fail on severity, advisory ones only comment ([ADR 0002](docs/adr/0002-llm-gate-policy.md)).
    Locally: `just llm <check>` (spends API credits). PR labels: `llm-override` (report blocking
    findings without failing), `llm-compare` (both engines, comparison comment).

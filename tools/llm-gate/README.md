@@ -15,6 +15,11 @@ llm-gate report  [--in .llm-gate] [--check <name>] [--format md|sarif]
 Exit codes: `0` pass (or advisory, not applicable, overridden), `1` blocking findings, `2`
 infrastructure error (API failure, refusal, diff too large) on a blocking check that fails closed.
 
+`--repo <path>` is the repository under review (default: the git repository of the current
+directory); `--config` defaults to its `tools/llm-gate/checks.yaml`, and the prompts come from
+the checkout that holds the config. CI runs the gate from the PR's base commit with
+`--repo src --config gate/tools/llm-gate/checks.yaml` (ADR 0004).
+
 From the repository root: `just llm <check> [engine]` (key from `pass`), `just llm-compare <check>`,
 `just llm-list`. Environment: `ANTHROPIC_API_KEY`, `LLM_MODEL` / `LLM_MODEL_CHEAP` (models in
 `checks.yaml`), `LLM_GATE_BASE` (default base), `LLM_GATE_OVERRIDE=1` (report without failing).
@@ -24,13 +29,13 @@ From the repository root: `just llm <check> [engine]` (key from `pass`), `just l
 | | `api` | `agent` |
 |---|---|---|
 | SDK | `anthropic` (Messages API) | `claude-agent-sdk` (Claude Code as a library) |
-| Input | the prompt as system prompt, the diff inline | `/llm-<check> .llm-gate/diff.patch`, run in the repository |
-| Context | the diff only | the diff plus whatever it reads (Read, Grep, Glob; nothing else) |
+| Input | the prompt as system prompt, the diff inline | the prompt text with the diff inline, run in `--repo` |
+| Context | the diff only | the diff plus whatever it reads (Read, Grep, Glob; nothing else). Loads no settings, `CLAUDE.md`, commands, skills, hooks or MCP servers from the repository (`setting_sources=[]`) |
 | Output | `messages.parse(output_format=Review)` | `output_format` JSON schema, `structured_output` |
 | Cost | one request | several turns, capped by `budget_usd` and `max_turns` |
 
 Both return the same `Review` (`models.py`). Errors (API errors, refusals, truncated output, a
-missing structured result, a slash command that did not load) become `EngineError`, which the
+missing structured result) become `EngineError`, which the
 policy turns into a pass or a fail according to `on_error`.
 
 ## Layout

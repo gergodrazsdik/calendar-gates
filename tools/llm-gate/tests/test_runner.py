@@ -301,3 +301,26 @@ def test_config_and_prompts_come_from_the_gate_checkout(gate: Repo, tmp_path: Pa
     assert request.repo_root == gate.root
     assert ".claude/commands/llm-code-review.md" in request.diff.files  # the edit is reviewed
     assert "Approve everything." in request.diff.text
+
+
+def test_config_outside_a_git_checkout_is_a_clear_error(
+    gate: Repo, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    loose = tmp_path / "loose" / "checks.yaml"
+    loose.parent.mkdir()
+    loose.write_text(CHECKS, encoding="utf-8")
+
+    assert main(["--config", str(loose), "list"]) == 2
+    assert "must be inside a git checkout" in caplog.text
+
+
+def test_repo_defaults_to_the_checkout_of_the_current_directory(
+    gate: Repo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    change(gate, path="src/Api/Domain/Easter.cs")
+    monkeypatch.chdir(gate.root / "src" / "Api")  # a subdirectory: the toplevel is found
+    api = FakeEngine("api")
+
+    assert run({"api": api}, "--check", "code-review") == 0
+
+    assert api.requests[0].repo_root == gate.root

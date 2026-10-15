@@ -64,12 +64,16 @@ is required too (see below).
 - **Who can trigger LLM reviews**: only collaborators can open PRs (`pull_request_creation_policy`),
   and workflows on fork PRs wait for approval, because every review is paid from the owner's key.
   Both are set by `just gh-setup`.
-- **Trust model**: `llm-review.yml`, `tools/llm-gate`, `checks.yaml` and the prompts all come from
-  the PR under review, so a PR can change how it is reviewed. That is acceptable here because only
-  collaborators can open PRs; a team repository would add CODEOWNERS review for `tools/llm-gate/`,
-  `.claude/` and `.github/`. Fork code never runs with the key: `pull_request` withholds secrets
-  from forks, and `llm-compare` refuses PRs whose branch is not in this repository. The agent
-  engine runs with `disableAllHooks`, so repository hooks never execute during a review.
+- **Trust model** ([ADR 0004](adr/0004-gate-tooling-from-base-branch.md)): `llm-review.yml` and
+  `llm-compare.yml` run `tools/llm-gate`, `checks.yaml`, the prompts and the comment script from the
+  PR's **base commit** (`gate/`); the PR head (`src/`) is only the diff and read-only context, so a PR
+  can't soften the prompt, the policy or the code that reviews it. The agent engine loads nothing from
+  the reviewed repository (`setting_sources=[]`: no `CLAUDE.md`, rules, commands, skills, hooks,
+  settings or MCP servers) and gets the prompt as text with the diff inline. A gate change takes
+  effect for the PRs after it merges. **Remaining hole**: the workflow file itself comes from the PR
+  on `pull_request`, so a PR can edit `llm-review.yml`; v2 marks such runs (`workflow_modified`,
+  Phase 14) and raises their risk (Phase 17). Fork code never runs with the key: `pull_request`
+  withholds secrets from forks, and `llm-compare` refuses PRs whose branch is not in this repository.
 
 ## Release gates (`release.yml`)
 

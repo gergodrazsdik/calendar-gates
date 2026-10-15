@@ -170,7 +170,12 @@ def main(argv: Sequence[str] | None = None, engines: Mapping[str, Engine] | None
         root = repo_root(args.repo or Path.cwd())
         config = args.config or root / "tools" / "llm-gate" / "checks.yaml"
         # The gate's own checkout (config + prompts) may differ from the reviewed one (ADR 0004).
-        gate_root = repo_root(config.resolve().parent)
+        try:
+            gate_root = repo_root(config.resolve().parent)
+        except DiffError as error:
+            raise ConfigError(
+                f"--config {config} must be inside a git checkout (the gate's own): {error}"
+            ) from error
         checks = load_config(config, gate_root)
         if args.command == "list":
             return cmd_list(checks, as_json=args.json, blocking_only=args.blocking)
