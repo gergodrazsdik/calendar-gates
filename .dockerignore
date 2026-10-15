@@ -5,6 +5,7 @@
 .config
 .vscode
 .idea
+artifacts/
 **/bin/
 **/obj/
 tests/
