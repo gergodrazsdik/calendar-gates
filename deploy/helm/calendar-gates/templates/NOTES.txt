@@ -1,0 +1,10 @@
+{{ include "calendar-gates.fullname" . }} {{ .Values.image.tag | default .Chart.AppVersion }} is installed in namespace {{ .Release.Namespace }}.
+{{- if .Values.ingress.enabled }}
+
+Open http://{{ .Values.ingress.host }}/api/week (through your ingress controller).
+{{- else }}
+
+No ingress (docs/adr/0003-kind-access.md). Forward a local port:
+  kubectl --context <context> -n {{ .Release.Namespace }} port-forward svc/{{ include "calendar-gates.fullname" . }} 18080:{{ .Values.service.port }}
+then open http://localhost:18080/api/week (or run `just k8s-http`).
+{{- end }}

@@ -60,7 +60,8 @@ Details, fixes and overrides: `docs/gates.md`.
    checks fail on severity, advisory ones only comment ([ADR 0002](docs/adr/0002-llm-gate-policy.md)).
    Locally: `just llm <check>` (spends API credits). PR labels: `llm-override` (report blocking
    findings without failing), `llm-compare` (both engines, comparison comment).
-8. `k8s-smoke`: Helm install on a throwaway kind cluster + ijhttp.
+8. `k8s-smoke`: Helm install on a throwaway kind cluster + ijhttp. Locally on kind-local:
+   `just k8s-load k8s-deploy k8s-http` (port-forward, [ADR 0003](docs/adr/0003-kind-access.md)).
 9. `gates`: aggregator over all of the above.
 
 ## Don'ts

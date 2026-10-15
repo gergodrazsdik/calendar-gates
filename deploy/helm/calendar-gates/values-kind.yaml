@@ -1,0 +1,5 @@
+# kind-local: the image built by `just image`, loaded with `just k8s-load` (never pulled).
+image:
+  repository: localhost/calendar-gates # podman prefixes local images with localhost/
+  tag: dev
+  pullPolicy: Never
