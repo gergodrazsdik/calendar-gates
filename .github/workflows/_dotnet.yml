@@ -41,6 +41,7 @@ jobs:
           name: test results
           path: TestResults/*.trx
           reporter: dotnet-trx
+          use-actions-summary: false # a check run with annotations on the failing line
 
       - name: Coverage summary
         if: ${{ !cancelled() }}

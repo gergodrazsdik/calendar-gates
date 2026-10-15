@@ -179,6 +179,7 @@ jobs:
           name: http test results
           path: reports/report.xml
           reporter: java-junit
+          use-actions-summary: false # a check run with annotations on the failing line
 
   grype:
     name: grype
