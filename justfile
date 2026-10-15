@@ -115,14 +115,15 @@ k8s-deploy:
     helm upgrade --install calendar-gates {{ chart }} --kube-context kind-local \
         -n {{ k8s_ns }} --create-namespace -f {{ chart }}/values-kind.yaml \
         --set-string "podAnnotations.calendar-gates/image-id=$(podman image inspect --format '{{{{.Id}}' {{ image }} | cut -c1-12)" \
-        --rollback-on-failure --timeout 2m
+        --reset-values --rollback-on-failure --timeout 2m
 
-# Deploy a published release to kind-local: chart and image from GHCR (after `just release`)
+# Deploy a published release to kind-local: chart and image from GHCR (after `just release`).
+# --reset-values: without it, helm upgrade with no values silently reuses the previous release's.
 [group('k8s')]
 k8s-deploy-release version:
     helm upgrade --install calendar-gates oci://ghcr.io/gergodrazsdik/charts/calendar-gates \
         --version {{ version }} --kube-context kind-local -n {{ k8s_ns }} --create-namespace \
-        --rollback-on-failure --timeout 3m
+        --reset-values --rollback-on-failure --timeout 3m
 
 # HTTP contract tests against kind-local through a port-forward (localhost:18080)
 [group('k8s')]
