@@ -78,8 +78,9 @@ tag `vX.Y.Z`. The workflow then:
    image (`X.Y.Z`, `X.Y`, `sha-<short>`) with an SBOM and a provenance attestation, the Helm chart
    to `oci://ghcr.io/gergodrazsdik/charts`, and a **draft** GitHub Release with the SPDX SBOM and
    the chart.
-4. **smoke**: runs the published image, checks `/api/version` reports `X.Y.Z`, runs the contract
-   tests, and only then publishes the release.
+4. **smoke**: scans the pushed digest with grype (the bytes that were published, not the local
+   build), runs it, checks `/api/version` reports `X.Y.Z`, runs the contract tests, and only then
+   publishes the release. A failed smoke leaves a draft; re-running the workflow refreshes it.
 
 Check the supply chain afterwards with
 `gh attestation verify oci://ghcr.io/gergodrazsdik/calendar-gates:X.Y.Z --owner gergodrazsdik`,
