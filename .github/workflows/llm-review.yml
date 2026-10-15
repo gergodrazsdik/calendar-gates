@@ -1,6 +1,11 @@
 # LLM review gates (docs/gates.md, ADR 0002). One job per check in tools/llm-gate/checks.yaml,
 # each reported as `llm / <check>`. The verdict comes from llm-gate, never from the model.
 # Separate from ci.yml so that adding or removing a label re-runs only these checks.
+#
+# ADR 0004: the gate (tools/llm-gate, checks.yaml, the prompts, the comment script) runs from the
+# PR's **base commit**, checked out into gate/. The PR head is checked out into src/ and is only
+# data: the diff, and read-only context for the agent engine. A PR can't weaken or instruct the
+# gate that reviews it. Remaining hole: this workflow file itself comes from the PR.
 name: llm-review
 
 on:
@@ -24,16 +29,20 @@ jobs:
     outputs:
       checks: ${{ steps.list.outputs.checks }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Gate tooling from the base commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: gate
           persist-credentials: false
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          cache-dependency-glob: tools/llm-gate/uv.lock
-      - name: Checks from checks.yaml (the matrix below)
+          cache-dependency-glob: gate/tools/llm-gate/uv.lock
+      - name: Checks from the base commit's checks.yaml (the matrix below)
         id: list
-        working-directory: tools/llm-gate
-        run: echo "checks=$(uv run --locked llm-gate list --json)" >> "$GITHUB_OUTPUT"
+        run: >-
+          echo "checks=$(uv run --project gate/tools/llm-gate --locked llm-gate --repo gate
+          --config gate/tools/llm-gate/checks.yaml list --json)" >> "$GITHUB_OUTPUT"
 
   llm:
     name: llm / ${{ matrix.check }}
@@ -51,13 +60,26 @@ jobs:
       CHECK: ${{ matrix.check }}
       PR: ${{ github.event.pull_request.number }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Gate tooling from the base commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: gate
+          persist-credentials: false
+      - name: The PR head (data and read-only context only)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: src
           fetch-depth: 0 # the diff is taken from the merge base with origin/<base>
           persist-credentials: false
+      - name: Show what runs and what is reviewed
+        run: |
+          echo "gate: tools/llm-gate and prompts from $(git -C gate rev-parse HEAD) (base)"
+          echo "src:  reviewed PR head $(git -C src rev-parse HEAD)"
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
-          cache-dependency-glob: tools/llm-gate/uv.lock
+          cache-dependency-glob: gate/tools/llm-gate/uv.lock
 
       # Fork and Dependabot PRs get no secrets on pull_request. By default the checks report that
       # and pass; with the repo variable LLM_GATE_MISSING_KEY=fail they run anyway and the
@@ -98,8 +120,10 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           set +e
-          uv run --directory tools/llm-gate --locked llm-gate run --check "$CHECK" \
-            --base "origin/$BASE_REF" --out "$GITHUB_WORKSPACE/.llm-gate" > "$RUNNER_TEMP/review.md"
+          uv run --project gate/tools/llm-gate --locked llm-gate \
+            --repo src --config gate/tools/llm-gate/checks.yaml \
+            run --check "$CHECK" --base "origin/$BASE_REF" --out "$GITHUB_WORKSPACE/.llm-gate" \
+            > "$RUNNER_TEMP/review.md"
           status=$?
           set -e
           cat "$RUNNER_TEMP/review.md" >> "$GITHUB_STEP_SUMMARY"
@@ -114,8 +138,8 @@ jobs:
           path: .llm-gate/cache
           key: llm-gate-${{ matrix.check }}-pr${{ github.event.pull_request.number }}-${{ github.sha }}
 
-      # Posting is done here by the workflow, not by the model. A failed comment (for example a
-      # read-only token) must not decide the check; the verdict step below does.
+      # Posting is done here by the workflow (with the base commit's script), not by the model.
+      # A failed comment (for example a read-only token) must not decide the check.
       - name: Sticky PR comment
         if: steps.review.outcome == 'success'
         continue-on-error: true
@@ -125,7 +149,7 @@ jobs:
         run: |
           mode=""
           [ "$VERDICT" = not-applicable ] && mode=--update-only
-          scripts/upsert-pr-comment.sh $mode "$PR" "<!-- llm-gate:$CHECK -->" "$RUNNER_TEMP/review.md"
+          gate/scripts/upsert-pr-comment.sh $mode "$PR" "<!-- llm-gate:$CHECK -->" "$RUNNER_TEMP/review.md"
 
       - name: Upload results
         if: steps.review.outcome == 'success'

@@ -24,7 +24,8 @@ truncated output, and the gate has to say what happens then.
 - Prompts are files in `.claude/commands/llm-<check>.md`, shared with interactive Claude Code, and
   treat the diff as untrusted data. They are reviewed like code.
 - Two engines sit behind one interface: the Messages API (diff inline, one request) and the Claude
-  Agent SDK (runs the prompt as a slash command with read-only tools). The check chooses one;
+  Agent SDK (the same prompt with read-only tools in the repository; originally run as a slash
+  command, superseded by [ADR 0004](0004-gate-tooling-from-base-branch.md)). The check chooses one;
   `--engine both` and `llm-compare` exist to compare them.
 - Results are cached by check, engine, model, prompt and diff, so re-running a PR without changes
   costs nothing.
