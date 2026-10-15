@@ -6,7 +6,7 @@ from conftest import FakeEngine, Repo, finding, git, result
 
 from llm_gate.cli import main
 from llm_gate.engines import EngineError
-from llm_gate.models import Severity
+from llm_gate.models import EngineResult, Severity
 
 CHECKS = """\
 defaults: {model: test-model, max_diff_kb: 1}
@@ -247,3 +247,18 @@ def test_base_can_come_from_the_environment(gate: Repo, monkeypatch: pytest.Monk
 
     assert main(["run", "--check", "code-review"], engines={"api": api}) == 0
     assert api.requests == []
+
+
+def test_unexpected_engine_exceptions_become_error_verdicts(gate: Repo) -> None:
+    change(gate)
+
+    def crash(_: object) -> EngineResult:
+        raise TypeError("Could not resolve authentication method")
+
+    api = FakeEngine("api", crash)
+
+    assert run({"api": api}, "--check", "code-review") == 2  # blocking: fails closed
+    assert run({"api": api}, "--check", "docs-drift") == 0  # advisory: never fails
+    stored = record(gate, "docs-drift", "api")
+    assert stored["verdict"] == "error"
+    assert "unexpected TypeError" in str(stored["reason"])

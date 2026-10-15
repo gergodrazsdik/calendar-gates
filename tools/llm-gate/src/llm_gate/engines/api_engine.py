@@ -40,11 +40,12 @@ class ApiEngine:
         self._client = client
 
     def review(self, request: ReviewRequest) -> EngineResult:
-        client = self._client or anthropic.Anthropic()
         model = request.check.model
         fallback = model in FALLBACK_MODELS
         started = time.monotonic()
         try:
+            # Creating the client already fails without credentials (no ANTHROPIC_API_KEY).
+            client = self._client or anthropic.Anthropic()
             response = client.beta.messages.parse(
                 model=model,
                 max_tokens=MAX_TOKENS,
@@ -64,6 +65,8 @@ class ApiEngine:
             raise EngineError(f"Claude API error {error.status_code}: {error.message}") from error
         except anthropic.APIConnectionError as error:
             raise EngineError(f"cannot reach the Claude API: {error}") from error
+        except anthropic.AnthropicError as error:  # e.g. no credentials configured
+            raise EngineError(f"Claude API client error: {error}") from error
         duration_ms = int((time.monotonic() - started) * 1000)
 
         if response.stop_reason == "refusal":

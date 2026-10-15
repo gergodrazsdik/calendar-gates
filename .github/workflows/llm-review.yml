@@ -103,7 +103,8 @@ jobs:
           status=$?
           set -e
           cat "$RUNNER_TEMP/review.md" >> "$GITHUB_STEP_SUMMARY"
-          verdict=$(jq -r .verdict .llm-gate/results/"$CHECK".*.json | head -n 1)
+          # No result file means llm-gate itself failed; report that as an error with its exit code.
+          verdict=$(jq -r .verdict .llm-gate/results/"$CHECK".*.json 2> /dev/null | head -n 1 || true)
           echo "status=$status" >> "$GITHUB_OUTPUT"
           echo "verdict=${verdict:-error}" >> "$GITHUB_OUTPUT"
 

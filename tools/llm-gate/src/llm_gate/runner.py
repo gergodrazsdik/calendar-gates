@@ -73,6 +73,13 @@ def run_check(
                 result = engine.review(request)
             except EngineError as failure:
                 error = str(failure)
+            except Exception as failure:  # an engine bug or SDK surprise
+                # Still a verdict, not a crash: the policy decides (blocking fails closed,
+                # advisory stays advisory). The traceback goes to the log for debugging.
+                log.exception("%s: the %s engine raised", check.name, engine.name)
+                error = (
+                    f"unexpected {type(failure).__name__} in the {engine.name} engine: {failure}"
+                )
             else:
                 if cache:
                     cache.put(key, result)
