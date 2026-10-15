@@ -17,7 +17,7 @@ passing** (see `gates` below).
 | `image` | `just image` | Docker build fails | Build output in the job log | none |
 | `http-tests` | `just image http-docker` | An `http/calendar.http` handler assertion fails against the built container | The **http test results** check run names the request; container logs are printed on failure | none |
 | `grype` | `just image scan` | A **high** or **critical** vulnerability in the image | Update the package or base image (Dependabot `docker`/`nuget`) | `ignore:` entry in `.grype.yaml` with a reason and an expiry date, called out in the PR |
-| `llm / <check>` (Phase 8 in CI) | `just llm <check>` | A **blocking** check (`code-review`: high, `security-review`: medium) has a finding at or above its threshold, or fails closed on an error | Fix the finding, or argue it in the PR | Label `llm-override` (findings still reported); thresholds in `tools/llm-gate/checks.yaml` |
+| `llm / <check>` (`llm-review.yml`) | `just llm <check>` | A **blocking** check (`code-review`: high, `security-review`: medium) has a finding at or above its threshold, or fails closed on an error | Fix the finding, or argue it in the PR | Label `llm-override` (findings still reported); thresholds in `tools/llm-gate/checks.yaml` |
 | `gates` | n/a | Any gate it needs did not succeed (failed, cancelled or skipped) | Fix that gate | none |
 
 ## Notes per gate
@@ -42,6 +42,22 @@ passing** (see `gates` below).
 - **llm / <check>**: the model returns findings; llm-gate decides from their severities
   ([ADR 0002](adr/0002-llm-gate-policy.md)). Advisory checks never fail. Results are cached per
   check, engine, model, prompt and diff, so re-runs without changes are free.
+  In CI each check is a job in `llm-review.yml` (matrix from `llm-gate list --json`) that writes the
+  review to the job summary and one sticky PR comment per check (updated on every run; "not
+  applicable" only updates an existing one). PRs without the API key (forks, Dependabot) skip with a
+  notice; set the repo variable `LLM_GATE_MISSING_KEY=fail` to make blocking checks fail closed
+  instead (gate drill 9). Adding or removing a label re-runs only these checks, from the cache.
+- **llm-compare** (`llm-compare.yml`, not a gate): the `llm-compare` label or a manual run with a PR
+  number reviews one check with both engines and posts the comparison table.
+- **Who can trigger LLM reviews**: only collaborators can open PRs (`pull_request_creation_policy`),
+  and workflows on fork PRs wait for approval, because every review is paid from the owner's key.
+  Both are set by `just gh-setup`.
+- **Trust model**: `llm-review.yml`, `tools/llm-gate`, `checks.yaml` and the prompts all come from
+  the PR under review, so a PR can change how it is reviewed. That is acceptable here because only
+  collaborators can open PRs; a team repository would add CODEOWNERS review for `tools/llm-gate/`,
+  `.claude/` and `.github/`. Fork code never runs with the key: `pull_request` withholds secrets
+  from forks, and `llm-compare` refuses PRs whose branch is not in this repository. The agent
+  engine runs with `disableAllHooks`, so repository hooks never execute during a review.
 
 ## Hooks are not gates
 

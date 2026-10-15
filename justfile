@@ -130,6 +130,18 @@ gh-setup:
     gh api -X PUT "repos/$repo/actions/permissions/workflow" --silent \
         -f default_workflow_permissions=read -F can_approve_pull_request_reviews=false
 
+    # Only collaborators (here: the owner) can open PRs, and workflows on fork PRs wait for approval:
+    # every PR runs the LLM review on the owner's API key.
+    gh api -X PATCH "repos/$repo" --silent -f pull_request_creation_policy=collaborators_only
+    gh api -X PUT "repos/$repo/actions/permissions/fork-pr-contributor-approval" --silent \
+        -f approval_policy=all_external_contributors
+
+    # Labels the LLM workflows react to
+    gh label create llm-override -R "$repo" --force --color D93F0B \
+        --description "LLM review: report blocking findings without failing the check"
+    gh label create llm-compare -R "$repo" --force --color 5319E7 \
+        --description "Run the code-review check with both LLM engines and compare"
+
     # Dependabot alerts + security updates, private vulnerability reporting, secret scanning + push protection
     gh api -X PUT "repos/$repo/vulnerability-alerts" --silent
     gh api -X PUT "repos/$repo/automated-security-fixes" --silent
