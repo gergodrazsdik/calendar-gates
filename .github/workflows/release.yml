@@ -1,0 +1,270 @@
+# Release pipeline (docs/PLAN.md Phase 11). `just release X.Y.Z` pushes a signed tag vX.Y.Z; this
+# workflow verifies it, re-runs the gates, waits for approval in the `release` environment,
+# publishes the multi-arch image and Helm chart to GHCR with attestations and an SBOM, and makes
+# the GitHub Release public only after the published image passed the contract tests.
+name: release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+  CHART_REPO: oci://ghcr.io/${{ github.repository_owner }}/charts
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      commit: ${{ steps.tag.outputs.commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: The tag is SemVer, annotated, signed and on main
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! $TAG =~ ^v([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?)$ ]]; then
+            echo "::error::$TAG is not vMAJOR.MINOR.PATCH[-PRERELEASE]"; exit 1
+          fi
+          version=${BASH_REMATCH[1]}
+          # Ask GitHub, not the local clone: checkout can turn an annotated tag into a lightweight one.
+          read -r type sha < <(gh api "repos/$REPO/git/ref/tags/$TAG" --jq '"\(.object.type) \(.object.sha)"')
+          if [ "$type" != tag ]; then
+            echo "::error::$TAG is a lightweight tag; release tags are annotated and signed (git tag -s)"; exit 1
+          fi
+          read -r verified reason < <(gh api "repos/$REPO/git/tags/$sha" \
+            --jq '"\(.verification.verified) \(.verification.reason)"')
+          if [ "$verified" != true ]; then
+            echo "::error::the signature of $TAG is not verified by GitHub ($reason)"; exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$TAG points at a commit that is not on main"; exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "commit=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "Releasing $version from $GITHUB_SHA (tag signature: $reason)" >> "$GITHUB_STEP_SUMMARY"
+
+  build-test:
+    name: build-test
+    needs: verify
+    permissions:
+      contents: read
+      checks: write # test report check run in _dotnet.yml
+    uses: ./.github/workflows/_dotnet.yml
+
+  scan:
+    name: scan
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build (amd64, to a tar)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          tags: calendar-gates:release
+          build-args: |
+            VERSION=${{ needs.verify.outputs.version }}
+            COMMIT=${{ needs.verify.outputs.commit }}
+          outputs: type=docker,dest=${{ runner.temp }}/image.tar
+          cache-from: type=gha
+      - uses: anchore/scan-action/download-grype@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        id: grype
+        with:
+          grype-version: v0.120.1
+      - name: Vulnerability gate (same config as pull requests)
+        env:
+          GRYPE: ${{ steps.grype.outputs.cmd }}
+        run: |
+          set +e
+          "$GRYPE" "docker-archive:$RUNNER_TEMP/image.tar" --config .grype.yaml -o table=grype.txt
+          status=$?
+          set -e
+          { echo '### grype'; echo '```'; cat grype.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+  # Pauses for approval: the `release` environment has a required reviewer and only allows v* tags.
+  publish:
+    name: publish
+    needs: [verify, build-test, scan]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: release
+    permissions:
+      contents: write # draft GitHub Release
+      packages: write # image and chart on ghcr.io
+      id-token: write # keyless signing of the provenance attestation
+      attestations: write # store the attestation
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        id: meta
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+          labels: |
+            org.opencontainers.image.licenses=MIT
+      # The final Dockerfile stage has no RUN, so arm64 builds without QEMU.
+      - name: Build and push (amd64 + arm64, SBOM and provenance)
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ needs.verify.outputs.version }}
+            COMMIT=${{ needs.verify.outputs.commit }}
+          sbom: true
+          provenance: mode=max
+          # No build cache here: nothing another run wrote can end up in a release.
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - name: SPDX SBOM for the release assets
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        with:
+          image: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ secrets.GITHUB_TOKEN }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+          syft-version: v1.54.1
+          upload-artifact: false
+          upload-release-assets: false
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.2.2
+      - name: Package and push the Helm chart
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          helm package deploy/helm/calendar-gates --version "$VERSION" --app-version "$VERSION" -d dist
+          helm registry login ghcr.io -u "$ACTOR" --password-stdin <<< "$GH_TOKEN"
+          helm push "dist/calendar-gates-$VERSION.tgz" "$CHART_REPO"
+      - name: Draft the GitHub Release (published by the smoke job)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          assets=(sbom.spdx.json "dist/calendar-gates-$VERSION.tgz")
+          if gh release view "$TAG" -R "$REPO" > /dev/null 2>&1; then
+            # A re-run after a failed smoke: the draft exists, refresh its assets.
+            gh release upload "$TAG" -R "$REPO" --clobber "${assets[@]}"
+          else
+            prerelease=()
+            [[ $VERSION == *-* ]] && prerelease=(--prerelease)
+            gh release create "$TAG" -R "$REPO" --verify-tag --draft --generate-notes \
+              --title "$TAG" "${prerelease[@]}" "${assets[@]}"
+          fi
+          {
+            echo "### Published $VERSION"
+            echo "- image: \`$IMAGE:$VERSION\` (\`$DIGEST\`)"
+            echo "- chart: \`$CHART_REPO/calendar-gates --version $VERSION\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  smoke:
+    name: smoke
+    needs: [verify, publish]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write # publish the draft release
+      packages: read # pull the published image, also while the package is private
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+      TAG: ${{ github.ref_name }}
+      DIGEST: ${{ needs.publish.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # The scan job checked a local build; this checks the bytes that were actually pushed.
+      - uses: anchore/scan-action/download-grype@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        id: grype
+        with:
+          grype-version: v0.120.1
+      - name: Vulnerability gate on the published image
+        env:
+          GRYPE: ${{ steps.grype.outputs.cmd }}
+        run: |
+          set +e
+          "$GRYPE" "registry:$IMAGE@$DIGEST" --platform linux/amd64 --config .grype.yaml \
+            -o table=grype.txt
+          status=$?
+          set -e
+          { echo "### grype: $IMAGE@$DIGEST"; echo '```'; cat grype.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+      - name: Run the published image (pulled from GHCR)
+        run: |
+          docker run -d --name calendar-gates -p 8081:8080 "$IMAGE@$DIGEST"
+          scripts/wait-for-health.sh http://localhost:8081/health 60
+      - name: /api/version reports the tag
+        run: |
+          reported=$(curl -fsS http://localhost:8081/api/version | jq -r .version)
+          if [ "$reported" != "$VERSION" ]; then
+            echo "::error::the image reports version $reported, the tag says $VERSION"; exit 1
+          fi
+      - name: Contract tests
+        run: |
+          ijhttp=docker.io/jetbrains/intellij-http-client:261.25134.95@sha256:1fdeab28e7eacac2ec8e0564499248452e29c55c380497eb92088bd49cfc3096
+          docker run --rm --network host -v "$PWD:/workdir" "$ijhttp" \
+            --no-progress -v http/http-client.env.json -e docker http/calendar.http
+      - name: Container logs
+        if: failure()
+        run: docker logs calendar-gates
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: gh release edit "$TAG" -R "$REPO" --draft=false

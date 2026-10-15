@@ -117,6 +117,13 @@ k8s-deploy:
         --set-string "podAnnotations.calendar-gates/image-id=$(podman image inspect --format '{{{{.Id}}' {{ image }} | cut -c1-12)" \
         --rollback-on-failure --timeout 2m
 
+# Deploy a published release to kind-local: chart and image from GHCR (after `just release`)
+[group('k8s')]
+k8s-deploy-release version:
+    helm upgrade --install calendar-gates oci://ghcr.io/gergodrazsdik/charts/calendar-gates \
+        --version {{ version }} --kube-context kind-local -n {{ k8s_ns }} --create-namespace \
+        --rollback-on-failure --timeout 3m
+
 # HTTP contract tests against kind-local through a port-forward (localhost:18080)
 [group('k8s')]
 k8s-http:
@@ -153,6 +160,28 @@ lint-chart:
     helm lint --kube-context kind-local --strict {{ chart }} -f {{ chart }}/values-kind.yaml
     helm template --kube-context kind-local calendar-gates {{ chart }} --set ingress.enabled=true \
         | kubeconform -strict -summary -kubernetes-version 1.37.0 -
+
+# Tag main as vX.Y.Z (signed) and push the tag; release.yml then waits for your approval
+[group('release')]
+[confirm('Create and push the signed release tag?')]
+release version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    version={{ version }}
+    if [[ ! $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+        echo "usage: just release MAJOR.MINOR.PATCH[-PRERELEASE] (no v prefix)" >&2; exit 1
+    fi
+    [ "$(git branch --show-current)" = main ] || { echo "release from main" >&2; exit 1; }
+    git fetch --quiet origin main --tags
+    [ -z "$(git status --porcelain)" ] || { echo "the working tree is not clean" >&2; exit 1; }
+    [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || {
+        echo "main is not in sync with origin/main" >&2; exit 1; }
+    ! git rev-parse --quiet --verify "refs/tags/v$version" > /dev/null || {
+        echo "v$version already exists" >&2; exit 1; }
+    just ci
+    git tag -s "v$version" -m "v$version"
+    git push origin "v$version"
+    echo "Pushed v$version: approve the release environment in the release workflow run."
 
 # Local equivalent of the deterministic CI gates; run before calling a change done
 [group('test')]
