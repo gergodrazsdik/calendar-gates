@@ -1,0 +1,220 @@
+# Contract tests for the calendar API, run by ijhttp (`just http`, `just http-docker`).
+# Requests about "today" assert shape and invariants, never today's values; fixed inputs assert exact values.
+
+### Health
+GET {{baseUrl}}/health
+
+> {%
+  client.test("health: 200 Healthy", () => {
+    client.assert(response.status === 200, `status ${response.status}`);
+    client.assert(response.body === "Healthy", `body ${response.body}`);
+  });
+%}
+
+### Current ISO week
+GET {{baseUrl}}/api/week
+Accept: application/json
+
+> {%
+  client.test("week: shape and invariants", () => {
+    client.assert(response.status === 200, `status ${response.status}`);
+    client.assert(response.contentType.mimeType === "application/json", response.contentType.mimeType);
+    const b = response.body;
+    client.assert(/^\d{4}-\d{2}-\d{2}$/.test(b.date), `date ${b.date}`);
+    client.assert(Number.isInteger(b.isoYear), `isoYear ${b.isoYear}`);
+    client.assert(Math.abs(b.isoYear - Number(b.date.slice(0, 4))) <= 1, `isoYear ${b.isoYear} vs ${b.date}`);
+    client.assert(Number.isInteger(b.week) && b.week >= 1 && b.week <= 53, `week ${b.week}`);
+    client.assert(b.parity === (b.week % 2 === 0 ? "even" : "odd"), `parity ${b.parity} for week ${b.week}`);
+  });
+%}
+
+### ISO week of a date (belongs to the previous ISO year)
+GET {{baseUrl}}/api/week/2027-01-01
+Accept: application/json
+
+> {%
+  client.test("week/{date}: exact values", () => {
+    client.assert(response.status === 200, `status ${response.status}`);
+    const b = response.body;
+    client.assert(b.date === "2027-01-01", `date ${b.date}`);
+    client.assert(b.isoYear === 2026, `isoYear ${b.isoYear}`);
+    client.assert(b.week === 53, `week ${b.week}`);
+    client.assert(b.parity === "odd", `parity ${b.parity}`);
+  });
+%}
+
+### ISO week: invalid date
+GET {{baseUrl}}/api/week/not-a-date
+Accept: application/json
+
+> {%
+  client.test("week/{date}: 400 ValidationProblem", () => {
+    client.assert(response.status === 400, `status ${response.status}`);
+    client.assert(response.contentType.mimeType === "application/problem+json", response.contentType.mimeType);
+    client.assert(response.body.errors.date.length > 0, "errors.date missing");
+  });
+%}
+
+### Fridays the 13th this year
+GET {{baseUrl}}/api/friday13
+Accept: application/json
+
+> {%
+  client.test("friday13: shape and invariants", () => {
+    client.assert(response.status === 200, `status ${response.status}`);
+    const b = response.body;
+    client.assert(b.count >= 1 && b.count <= 3, `count ${b.count}`);
+    client.assert(b.dates.length === b.count, `dates ${b.dates.length} vs count ${b.count}`);
+    for (const d of b.dates) {
+      client.assert(d.startsWith(`${b.year}-`) && d.endsWith("-13"), `date ${d}`);
+      client.assert(new Date(`${d}T00:00:00Z`).getUTCDay() === 5, `${d} is not a Friday`);
+    }
+  });
+%}
+
+### Fridays the 13th in 2026
+GET {{baseUrl}}/api/friday13?year=2026
+Accept: application/json
+
+> {%
+  client.test("friday13?year: exact values", () => {
+    client.assert(response.status === 200, `status ${response.status}`);
+    const b = response.body;
+    client.assert(b.year === 2026 && b.count === 3, `year ${b.year} count ${b.count}`);
+    client.assert(JSON.stringify(b.dates) === JSON.stringify(["2026-02-13", "2026-03-13", "2026-11-13"]), JSON.stringify(b.dates));
+  });
+%}
+
+### Fridays the 13th: year out of range
+GET {{baseUrl}}/api/friday13?year=1500
+Accept: application/json
+
+> {%
+  client.test("friday13?year: 400 ValidationProblem", () => {
+    client.assert(response.status === 400, `status ${response.status}`);
+    client.assert(response.body.errors.year.length > 0, "errors.year missing");
+  });
+%}
+
+### Next Friday the 13th
+GET {{baseUrl}}/api/friday13/next
+Accept: application/json
+
+> {%
+  client.test("friday13/next: shape and invariants", () => {
+    client.assert(response.status === 200, `status ${response.status}`);
+    const b = response.body;
+    client.assert(b.date.endsWith("-13"), `date ${b.date}`);
+    client.assert(new Date(`${b.date}T00:00:00Z`).getUTCDay() === 5, `${b.date} is not a Friday`);
+    client.assert(Number.isInteger(b.daysUntil) && b.daysUntil >= 0 && b.daysUntil <= 427, `daysUntil ${b.daysUntil}`);
+  });
+%}
+
+### Easter 2026
+GET {{baseUrl}}/api/easter/2026
+Accept: application/json
+
+> {%
+  client.test("easter: exact values", () => {
+    client.assert(response.status === 200, `status ${response.status}`);
+    const b = response.body;
+    client.assert(b.year === 2026, `year ${b.year}`);
+    client.assert(b.western === "2026-04-05", `western ${b.western}`);
+    client.assert(b.orthodox === "2026-04-12", `orthodox ${b.orthodox}`);
+  });
+%}
+
+### Easter: year out of range
+GET {{baseUrl}}/api/easter/1500
+Accept: application/json
+
+> {%
+  client.test("easter: 400 ValidationProblem", () => {
+    client.assert(response.status === 400, `status ${response.status}`);
+    client.assert(response.body.errors.year.length > 0, "errors.year missing");
+  });
+%}
+
+### Workdays in one week
+GET {{baseUrl}}/api/workdays?from=2026-10-12&to=2026-10-18
+Accept: application/json
+
+> {%
+  client.test("workdays: exact values", () => {
+    client.assert(response.status === 200, `status ${response.status}`);
+    const b = response.body;
+    client.assert(b.from === "2026-10-12" && b.to === "2026-10-18", `range ${b.from}..${b.to}`);
+    client.assert(b.workdays === 5, `workdays ${b.workdays}`);
+  });
+%}
+
+### Workdays: reversed range
+GET {{baseUrl}}/api/workdays?from=2026-10-18&to=2026-10-12
+Accept: application/json
+
+> {%
+  client.test("workdays: 400 on reversed range", () => {
+    client.assert(response.status === 400, `status ${response.status}`);
+    client.assert(response.body.errors.to.length > 0, "errors.to missing");
+  });
+%}
+
+### Workdays: more than ten years
+GET {{baseUrl}}/api/workdays?from=2020-01-01&to=2031-01-01
+Accept: application/json
+
+> {%
+  client.test("workdays: 400 on spans over 10 years", () => {
+    client.assert(response.status === 400, `status ${response.status}`);
+    client.assert(response.body.errors.to.length > 0, "errors.to missing");
+  });
+%}
+
+### Leap year 2000
+GET {{baseUrl}}/api/leap/2000
+Accept: application/json
+
+> {%
+  client.test("leap: 2000 is a leap year", () => {
+    client.assert(response.status === 200, `status ${response.status}`);
+    client.assert(response.body.year === 2000 && response.body.isLeap === true, JSON.stringify(response.body));
+  });
+%}
+
+### Leap year 1900
+GET {{baseUrl}}/api/leap/1900
+Accept: application/json
+
+> {%
+  client.test("leap: 1900 is not a leap year", () => {
+    client.assert(response.status === 200, `status ${response.status}`);
+    client.assert(response.body.isLeap === false, JSON.stringify(response.body));
+  });
+%}
+
+### Version
+GET {{baseUrl}}/api/version
+Accept: application/json
+
+> {%
+  client.test("version: shape", () => {
+    client.assert(response.status === 200, `status ${response.status}`);
+    const b = response.body;
+    client.assert(/^\d+\.\d+\.\d+/.test(b.version), `version ${b.version}`);
+    client.assert(typeof b.commit === "string" && b.commit.length > 0, `commit ${b.commit}`);
+  });
+%}
+
+### OpenAPI document
+GET {{baseUrl}}/openapi/v1.json
+Accept: application/json
+
+> {%
+  client.test("openapi: lists every route", () => {
+    client.assert(response.status === 200, `status ${response.status}`);
+    const expected = ["/api/easter/{year}", "/api/friday13", "/api/friday13/next", "/api/leap/{year}",
+      "/api/version", "/api/week", "/api/week/{date}", "/api/workdays"];
+    const actual = Object.keys(response.body.paths).sort();
+    client.assert(JSON.stringify(actual) === JSON.stringify(expected), JSON.stringify(actual));
+  });
+%}

@@ -21,6 +21,16 @@ build:
 run:
     dotnet run --project src/CalendarGates.Api --launch-profile http
 
+# Unit + integration tests (Microsoft.Testing.Platform, see global.json); extra args go to dotnet test
+[group('test')]
+test *args:
+    dotnet test {{ args }}
+
+# HTTP contract tests against a running API (`just run` in another terminal); JUnit XML in reports/
+[group('test')]
+http env="local":
+    ijhttp --no-progress -v http/http-client.env.json -e {{ env }} -r reports http/calendar.http
+
 # Apply repo settings: merge rules, Actions defaults, security features, secret, variables, release environment
 [group('github')]
 [confirm('Apply settings to github.com/gergodrazsdik/calendar-gates?')]
