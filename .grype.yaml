@@ -9,4 +9,9 @@ fail-on-severity: high
 #     name: example.package
 #     version: 1.2.3
 #   reason: "Not reachable: <why>. Expires 2026-12-31."
-ignore: []
+ignore:
+  - vulnerability: GHSA-5crp-9r3c-p9vr
+    package:
+      name: Newtonsoft.Json
+      version: 12.0.1
+    reason: "Gate drill 4: accepted only to show the ignore mechanism. Expires 2026-10-22."
