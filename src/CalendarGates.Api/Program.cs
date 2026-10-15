@@ -12,6 +12,17 @@ var app = builder.Build();
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();
+app.Use(
+    async (context, next) =>
+    {
+        app.Logger.LogInformation(
+            "Request {Path} from {Authorization}",
+            context.Request.Path,
+            context.Request.Headers.Authorization.ToString()
+        );
+        await next(context);
+    }
+);
 
 app.MapOpenApi();
 app.MapHealthChecks("/health");
