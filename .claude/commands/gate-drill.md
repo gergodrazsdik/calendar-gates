@@ -11,11 +11,16 @@ Set up gate drill $ARGUMENTS from the "Gate drills" table in `docs/PLAN.md` (Pha
    my OK before touching anything that pushes, force-pushes, deletes tags or changes GitHub
    settings (drills 7, 8, 9 and 11 do).
 3. Create a branch `drill/<n>-<short-name>` from an up-to-date `main`.
-4. Make the smallest change that trips the gate. This is the one place where `--no-verify` and
-   deliberately broken code are allowed; don't "fix" the drill.
-5. Commit with a Conventional Commit message starting `test(drill):`, push, and open a draft PR
-   titled `test(drill): <n> <short description>` whose body says "Gate drill, do not merge" and
-   which gate is expected to fail.
+4. Make the smallest change that trips the gate. Deliberately broken code is allowed here; don't
+   "fix" the drill. Edit `.cs` files with a shell command, not the editor tools: the CSharpier
+   hook in `.claude/settings.json` would format the planted mistake away.
+5. Get it to GitHub with a Conventional Commit message starting `test(drill):`. If a local hook
+   would fix or block it (formatting, failing tests before push, actionlint), don't bypass the
+   hook: `--no-verify` is never allowed on this machine. Commit through the GitHub API instead:
+   `scripts/commit-via-api.py drill/<n>-<name> "test(drill): ..." <files>` (workflow files need a
+   gh token with the `workflow` scope), then restore the working tree. Otherwise commit and push
+   normally. Open a draft PR titled `test(drill): <n> <short description>` whose body says
+   "Gate drill, do not merge" and which gate is expected to fail.
 6. Give me the PR URL and what to watch for. Once the run finishes, check it with
    `gh pr checks` and tell me whether the gate behaved as the table predicts.
 

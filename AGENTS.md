@@ -66,7 +66,8 @@ Details, fixes and overrides: `docs/gates.md`.
 
 ## Don'ts
 
-- No `--no-verify`, except inside a gate drill (Phase 12) that asks for it.
+- No `--no-verify`, gate drills included: a drill that must get past a local hook commits through
+  the GitHub API instead (`scripts/commit-via-api.py`, see `/gate-drill`).
 - No secrets in files. The Anthropic key comes from `pass show api/anthropic-calendar-gates` at run time.
 - Never edit pinned action SHAs by hand; `pinact` and Dependabot maintain them.
 - Never weaken a gate (skip, `continue-on-error`, lower a threshold, add an ignore) to get CI green
