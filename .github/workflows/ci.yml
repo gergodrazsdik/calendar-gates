@@ -204,6 +204,7 @@ jobs:
   grype:
     name: grype
     needs: image
+    if: github.event_name == 'workflow_dispatch' # gate drill 8: ci.yml has no such trigger
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
