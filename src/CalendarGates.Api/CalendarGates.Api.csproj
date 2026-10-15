@@ -1,4 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
+  <!-- Gate drill 4: silence NuGet's audit for this one advisory so grype becomes the gate -->
+  <ItemGroup>
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-5crp-9r3c-p9vr" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Newtonsoft.Json" />
