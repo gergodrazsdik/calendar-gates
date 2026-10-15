@@ -11,6 +11,16 @@ default:
 setup:
     dotnet tool restore
 
+# Build the solution (warnings are errors)
+[group('dev')]
+build:
+    dotnet build
+
+# Run the API on http://localhost:5080 (OpenAPI at /openapi/v1.json)
+[group('dev')]
+run:
+    dotnet run --project src/CalendarGates.Api --launch-profile http
+
 # Apply repo settings: merge rules, Actions defaults, security features, secret, variables, release environment
 [group('github')]
 [confirm('Apply settings to github.com/gergodrazsdik/calendar-gates?')]

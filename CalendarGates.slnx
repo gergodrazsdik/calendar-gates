@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CalendarGates.Api/CalendarGates.Api.csproj" />
+  </Folder>
+</Solution>
