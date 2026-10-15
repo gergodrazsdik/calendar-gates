@@ -71,7 +71,7 @@ lint:
     uv run --directory tools/llm-gate --locked ruff format --check .
     uv run --directory tools/llm-gate --locked mypy
     uv run --directory tools/llm-gate --locked pytest -q
-    uv run --script scripts/check-ruleset-consistency.py
+    uv run --locked --script scripts/check-ruleset-consistency.py
 
 # List the LLM checks (tools/llm-gate/checks.yaml)
 [group('llm')]
@@ -178,7 +178,7 @@ gh-rulesets:
     #!/usr/bin/env bash
     set -euo pipefail
     repo={{ repo }}
-    uv run --script scripts/check-ruleset-consistency.py
+    uv run --locked --script scripts/check-ruleset-consistency.py
     for file in .github/rulesets/*.json; do
         name=$(jq -r .name "$file")
         id=$(gh api "repos/$repo/rulesets" | jq -r --arg name "$name" '.[] | select(.name == $name) | .id')

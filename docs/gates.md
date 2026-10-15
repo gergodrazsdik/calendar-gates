@@ -5,7 +5,8 @@ deterministic ones (format, lint, build, test). Required checks on `main` are se
 `.github/rulesets/main.json` (applied with `just gh-rulesets`): `pr-title`, `format`, `lint`,
 `build-test / dotnet`, `http-tests`, `grype`, `llm / code-review`, `llm / security-review`. The other
 checks report but don't block. `lint` fails if the ruleset, the workflow job names and the blocking
-checks in `checks.yaml` disagree (`scripts/check-ruleset-consistency.py`).
+checks in `checks.yaml` disagree (`scripts/check-ruleset-consistency.py`). The `release-tags`
+ruleset (`.github/rulesets/tags.json`) makes `v*` tags immutable: no deletion, no moving.
 
 The check names are the job names in `.github/workflows/ci.yml` and `llm-review.yml`. Renaming a
 job would silently break branch protection until the ruleset follows; the consistency check in
