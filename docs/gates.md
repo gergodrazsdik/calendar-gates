@@ -72,7 +72,8 @@ is required too (see below).
   settings or MCP servers) and gets the prompt as text with the diff inline. A gate change takes
   effect for the PRs after it merges. **Remaining hole**: the workflow file itself comes from the PR
   on `pull_request`, so a PR can edit `llm-review.yml`; v2 marks such runs (`workflow_modified`,
-  Phase 14) and raises their risk (Phase 17). Fork code never runs with the key: `pull_request`
+  Phase 14) and raises their risk (Phase 17); a team repository would also require CODEOWNERS
+  review for `tools/llm-gate/`, `.claude/` and `.github/`. Fork code never runs with the key: `pull_request`
   withholds secrets from forks, and `llm-compare` refuses PRs whose branch is not in this repository.
 
 ## Release gates (`release.yml`)
