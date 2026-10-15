@@ -78,8 +78,9 @@ jobs:
           fi
 
       # Results are cached by check, engine, model, prompt and diff; re-runs of an unchanged PR
-      # (a label change, a re-run) cost nothing.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # (a label change, a re-run) cost nothing. Restore and save are separate steps because the
+      # combined action only saves when the job succeeds, and failed checks are the ones re-run.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: steps.key.outputs.run == 'true'
         with:
           path: .llm-gate/cache
@@ -106,9 +107,17 @@ jobs:
           echo "status=$status" >> "$GITHUB_OUTPUT"
           echo "verdict=${verdict:-error}" >> "$GITHUB_OUTPUT"
 
-      # Posting is done here by the workflow, not by the model.
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: steps.review.outcome == 'success'
+        with:
+          path: .llm-gate/cache
+          key: llm-gate-${{ matrix.check }}-pr${{ github.event.pull_request.number }}-${{ github.sha }}
+
+      # Posting is done here by the workflow, not by the model. A failed comment (for example a
+      # read-only token) must not decide the check; the verdict step below does.
       - name: Sticky PR comment
         if: steps.review.outcome == 'success'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           VERDICT: ${{ steps.review.outputs.verdict }}

@@ -160,6 +160,8 @@ def test_agent_engine_options_are_read_only(tmp_path: Path) -> None:
     assert options.setting_sources == ["project"]
     assert options.skills == []
     assert options.settings == '{"disableAllHooks": true}'  # repository hooks never run
+    assert options.mcp_servers == {}
+    assert "strict-mcp-config" in options.extra_args  # nor project MCP servers
     assert (options.max_turns, options.max_budget_usd) == (7, 0.25)
     assert options.cwd == str(tmp_path)
     assert options.output_format == {"type": "json_schema", "schema": Review.model_json_schema()}

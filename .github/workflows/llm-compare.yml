@@ -21,16 +21,17 @@ on:
 
 permissions: {}
 
-concurrency:
-  group: llm-compare-${{ inputs.pr_number || github.event.pull_request.number }}
-  cancel-in-progress: true
-
 jobs:
   compare:
     name: llm-compare
     if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'llm-compare'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    # On the job, not the workflow: every label event starts this workflow, and only runs that
+    # pass the `if` above should cancel an earlier comparison.
+    concurrency:
+      group: llm-compare-${{ inputs.pr_number || github.event.pull_request.number }}
+      cancel-in-progress: true
     permissions:
       contents: read
       pull-requests: write # comparison comment

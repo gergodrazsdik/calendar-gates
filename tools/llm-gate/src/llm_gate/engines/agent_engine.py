@@ -51,6 +51,9 @@ class AgentEngine:
             # Repository hooks are shell commands and would run with the API key in their
             # environment; a review never needs them (`--settings` outranks project settings).
             settings=NO_HOOKS,
+            # Likewise project MCP servers (.mcp.json) start commands: use none.
+            mcp_servers={},
+            extra_args={"strict-mcp-config": None},
             max_turns=check.max_turns,
             max_budget_usd=check.budget_usd,
             output_format={"type": "json_schema", "schema": Review.model_json_schema()},
