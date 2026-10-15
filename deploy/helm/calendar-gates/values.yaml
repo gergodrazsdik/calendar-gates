@@ -1,0 +1,29 @@
+replicaCount: 2
+
+image:
+  repository: ghcr.io/gergodrazsdik/calendar-gates
+  tag: "" # defaults to the chart's appVersion
+  pullPolicy: IfNotPresent
+
+# Extra pod annotations; `just k8s-deploy` sets the image ID here so a rebuilt :dev image rolls out.
+podAnnotations: {}
+
+service:
+  type: ClusterIP
+  port: 80
+
+# Off by default: kind-local has no ingress controller (docs/adr/0003-kind-access.md).
+ingress:
+  enabled: false
+  className: ""
+  host: calendar.localhost
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+probes:
+  path: /health

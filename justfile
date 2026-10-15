@@ -2,6 +2,8 @@
 
 repo := "gergodrazsdik/calendar-gates"
 image := "localhost/calendar-gates:dev"
+chart := "deploy/helm/calendar-gates"
+k8s_ns := "calendar-gates"
 
 # List recipes
 default:
@@ -93,9 +95,68 @@ llm check engine="":
 llm-compare check:
     just llm {{ check }} both
 
+# Start the kind-local cluster, creating it if it does not exist yet
+[group('k8s')]
+k8s-up:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if kind-local status | grep -q 'not created'; then kind-local create; else kind-local start; fi
+
+# Build the image and load it into kind-local (kind can't see podman's images, so via an archive)
+[group('k8s')]
+k8s-load: image
+    mkdir -p reports
+    podman save -o reports/calendar-gates.tar {{ image }}
+    kind load image-archive reports/calendar-gates.tar --name local
+
+# Install or upgrade the chart on kind-local with the loaded :dev image; rolls back on failure
+[group('k8s')]
+k8s-deploy:
+    helm upgrade --install calendar-gates {{ chart }} --kube-context kind-local \
+        -n {{ k8s_ns }} --create-namespace -f {{ chart }}/values-kind.yaml \
+        --set-string "podAnnotations.calendar-gates/image-id=$(podman image inspect --format '{{{{.Id}}' {{ image }} | cut -c1-12)" \
+        --rollback-on-failure --timeout 2m
+
+# HTTP contract tests against kind-local through a port-forward (localhost:18080)
+[group('k8s')]
+k8s-http:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    kubectl --context kind-local -n {{ k8s_ns }} port-forward svc/calendar-gates 18080:80 >/dev/null &
+    forward=$!
+    trap 'kill $forward' EXIT
+    scripts/wait-for-health.sh http://localhost:18080/health 30
+    just http forward
+
+# Pods, services and recent events of the deployment
+[group('k8s')]
+k8s-status:
+    kubectl --context kind-local -n {{ k8s_ns }} get all,ingress
+    kubectl --context kind-local -n {{ k8s_ns }} get events --sort-by=.lastTimestamp | tail -n 10
+
+# Follow the logs of all pods
+[group('k8s')]
+k8s-logs:
+    stern --context kind-local -n {{ k8s_ns }} calendar-gates
+
+# Remove the release and its namespace from kind-local
+[group('k8s')]
+[confirm('Uninstall calendar-gates and delete its namespace on kind-local?')]
+k8s-down:
+    helm uninstall calendar-gates --kube-context kind-local -n {{ k8s_ns }} --ignore-not-found
+    kubectl --context kind-local delete namespace {{ k8s_ns }} --ignore-not-found
+
+# The chart part of the lint gate: helm lint and the rendered manifests against the Kubernetes schemas
+[group('format')]
+lint-chart:
+    helm lint --kube-context kind-local --strict {{ chart }}
+    helm lint --kube-context kind-local --strict {{ chart }} -f {{ chart }}/values-kind.yaml
+    helm template --kube-context kind-local calendar-gates {{ chart }} --set ingress.enabled=true \
+        | kubeconform -strict -summary -kubernetes-version 1.37.0 -
+
 # Local equivalent of the deterministic CI gates; run before calling a change done
 [group('test')]
-ci: fmt-check lint build test
+ci: fmt-check lint lint-chart build test
 
 # Build the solution (warnings are errors)
 [group('dev')]

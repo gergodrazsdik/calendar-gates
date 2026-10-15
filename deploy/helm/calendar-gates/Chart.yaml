@@ -1,0 +1,14 @@
+apiVersion: v2
+name: calendar-gates
+description: Calendar API of the calendar-gates GitHub Actions playground
+type: application
+# version and appVersion are set from the git tag by the release workflow (helm package
+# --version/--app-version); these are the development defaults.
+version: 0.0.0
+appVersion: "0.0.0"
+home: https://github.com/gergodrazsdik/calendar-gates
+sources:
+  - https://github.com/gergodrazsdik/calendar-gates
+annotations:
+  artifacthub.io/license: MIT
+  org.opencontainers.image.licenses: MIT
