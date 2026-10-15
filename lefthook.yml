@@ -1,0 +1,29 @@
+# Git hooks (installed by `just setup`). They are a convenience for fast feedback;
+# the CI gates are the enforcement (gate drill 1 proves it).
+pre-commit:
+  parallel: true
+  jobs:
+    - name: csharpier
+      glob: "*.cs"
+      run: dotnet csharpier format {staged_files}
+      stage_fixed: true
+    - name: ruff
+      root: tools/llm-gate/
+      glob: "*.py"
+      run: uv run ruff format {staged_files} && uv run ruff check --fix {staged_files}
+      stage_fixed: true
+    - name: workflows
+      glob: ".github/workflows/*.yml"
+      run: actionlint {staged_files}
+    - name: secrets
+      run: gitleaks git --pre-commit --staged --redact
+
+commit-msg:
+  jobs:
+    - name: conventional-commit
+      run: scripts/check-commit-msg.sh {1}
+
+pre-push:
+  jobs:
+    - name: tests
+      run: just test

@@ -6,10 +6,27 @@ repo := "gergodrazsdik/calendar-gates"
 default:
     @just --list
 
-# Restore local .NET tools (git hooks get installed here from Phase 4 on)
+# Restore local .NET tools and install the git hooks (lefthook.yml)
 [group('dev')]
 setup:
     dotnet tool restore
+    lefthook install
+
+# Format C# (CSharpier owns layout, docs/adr/0001)
+[group('format')]
+fmt:
+    dotnet csharpier format .
+
+# The `format` gate: CSharpier layout check plus code-style and analyzer rules (never `whitespace`)
+[group('format')]
+fmt-check:
+    dotnet csharpier check .
+    dotnet format style --verify-no-changes
+    dotnet format analyzers --verify-no-changes
+
+# Local equivalent of the deterministic CI gates; run before calling a change done
+[group('test')]
+ci: fmt-check build test
 
 # Build the solution (warnings are errors)
 [group('dev')]

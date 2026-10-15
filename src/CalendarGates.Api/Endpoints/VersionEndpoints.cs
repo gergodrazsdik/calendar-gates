@@ -6,11 +6,11 @@ public sealed record VersionResponse(string Version, string Commit);
 
 public static class VersionEndpoints
 {
-    private static readonly VersionResponse s_version = Read(typeof(Program).Assembly);
+    private static readonly VersionResponse _version = Read(typeof(Program).Assembly);
 
     public static IEndpointRouteBuilder MapVersionEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/version", () => TypedResults.Ok(s_version))
+        app.MapGet("/version", () => TypedResults.Ok(_version))
             .WithTags("Meta")
             .WithName("GetVersion")
             .WithSummary("Build version (MinVer) and commit");
