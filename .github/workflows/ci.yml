@@ -95,6 +95,8 @@ jobs:
           uv run --locked ruff format --check .
           uv run --locked mypy
           uv run --locked pytest -q
+      - name: Ruleset matches workflows and checks.yaml
+        run: uv run --script scripts/check-ruleset-consistency.py
 
   build-test:
     name: build-test

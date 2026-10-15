@@ -2,11 +2,14 @@
 
 Every gate runs locally through `just` and in CI as a named check. `just ci` runs the
 deterministic ones (format, lint, build, test). Required checks on `main` are set in the ruleset
-(Phase 9); until then they show on every PR but don't block merging.
+`.github/rulesets/main.json` (applied with `just gh-rulesets`): `pr-title`, `format`, `lint`,
+`build-test / dotnet`, `http-tests`, `grype`, `llm / code-review`, `llm / security-review`. The other
+checks report but don't block. `lint` fails if the ruleset, the workflow job names and the blocking
+checks in `checks.yaml` disagree (`scripts/check-ruleset-consistency.py`).
 
-The check names are the job names in `.github/workflows/ci.yml`. Renaming a job silently breaks
-branch protection until the ruleset is updated, and a required check that is **skipped counts as
-passing** (see `gates` below).
+The check names are the job names in `.github/workflows/ci.yml` and `llm-review.yml`. Renaming a
+job would silently break branch protection until the ruleset follows; the consistency check in
+`lint` catches that. A required check that is **skipped counts as passing** (see `gates` below).
 
 | Check | Local | Fails when | Fix | Override |
 |---|---|---|---|---|
