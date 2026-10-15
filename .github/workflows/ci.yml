@@ -34,6 +34,8 @@ jobs:
         env:
           TITLE: ${{ github.event.pull_request.title }}
         run: scripts/check-commit-msg.sh --title "$TITLE"
+      - name: Show the title
+        run: echo "Checking ${{ github.event.pull_request.title }}"
 
   format:
     name: format
