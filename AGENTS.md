@@ -39,6 +39,10 @@ that needs them, so the list is the truth, not this file.
 - Time comes from the injected `TimeProvider`, never `DateTime.Now`/`UtcNow`. "Today" is the UTC date.
 - Every endpoint gets a unit test (calculator), an integration test and a request in `http/calendar.http`.
 - Package versions live in `Directory.Packages.props` (central package management); lock files are committed.
+- Build output goes to `artifacts/` (`UseArtifactsOutput` in `Directory.Build.props`):
+  `artifacts/bin/<Project>/<config>/`, `artifacts/obj/...`, `artifacts/publish/...`. There are no
+  per-project `bin/`/`obj/` folders; point scripts, Dockerfiles and CI at `artifacts/`, never at
+  `src/*/bin`.
 - Conventional Commits for commit messages and PR titles (`feat:`, `fix:`, `ci:`, `chore:`, `docs:`, `test:`, `refactor:`).
 - From Phase 6 on, every change goes through a PR (squash merge, the PR title becomes the commit).
 

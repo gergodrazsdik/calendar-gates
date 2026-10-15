@@ -1,5 +1,7 @@
 <Project>
   <PropertyGroup>
+    <!-- All build output under artifacts/{bin,obj,publish}/<Project>/<config>/, no per-project bin/obj -->
+    <UseArtifactsOutput>true</UseArtifactsOutput>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
