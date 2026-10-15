@@ -12,6 +12,7 @@ public static class WorkdaysCalculator
             throw new ArgumentException("'to' must not be before 'from'.", nameof(to));
         }
 
+        // Days between the two dates.
         var days = to.DayNumber - from.DayNumber;
         var count = days / 7 * 5;
         var start = (int)from.DayOfWeek;
