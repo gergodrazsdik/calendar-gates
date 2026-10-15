@@ -1,8 +1,14 @@
 using System.Globalization;
+using System.Text.Json.Serialization;
 
 namespace CalendarGates.Api.Domain;
 
-public sealed record IsoWeekInfo(DateOnly Date, int IsoYear, int Week, string Parity);
+public sealed record IsoWeekInfo(
+    DateOnly Date,
+    [property: JsonPropertyName("year")] int IsoYear,
+    int Week,
+    string Parity
+);
 
 public static class IsoWeekCalculator
 {
