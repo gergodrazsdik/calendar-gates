@@ -1,5 +1,10 @@
-"""Claude Agent SDK engine: runs the prompt as the /llm-<check> slash command in the repository,
-with read-only tools, so the agent can look at callers and tests beyond the diff."""
+"""Claude Agent SDK engine: the review prompt with the diff inline, run in the repository under
+review with read-only tools, so the agent can look at callers and tests beyond the diff.
+
+The prompt text comes from the gate's own checkout (ADR 0004). Nothing is loaded from the
+repository under review: no CLAUDE.md, rules, commands, skills, hooks, settings or MCP servers, so
+its files are data the agent may read, never instructions it receives.
+"""
 
 import asyncio
 import json
@@ -12,21 +17,29 @@ from claude_agent_sdk import (
     ClaudeSDKError,
     ResultError,
     ResultMessage,
-    SystemMessage,
     query,
 )
 from pydantic import ValidationError
 
 from ..models import EngineResult, Review, Usage
+from ..prompts import DIFF_REFERENCE, diff_block, render
 from . import EngineError, ReviewRequest
 
 READ_ONLY_TOOLS = ["Read", "Grep", "Glob"]
 # `tools` already limits the session to READ_ONLY_TOOLS; the deny list is belt and braces.
 DENIED_TOOLS = ["Bash", "Write", "Edit", "NotebookEdit", "WebFetch", "WebSearch", "Task", "Agent"]
 
+# Applied with --settings, which outranks every other source: no hooks run, whatever is on disk.
 NO_HOOKS = json.dumps({"disableAllHooks": True})
 
 QueryFn = Callable[..., AsyncIterator[Any]]
+
+
+def agent_prompt(request: ReviewRequest) -> str:
+    return (
+        f"{render(request.prompt, DIFF_REFERENCE)}\n\n"
+        f"{diff_block(request.diff.base, request.diff.text)}"
+    )
 
 
 class AgentEngine:
@@ -44,37 +57,34 @@ class AgentEngine:
             allowed_tools=READ_ONLY_TOOLS,
             disallowed_tools=DENIED_TOOLS,
             permission_mode="dontAsk",  # anything not pre-approved is denied, never prompted
-            # Project settings only: loads .claude/commands (the prompt) and CLAUDE.md, and keeps
-            # personal hooks and skills out of the review, locally and in CI alike.
-            setting_sources=["project"],
+            # No filesystem settings at all: not the user's, not the reviewed repository's
+            # (its CLAUDE.md would otherwise reach the reviewer as instructions).
+            setting_sources=[],
             skills=[],
-            # Repository hooks are shell commands and would run with the API key in their
-            # environment; a review never needs them (`--settings` outranks project settings).
             settings=NO_HOOKS,
-            # Likewise project MCP servers (.mcp.json) start commands: use none.
+            # Project MCP servers (.mcp.json) start commands: use none.
             mcp_servers={},
             extra_args={"strict-mcp-config": None},
             max_turns=check.max_turns,
             max_budget_usd=check.budget_usd,
             output_format={"type": "json_schema", "schema": Review.model_json_schema()},
-            env={"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"},
+            env={
+                "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+                "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+            },
         )
 
     def review(self, request: ReviewRequest) -> EngineResult:
         return asyncio.run(self._review(request))
 
     async def _review(self, request: ReviewRequest) -> EngineResult:
-        command = request.check.command
         started = time.monotonic()
-        commands: list[str] | None = None
         result: ResultMessage | None = None
         try:
             async for message in self._query(
-                prompt=f"/{command} {request.diff_ref}", options=self.options(request)
+                prompt=agent_prompt(request), options=self.options(request)
             ):
-                if isinstance(message, SystemMessage) and message.subtype == "init":
-                    commands = list(message.data.get("slash_commands", []))
-                elif isinstance(message, ResultMessage):
+                if isinstance(message, ResultMessage):
                     result = message
         except ResultError as error:
             # subtype "success" with an error means the final API request failed (billing, auth).
@@ -85,10 +95,6 @@ class AgentEngine:
         except ClaudeSDKError as error:
             raise EngineError(f"Claude Agent SDK error: {error}") from error
 
-        # An unknown /command is sent to the model as plain text instead of failing, so check
-        # that the prompt file was actually loaded before trusting the result.
-        if commands is not None and command not in commands:
-            raise EngineError(f"/{command} was not loaded: is .claude/commands/{command}.md there?")
         if result is None:
             raise EngineError("the agent run produced no result message")
         if result.subtype != "success" or result.is_error:

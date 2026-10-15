@@ -132,8 +132,8 @@ def test_api_engine_without_credentials_is_an_engine_error(
 # --- Agent engine -------------------------------------------------------------------------
 
 
-def init(commands: list[str]) -> SystemMessage:
-    return SystemMessage(subtype="init", data={"slash_commands": commands})
+def init() -> SystemMessage:
+    return SystemMessage(subtype="init", data={"slash_commands": ["llm-code-review"]})
 
 
 def result_message(**overrides: Any) -> ResultMessage:
@@ -162,30 +162,35 @@ def fake_query(*messages: object, calls: list[dict[str, Any]] | None = None) -> 
     return query
 
 
-def test_agent_engine_options_are_read_only(tmp_path: Path) -> None:
+def test_agent_engine_options_are_read_only_and_load_nothing(tmp_path: Path) -> None:
     options = AgentEngine().options(request(tmp_path, max_turns=7, budget_usd=0.25))
 
     assert options.tools == READ_ONLY_TOOLS
     assert options.allowed_tools == READ_ONLY_TOOLS
     assert {"Bash", "Write", "Edit", "WebFetch"} <= set(options.disallowed_tools)
     assert options.permission_mode == "dontAsk"
-    assert options.setting_sources == ["project"]
+    # Nothing from the reviewed repository or the machine: no CLAUDE.md, commands, hooks, ...
+    assert options.setting_sources == []
     assert options.skills == []
-    assert options.settings == '{"disableAllHooks": true}'  # repository hooks never run
+    assert options.settings == '{"disableAllHooks": true}'
     assert options.mcp_servers == {}
-    assert "strict-mcp-config" in options.extra_args  # nor project MCP servers
+    assert "strict-mcp-config" in options.extra_args
+    assert options.env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"
     assert (options.max_turns, options.max_budget_usd) == (7, 0.25)
-    assert options.cwd == str(tmp_path)
+    assert options.cwd == str(tmp_path)  # the reviewed repository, read-only context
     assert options.output_format == {"type": "json_schema", "schema": Review.model_json_schema()}
 
 
-def test_agent_engine_runs_the_slash_command(tmp_path: Path) -> None:
+def test_agent_engine_passes_the_prompt_text_with_the_diff_inline(tmp_path: Path) -> None:
     calls: list[dict[str, Any]] = []
-    query = fake_query(init(["llm-code-review"]), result_message(), calls=calls)
+    query = fake_query(init(), result_message(), calls=calls)
 
     out = AgentEngine(query).review(request(tmp_path))
 
-    assert calls[0]["prompt"] == "/llm-code-review .llm-gate/diff.patch"
+    prompt = calls[0]["prompt"]
+    assert not prompt.startswith("/")  # not a slash command: nothing to resolve from disk
+    assert prompt.startswith("Review the unified diff inside the <diff> element below carefully.")
+    assert prompt.endswith('<diff base="origin/main">\ndiff --git a/x b/x\n+x\n\n</diff>')
     assert out.review == REVIEW
     assert (out.duration_ms, out.usage.num_turns, out.usage.cost_usd) == (4321, 5, 0.042)
     assert not out.usage.cost_estimated
@@ -194,14 +199,10 @@ def test_agent_engine_runs_the_slash_command(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("messages", "error"),
     [
-        ((init(["other"]), result_message()), "was not loaded"),
-        ((init(["llm-code-review"]),), "no result message"),
-        (
-            (init(["llm-code-review"]), result_message(subtype="error_max_turns", is_error=True)),
-            "error_max_turns",
-        ),
-        ((init(["llm-code-review"]), result_message(structured_output=None)), "without a struct"),
-        ((init(["llm-code-review"]), result_message(structured_output={"x": 1})), "schema"),
+        ((init(),), "no result message"),
+        ((init(), result_message(subtype="error_max_turns", is_error=True)), "error_max_turns"),
+        ((init(), result_message(structured_output=None)), "without a struct"),
+        ((init(), result_message(structured_output={"x": 1})), "schema"),
     ],
 )
 def test_agent_engine_failures(tmp_path: Path, messages: tuple[object, ...], error: str) -> None:
@@ -211,7 +212,7 @@ def test_agent_engine_failures(tmp_path: Path, messages: tuple[object, ...], err
 
 def test_agent_engine_counts_cached_input_tokens(tmp_path: Path) -> None:
     usage = {"input_tokens": 6, "cache_creation_input_tokens": 900, "cache_read_input_tokens": 4000}
-    query = fake_query(init(["llm-code-review"]), result_message(usage=usage))
+    query = fake_query(init(), result_message(usage=usage))
 
     out = AgentEngine(query).review(request(tmp_path))
 

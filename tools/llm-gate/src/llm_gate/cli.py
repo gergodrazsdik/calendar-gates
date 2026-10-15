@@ -34,7 +34,18 @@ def _override_from_env() -> bool:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="llm-gate", description=__doc__)
-    parser.add_argument("--config", type=Path, help="checks.yaml (default: tools/llm-gate/)")
+    parser.add_argument(
+        "--repo",
+        type=Path,
+        help="repository under review: the diff and the agent's read-only context "
+        "(default: the git repository of the current directory)",
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        help="checks.yaml (default: <repo>/tools/llm-gate/checks.yaml); the prompts come from "
+        "the same checkout's .claude/commands/, so CI can run the gate from the base branch",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -156,9 +167,11 @@ def main(argv: Sequence[str] | None = None, engines: Mapping[str, Engine] | None
         stream=sys.stderr,
     )
     try:
-        root = repo_root(Path.cwd())
+        root = repo_root(args.repo or Path.cwd())
         config = args.config or root / "tools" / "llm-gate" / "checks.yaml"
-        checks = load_config(config, root)
+        # The gate's own checkout (config + prompts) may differ from the reviewed one (ADR 0004).
+        gate_root = repo_root(config.resolve().parent)
+        checks = load_config(config, gate_root)
         if args.command == "list":
             return cmd_list(checks, as_json=args.json, blocking_only=args.blocking)
 
