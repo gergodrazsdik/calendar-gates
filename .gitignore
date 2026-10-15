@@ -491,3 +491,9 @@ $RECYCLE.BIN/
 .env.*
 .direnv/
 .venv/
+
+# calendar-gates
+.llm-gate/
+reports/
+http/*.private.env.json
+CLAUDE.local.md
