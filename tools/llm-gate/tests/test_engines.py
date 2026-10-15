@@ -192,3 +192,12 @@ def test_agent_engine_runs_the_slash_command(tmp_path: Path) -> None:
 def test_agent_engine_failures(tmp_path: Path, messages: tuple[object, ...], error: str) -> None:
     with pytest.raises(EngineError, match=error):
         AgentEngine(fake_query(*messages)).review(request(tmp_path))
+
+
+def test_agent_engine_counts_cached_input_tokens(tmp_path: Path) -> None:
+    usage = {"input_tokens": 6, "cache_creation_input_tokens": 900, "cache_read_input_tokens": 4000}
+    query = fake_query(init(["llm-code-review"]), result_message(usage=usage))
+
+    out = AgentEngine(query).review(request(tmp_path))
+
+    assert out.usage.input_tokens == 4906

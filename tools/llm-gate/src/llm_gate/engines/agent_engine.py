@@ -98,7 +98,16 @@ class AgentEngine:
             review=review,
             duration_ms=result.duration_ms or int((time.monotonic() - started) * 1000),
             usage=Usage(
-                input_tokens=usage.get("input_tokens"),
+                # Claude Code caches its prompt, so most input arrives as cache reads/writes.
+                input_tokens=sum(
+                    usage.get(key) or 0
+                    for key in (
+                        "input_tokens",
+                        "cache_creation_input_tokens",
+                        "cache_read_input_tokens",
+                    )
+                )
+                or None,
                 output_tokens=usage.get("output_tokens"),
                 cost_usd=result.total_cost_usd,
                 num_turns=result.num_turns,
