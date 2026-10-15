@@ -23,8 +23,11 @@ if (($(wc -c < "$body_file") > 60000)); then
     body+=$'\n\n_(truncated; the full report is in the job summary)_'
 fi
 
-id=$(gh api --paginate "repos/$repo/issues/$pr/comments" \
-    --jq ".[] | select(.user.type == \"Bot\" and (.body | startswith(\"$marker\"))) | .id" | head -n 1)
+# The marker goes to jq as data (--arg), never spliced into the filter.
+# --paginate prints one array per page; -s collects them, and jq picks the first match.
+id=$(gh api --paginate "repos/$repo/issues/$pr/comments" |
+    jq -rs --arg marker "$marker" \
+        '[.[][] | select(.user.type == "Bot" and (.body | startswith($marker))) | .id] | first // empty')
 
 if [[ -n $id ]]; then
     gh api -X PATCH "repos/$repo/issues/comments/$id" --silent -f body="$body"

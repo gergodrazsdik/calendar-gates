@@ -2,6 +2,7 @@
 with read-only tools, so the agent can look at callers and tests beyond the diff."""
 
 import asyncio
+import json
 import time
 from collections.abc import AsyncIterator, Callable
 from typing import Any
@@ -22,6 +23,8 @@ from . import EngineError, ReviewRequest
 READ_ONLY_TOOLS = ["Read", "Grep", "Glob"]
 # `tools` already limits the session to READ_ONLY_TOOLS; the deny list is belt and braces.
 DENIED_TOOLS = ["Bash", "Write", "Edit", "NotebookEdit", "WebFetch", "WebSearch", "Task", "Agent"]
+
+NO_HOOKS = json.dumps({"disableAllHooks": True})
 
 QueryFn = Callable[..., AsyncIterator[Any]]
 
@@ -45,6 +48,9 @@ class AgentEngine:
             # personal hooks and skills out of the review, locally and in CI alike.
             setting_sources=["project"],
             skills=[],
+            # Repository hooks are shell commands and would run with the API key in their
+            # environment; a review never needs them (`--settings` outranks project settings).
+            settings=NO_HOOKS,
             max_turns=check.max_turns,
             max_budget_usd=check.budget_usd,
             output_format={"type": "json_schema", "schema": Review.model_json_schema()},

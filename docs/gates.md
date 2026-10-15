@@ -52,6 +52,12 @@ passing** (see `gates` below).
 - **Who can trigger LLM reviews**: only collaborators can open PRs (`pull_request_creation_policy`),
   and workflows on fork PRs wait for approval, because every review is paid from the owner's key.
   Both are set by `just gh-setup`.
+- **Trust model**: `llm-review.yml`, `tools/llm-gate`, `checks.yaml` and the prompts all come from
+  the PR under review, so a PR can change how it is reviewed. That is acceptable here because only
+  collaborators can open PRs; a team repository would add CODEOWNERS review for `tools/llm-gate/`,
+  `.claude/` and `.github/`. Fork code never runs with the key: `pull_request` withholds secrets
+  from forks, and `llm-compare` refuses PRs whose branch is not in this repository. The agent
+  engine runs with `disableAllHooks`, so repository hooks never execute during a review.
 
 ## Hooks are not gates
 
