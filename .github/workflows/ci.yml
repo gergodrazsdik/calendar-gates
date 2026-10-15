@@ -1,0 +1,282 @@
+# Deterministic gates (docs/gates.md). Job names are the required check names in the
+# `main` ruleset (Phase 9): renaming a job silently breaks protection until the ruleset follows.
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  IMAGE: calendar-gates:ci
+
+jobs:
+  pr-title:
+    name: pr-title
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: scripts
+          persist-credentials: false
+      - name: Conventional Commit title (becomes the squash commit)
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: scripts/check-commit-msg.sh --title "$TITLE"
+
+  format:
+    name: format
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-dotnet-env
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: 1.57.0
+      - run: dotnet restore --locked-mode
+      - name: CSharpier check + dotnet format style/analyzers
+        run: just fmt-check
+
+  lint:
+    name: lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: false
+      - name: actionlint
+        run: >-
+          docker run --rm -v "$PWD:/repo" --workdir /repo
+          docker.io/rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+          -color
+      - name: zizmor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uvx zizmor@1.30.1 --format=github .github/
+      - name: hadolint
+        run: >-
+          docker run --rm -i
+          docker.io/hadolint/hadolint:v2.14.0@sha256:27086352fd5e1907ea2b934eb1023f217c5ae087992eb59fde121dce9c9ff21e
+          < Dockerfile
+      - name: yamllint
+        run: uvx yamllint@1.38.0 --strict .
+      - name: shellcheck
+        run: shellcheck scripts/*.sh .claude/hooks/*.sh
+      - name: ruff (scripts)
+        run: |
+          uvx ruff@0.16.10 check scripts/
+          uvx ruff@0.16.10 format --check scripts/
+
+  build-test:
+    name: build-test
+    permissions:
+      contents: read
+      checks: write # test report check run in _dotnet.yml
+    uses: ./.github/workflows/_dotnet.yml
+
+  image:
+    name: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      commit: ${{ steps.version.outputs.commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # MinVer
+          persist-credentials: false
+      - uses: ./.github/actions/setup-dotnet-env
+      - name: Version and commit
+        id: version
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          echo "version=$(dotnet minver -t v -v e)" >> "$GITHUB_OUTPUT"
+          echo "commit=${HEAD_SHA::7}" >> "$GITHUB_OUTPUT"
+      - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        id: meta
+        with:
+          images: calendar-gates
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build (to a tar, shared with the jobs below)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          tags: ${{ env.IMAGE }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+            COMMIT=${{ steps.version.outputs.commit }}
+          outputs: type=docker,dest=${{ runner.temp }}/image.tar
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: image
+          path: ${{ runner.temp }}/image.tar
+          retention-days: 1
+
+  http-tests:
+    name: http-tests
+    needs: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      checks: write # JUnit report check run
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: image
+          path: ${{ runner.temp }}
+      - name: Start the container (host port 8081, as locally)
+        run: |
+          docker load --input "$RUNNER_TEMP/image.tar"
+          docker run -d --name calendar-gates -p 8081:8080 "$IMAGE"
+          scripts/wait-for-health.sh http://localhost:8081/health 60
+      - name: Contract tests (ijhttp)
+        run: >-
+          docker run --rm --network host -v "$PWD:/workdir"
+          docker.io/jetbrains/intellij-http-client:261.25134.95@sha256:1fdeab28e7eacac2ec8e0564499248452e29c55c380497eb92088bd49cfc3096
+          --no-progress -v http/http-client.env.json -e docker -r reports http/calendar.http
+      - name: Container logs
+        if: failure()
+        run: docker logs calendar-gates
+      - name: HTTP test report
+        if: ${{ !cancelled() && hashFiles('reports/report.xml') != '' }}
+        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3.0.0
+        with:
+          name: http test results
+          path: reports/report.xml
+          reporter: java-junit
+          use-actions-summary: false # a check run with annotations on the failing line
+
+  grype:
+    name: grype
+    needs: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write # SARIF upload to code scanning
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: image
+          path: ${{ runner.temp }}
+      - uses: anchore/scan-action/download-grype@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        id: grype
+        with:
+          grype-version: v0.120.1
+      - name: Scan (fails on high, see .grype.yaml)
+        env:
+          GRYPE: ${{ steps.grype.outputs.cmd }}
+        run: |
+          set +e
+          "$GRYPE" "docker-archive:$RUNNER_TEMP/image.tar" --config .grype.yaml \
+            -o table=grype.txt -o sarif=grype.sarif
+          status=$?
+          set -e
+          { echo '### grype'; echo '```'; cat grype.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+      - name: Upload SARIF (also on failure)
+        if: ${{ !cancelled() && hashFiles('grype.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: grype.sarif
+          category: grype
+
+  # Push to main only: publish the exact image the gates above tested.
+  publish-edge:
+    name: publish-edge
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [format, lint, build-test, image, http-tests, grype]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      packages: write # push to ghcr.io
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: image
+          path: ${{ runner.temp }}
+      - uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=edge,branch=main
+            type=sha,prefix=sha-
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag and push the tested image
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          docker load --input "$RUNNER_TEMP/image.tar"
+          while read -r tag; do
+            [ -n "$tag" ] || continue
+            docker tag "$IMAGE" "$tag"
+            docker push "$tag"
+          done <<< "$TAGS"
+
+  # One check that is red unless every gate succeeded. Unlike a required check in the ruleset, a
+  # skipped gate fails here too; only pr-title may be skipped, and only outside pull requests.
+  gates:
+    name: gates
+    if: always()
+    needs: [pr-title, format, lint, build-test, image, http-tests, grype]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: All gates succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          jq -r 'to_entries[] | "\(.key): \(.value.result)"' <<< "$NEEDS"
+          not_ok=$(jq -r '[to_entries[]
+            | select(.value.result != "success")
+            | select(.key != "pr-title" or env.EVENT == "pull_request")
+            | .key] | join(", ")' <<< "$NEEDS")
+          if [ -n "$not_ok" ]; then
+            echo "::error::Gates that did not succeed: $not_ok"
+            exit 1
+          fi

@@ -1,0 +1,5 @@
+rules:
+  # GitHub's `$/` self-repository syntax (2026-07) would pin same-repo actions to the running
+  # commit, but actionlint 1.7.12 rejects it (rhysd/actionlint#711). Re-enable once it can parse it.
+  self-repository:
+    disable: true
