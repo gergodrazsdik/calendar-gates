@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Newtonsoft.Json" />
   </ItemGroup>
 
   <!-- `dotnet publish -p:Commit=<sha>` (Dockerfile build arg); read by /api/version -->
