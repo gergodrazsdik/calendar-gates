@@ -68,9 +68,11 @@ class AgentEngine:
                 elif isinstance(message, ResultMessage):
                     result = message
         except ResultError as error:
-            raise EngineError(
-                f"agent run ended with {error.subtype}: {'; '.join(error.errors) or error}"
-            ) from error
+            # subtype "success" with an error means the final API request failed (billing, auth).
+            what = "the API request failed" if error.subtype == "success" else error.subtype
+            status = f" (HTTP {error.api_error_status})" if error.api_error_status else ""
+            detail = "; ".join(error.errors) or error.result or str(error)
+            raise EngineError(f"agent run failed, {what}{status}: {detail}") from error
         except ClaudeSDKError as error:
             raise EngineError(f"Claude Agent SDK error: {error}") from error
 
