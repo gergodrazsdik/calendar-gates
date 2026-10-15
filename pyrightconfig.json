@@ -1,0 +1,7 @@
+{
+  "executionEnvironments": [
+    { "root": "tools/llm-gate", "extraPaths": ["tools/llm-gate/src", "tools/llm-gate/tests"] }
+  ],
+  "venvPath": "tools/llm-gate",
+  "venv": ".venv"
+}

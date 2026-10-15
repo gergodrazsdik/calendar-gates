@@ -17,6 +17,7 @@ passing** (see `gates` below).
 | `image` | `just image` | Docker build fails | Build output in the job log | none |
 | `http-tests` | `just image http-docker` | An `http/calendar.http` handler assertion fails against the built container | The **http test results** check run names the request; container logs are printed on failure | none |
 | `grype` | `just image scan` | A **high** or **critical** vulnerability in the image | Update the package or base image (Dependabot `docker`/`nuget`) | `ignore:` entry in `.grype.yaml` with a reason and an expiry date, called out in the PR |
+| `llm / <check>` (Phase 8 in CI) | `just llm <check>` | A **blocking** check (`code-review`: high, `security-review`: medium) has a finding at or above its threshold, or fails closed on an error | Fix the finding, or argue it in the PR | Label `llm-override` (findings still reported); thresholds in `tools/llm-gate/checks.yaml` |
 | `gates` | n/a | Any gate it needs did not succeed (failed, cancelled or skipped) | Fix that gate | none |
 
 ## Notes per gate
@@ -37,6 +38,10 @@ passing** (see `gates` below).
   count against it (only `pr-title` may be skipped, on pushes to `main`). That differs from the
   ruleset, where a skipped required check counts as passing. Gate drill 8 compares requiring each
   check with requiring only `gates`.
+
+- **llm / <check>**: the model returns findings; llm-gate decides from their severities
+  ([ADR 0002](adr/0002-llm-gate-policy.md)). Advisory checks never fail. Results are cached per
+  check, engine, model, prompt and diff, so re-runs without changes are free.
 
 ## Hooks are not gates
 
