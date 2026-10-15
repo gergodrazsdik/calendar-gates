@@ -23,3 +23,12 @@ def load_prompt(path: Path) -> str:
 def render(prompt: str, arguments: str) -> str:
     """Substitute $ARGUMENTS the way Claude Code does for a slash command."""
     return prompt.replace("$ARGUMENTS", arguments)
+
+
+# What $ARGUMENTS becomes when the gate runs the prompt: both engines pass the diff inline, so the
+# prompt text (from the gate's own checkout) is the only instruction the reviewer gets.
+DIFF_REFERENCE = "the unified diff inside the <diff> element below"
+
+
+def diff_block(base: str, text: str) -> str:
+    return f'<diff base="{base}">\n{text}\n</diff>'

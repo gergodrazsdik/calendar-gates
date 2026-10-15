@@ -6,7 +6,7 @@ from typing import Any
 import anthropic
 
 from ..models import EngineResult, Review, Usage
-from ..prompts import render
+from ..prompts import DIFF_REFERENCE, diff_block, render
 from . import EngineError, ReviewRequest
 
 MAX_TOKENS = 16_000
@@ -21,8 +21,6 @@ PRICES_PER_MTOK = {
 # Models with server-side refusal fallbacks (`fallbacks: "default"`); Haiku has none.
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 FALLBACK_MODELS = {"claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5"}
-
-DIFF_REFERENCE = "the unified diff inside the <diff> element of the user message"
 
 
 def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float | None:
@@ -51,11 +49,7 @@ class ApiEngine:
                 max_tokens=MAX_TOKENS,
                 system=render(request.prompt, DIFF_REFERENCE),
                 messages=[
-                    {
-                        "role": "user",
-                        "content": f'<diff base="{request.diff.base}">\n'
-                        f"{request.diff.text}\n</diff>",
-                    }
+                    {"role": "user", "content": diff_block(request.diff.base, request.diff.text)}
                 ],
                 output_format=Review,
                 betas=[FALLBACK_BETA] if fallback else anthropic.omit,
