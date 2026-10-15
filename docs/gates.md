@@ -3,7 +3,7 @@
 Every gate runs locally through `just` and in CI as a named check. `just ci` runs the
 deterministic ones (format, lint, build, test). Required checks on `main` are set in the ruleset
 `.github/rulesets/main.json` (applied with `just gh-rulesets`): `pr-title`, `format`, `lint`,
-`build-test / dotnet`, `http-tests`, `grype`, `llm / code-review`, `llm / security-review`. The other
+`build-test / dotnet`, `http-tests`, `grype`, `k8s-smoke`, `llm / code-review`, `llm / security-review`. The other
 checks report but don't block. `lint` fails if the ruleset, the workflow job names and the blocking
 checks in `checks.yaml` disagree (`scripts/check-ruleset-consistency.py`). The `release-tags`
 ruleset (`.github/rulesets/tags.json`) makes `v*` tags immutable: no deletion, no moving.
@@ -39,8 +39,7 @@ job would silently break branch protection until the ruleset follows; the consis
   gate fails.
 - **k8s-smoke** installs the chart with the tested image on a throwaway kind cluster
   (`helm/kind-action`), with `--rollback-on-failure`, then runs the contract tests through a
-  port-forward ([ADR 0003](adr/0003-kind-access.md)). It joins the required checks after it has
-  been green on a few PRs.
+  port-forward ([ADR 0003](adr/0003-kind-access.md)).
 - **publish-edge** (push to `main` only, not a gate) pushes the tested image as
   `ghcr.io/gergodrazsdik/calendar-gates:edge` and `:sha-<short>`.
 - **gates** is red unless every gate it needs **succeeded**: failed, cancelled and *skipped* all
@@ -67,6 +66,25 @@ job would silently break branch protection until the ruleset follows; the consis
   `.claude/` and `.github/`. Fork code never runs with the key: `pull_request` withholds secrets
   from forks, and `llm-compare` refuses PRs whose branch is not in this repository. The agent
   engine runs with `disableAllHooks`, so repository hooks never execute during a review.
+
+## Release gates (`release.yml`)
+
+`just release X.Y.Z` (from a clean `main` in sync with origin, after `just ci`) pushes the signed
+tag `vX.Y.Z`. The workflow then:
+
+1. **verify**: the tag is SemVer, annotated, signed (verified by GitHub) and on `main`.
+2. **build-test** and **scan**: the same build, tests and grype gate as pull requests.
+3. **publish**: waits for approval in the `release` environment, then pushes the amd64 + arm64
+   image (`X.Y.Z`, `X.Y`, `sha-<short>`) with an SBOM and a provenance attestation, the Helm chart
+   to `oci://ghcr.io/gergodrazsdik/charts`, and a **draft** GitHub Release with the SPDX SBOM and
+   the chart.
+4. **smoke**: runs the published image, checks `/api/version` reports `X.Y.Z`, runs the contract
+   tests, and only then publishes the release.
+
+Check the supply chain afterwards with
+`gh attestation verify oci://ghcr.io/gergodrazsdik/calendar-gates:X.Y.Z --owner gergodrazsdik`,
+and deploy it with `just k8s-deploy-release X.Y.Z`. Tags can't be moved or deleted (`release-tags`
+ruleset), so a bad release is fixed with a new version.
 
 ## Hooks are not gates
 
