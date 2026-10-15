@@ -1,0 +1,144 @@
+# LLM review gates (docs/gates.md, ADR 0002). One job per check in tools/llm-gate/checks.yaml,
+# each reported as `llm / <check>`. The verdict comes from llm-gate, never from the model.
+# Separate from ci.yml so that adding or removing a label re-runs only these checks.
+name: llm-review
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions: {}
+
+concurrency:
+  group: llm-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  llm-plan:
+    name: llm-plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      checks: ${{ steps.list.outputs.checks }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          cache-dependency-glob: tools/llm-gate/uv.lock
+      - name: Checks from checks.yaml (the matrix below)
+        id: list
+        working-directory: tools/llm-gate
+        run: echo "checks=$(uv run --locked llm-gate list --json)" >> "$GITHUB_OUTPUT"
+
+  llm:
+    name: llm / ${{ matrix.check }}
+    needs: llm-plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write # sticky review comment
+    strategy:
+      fail-fast: false
+      matrix:
+        check: ${{ fromJSON(needs.llm-plan.outputs.checks) }}
+    env:
+      CHECK: ${{ matrix.check }}
+      PR: ${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the diff is taken from the merge base with origin/<base>
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          cache-dependency-glob: tools/llm-gate/uv.lock
+
+      # Fork and Dependabot PRs get no secrets on pull_request. By default the checks report that
+      # and pass; with the repo variable LLM_GATE_MISSING_KEY=fail they run anyway and the
+      # blocking ones fail closed (gate drill 9).
+      - name: API key available?
+        id: key
+        env:
+          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+          MISSING_KEY: ${{ vars.LLM_GATE_MISSING_KEY }}
+        run: |
+          if [ "$HAS_KEY" = true ] || [ "$MISSING_KEY" = fail ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            reason="No ANTHROPIC_API_KEY for this PR (fork or Dependabot); the LLM review did not run."
+            echo "::notice title=llm / $CHECK skipped::$reason"
+            echo "llm / $CHECK: skipped, no ANTHROPIC_API_KEY for this PR." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Results are cached by check, engine, model, prompt and diff; re-runs of an unchanged PR
+      # (a label change, a re-run) cost nothing.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: steps.key.outputs.run == 'true'
+        with:
+          path: .llm-gate/cache
+          key: llm-gate-${{ matrix.check }}-pr${{ github.event.pull_request.number }}-${{ github.sha }}
+          restore-keys: llm-gate-${{ matrix.check }}-pr${{ github.event.pull_request.number }}-
+
+      - name: Review
+        id: review
+        if: steps.key.outputs.run == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          LLM_MODEL_CHEAP: ${{ vars.LLM_MODEL_CHEAP }}
+          LLM_GATE_OVERRIDE: ${{ contains(github.event.pull_request.labels.*.name, 'llm-override') }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set +e
+          uv run --directory tools/llm-gate --locked llm-gate run --check "$CHECK" \
+            --base "origin/$BASE_REF" --out "$GITHUB_WORKSPACE/.llm-gate" > "$RUNNER_TEMP/review.md"
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/review.md" >> "$GITHUB_STEP_SUMMARY"
+          verdict=$(jq -r .verdict .llm-gate/results/"$CHECK".*.json | head -n 1)
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "verdict=${verdict:-error}" >> "$GITHUB_OUTPUT"
+
+      # Posting is done here by the workflow, not by the model.
+      - name: Sticky PR comment
+        if: steps.review.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERDICT: ${{ steps.review.outputs.verdict }}
+        run: |
+          mode=""
+          [ "$VERDICT" = not-applicable ] && mode=--update-only
+          scripts/upsert-pr-comment.sh $mode "$PR" "<!-- llm-gate:$CHECK -->" "$RUNNER_TEMP/review.md"
+
+      - name: Upload results
+        if: steps.review.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: llm-gate-${{ matrix.check }}
+          path: .llm-gate/results/
+          retention-days: 7
+
+      - name: Verdict
+        if: steps.review.outcome == 'success'
+        env:
+          STATUS: ${{ steps.review.outputs.status }}
+          VERDICT: ${{ steps.review.outputs.verdict }}
+        run: |
+          title="llm / $CHECK"
+          case "$VERDICT" in
+            overridden)
+              echo "::warning title=$title overridden::Blocking findings reported; PR has the llm-override label." ;;
+            fail)
+              echo "::error title=$title::Blocking findings; see the PR comment or the job summary." ;;
+            error)
+              level=$([ "$STATUS" = 0 ] && echo warning || echo error)
+              echo "::$level title=$title::The review could not run; see the job summary." ;;
+          esac
+          exit "$STATUS"

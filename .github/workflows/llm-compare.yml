@@ -1,0 +1,83 @@
+# Run one LLM check with both engines (Claude API and Claude Agent SDK) on a PR and post a
+# comparison: findings per severity, overlap, verdicts, time, tokens and cost. Informational only;
+# triggered by hand or by the `llm-compare` label, so normal PRs don't pay for two reviews.
+name: llm-compare
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number
+        required: true
+        type: number
+      check:
+        description: Check from tools/llm-gate/checks.yaml
+        required: true
+        default: code-review
+        type: string
+  pull_request:
+    branches: [main]
+    types: [labeled]
+
+permissions: {}
+
+concurrency:
+  group: llm-compare-${{ inputs.pr_number || github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  compare:
+    name: llm-compare
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'llm-compare'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write # comparison comment
+    env:
+      PR: ${{ inputs.pr_number || github.event.pull_request.number }}
+      CHECK: ${{ inputs.check || 'code-review' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/pull/${{ inputs.pr_number || github.event.pull_request.number }}/head
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          cache-dependency-glob: tools/llm-gate/uv.lock
+
+      - name: API key available?
+        id: key
+        env:
+          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+        run: |
+          if [ "$HAS_KEY" = true ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=llm-compare skipped::No ANTHROPIC_API_KEY for this run."
+          fi
+
+      - name: Review with both engines
+        if: steps.key.outputs.run == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          LLM_MODEL_CHEAP: ${{ vars.LLM_MODEL_CHEAP }}
+        run: |
+          # The verdicts are compared, not enforced: llm-review.yml is the gate.
+          uv run --directory tools/llm-gate --locked llm-gate run --check "$CHECK" --engine both \
+            --base origin/main --out "$GITHUB_WORKSPACE/.llm-gate" > /dev/null || true
+          uv run --directory tools/llm-gate --locked llm-gate compare --check "$CHECK" \
+            --in "$GITHUB_WORKSPACE/.llm-gate" > "$RUNNER_TEMP/compare.md"
+          cat "$RUNNER_TEMP/compare.md" >> "$GITHUB_STEP_SUMMARY"
+          # Both engines' full reviews below the table
+          uv run --directory tools/llm-gate --locked llm-gate report --check "$CHECK" \
+            --in "$GITHUB_WORKSPACE/.llm-gate" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comparison comment
+        if: steps.key.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/upsert-pr-comment.sh "$PR" "<!-- llm-gate:compare:$CHECK -->" "$RUNNER_TEMP/compare.md"
