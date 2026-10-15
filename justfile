@@ -71,6 +71,7 @@ lint:
     uv run --directory tools/llm-gate --locked ruff format --check .
     uv run --directory tools/llm-gate --locked mypy
     uv run --directory tools/llm-gate --locked pytest -q
+    uv run --locked --script scripts/check-ruleset-consistency.py
 
 # List the LLM checks (tools/llm-gate/checks.yaml)
 [group('llm')]
@@ -169,6 +170,24 @@ gh-setup:
             -f name='v*' -f type=tag
     fi
     echo "Done. CodeQL default setup: run 'just gh-codeql' once there is C# and Python code (Phase 2+)."
+
+# Apply .github/rulesets/*.json (create, or update the ruleset with the same name)
+[group('github')]
+[confirm('Apply the rulesets? Afterwards main only changes through PRs that pass the required checks.')]
+gh-rulesets:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    repo={{ repo }}
+    uv run --locked --script scripts/check-ruleset-consistency.py
+    for file in .github/rulesets/*.json; do
+        name=$(jq -r .name "$file")
+        id=$(gh api "repos/$repo/rulesets" | jq -r --arg name "$name" '.[] | select(.name == $name) | .id')
+        if [ -n "$id" ]; then
+            gh api -X PUT "repos/$repo/rulesets/$id" --input "$file" --jq '"updated \(.name) (\(.id))"'
+        else
+            gh api -X POST "repos/$repo/rulesets" --input "$file" --jq '"created \(.name) (\(.id))"'
+        fi
+    done
 
 # Turn on CodeQL default setup (languages are detected from the repo, so run it once code exists)
 [group('github')]
