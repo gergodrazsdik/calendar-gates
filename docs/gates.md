@@ -92,3 +92,5 @@ ruleset), so a bad release is fixed with a new version.
 lefthook (`just setup`) formats on commit, checks commit messages and runs tests before push. It is
 a convenience: `git commit --no-verify` skips it, and only the CI checks above are enforced
 (gate drill 1).
+
+<!-- gate drill 9: a review that runs while the API key is disabled -->
