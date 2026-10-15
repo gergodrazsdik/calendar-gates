@@ -1,1 +1,4 @@
 * text=auto eol=lf
+
+# Vendored test data: no line diffs (keeps it out of llm-gate reviews and their size cap)
+tools/llm-gate/tests/fixtures/*.json -diff

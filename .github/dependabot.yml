@@ -27,6 +27,19 @@ updates:
       nuget-minor-patch:
         update-types: [minor, patch]
 
+  - package-ecosystem: uv
+    directory: "/tools/llm-gate"
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      uv-minor-patch:
+        update-types: [minor, patch]
+
   - package-ecosystem: docker
     directory: "/"
     schedule:

@@ -1,0 +1,59 @@
+[project]
+name = "llm-gate"
+version = "0.1.0"
+description = "LLM review gate for calendar-gates: runs review prompts through the Claude API or the Claude Agent SDK and turns findings into a pass/fail verdict"
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Gergő Drazsdik", email = "gergo.drazsdik@gmail.com" }]
+requires-python = ">=3.15"
+dependencies = [
+    "anthropic>=1.11",
+    "claude-agent-sdk>=0.2.160",
+    "pydantic>=2.13",
+    "pyyaml>=6.0.3",
+]
+
+[project.scripts]
+llm-gate = "llm_gate.cli:main"
+
+[dependency-groups]
+dev = [
+    "jsonschema>=4.26",
+    "mypy>=2.3",
+    "pytest>=9.1",
+    "ruff>=0.16",
+    "types-jsonschema",
+    "types-pyyaml",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.0,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.uv]
+# Supply-chain cooldown: resolve only releases at least two weeks old at lock time.
+# Move the date forward when updating dependencies (`uv lock --upgrade`).
+exclude-newer = "2026-10-01T00:00:00Z"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF", "PTH", "S"]
+ignore = ["S603", "S607"] # subprocess with git: fixed argv, no shell
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"] # assert is how pytest works
+
+[tool.mypy]
+strict = true
+files = ["src", "tests"]
+
+[[tool.mypy.overrides]]
+module = ["claude_agent_sdk", "claude_agent_sdk.*"]
+follow_untyped_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["live: calls the real Claude API (costs money); run with -m live"]
+addopts = "-m 'not live'"

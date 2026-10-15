@@ -67,6 +67,30 @@ lint:
     shellcheck scripts/*.sh .claude/hooks/*.sh
     uvx ruff@0.16.10 check scripts/
     uvx ruff@0.16.10 format --check scripts/
+    uv run --directory tools/llm-gate --locked ruff check .
+    uv run --directory tools/llm-gate --locked ruff format --check .
+    uv run --directory tools/llm-gate --locked mypy
+    uv run --directory tools/llm-gate --locked pytest -q
+
+# List the LLM checks (tools/llm-gate/checks.yaml)
+[group('llm')]
+llm-list:
+    uv run --project tools/llm-gate llm-gate list
+
+# Run an LLM check on this branch vs origin/main; engine api, agent or both (default: the check's own). Costs API credits.
+[group('llm')]
+llm check engine="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # The key comes from pass for this one command, never from a file.
+    ANTHROPIC_API_KEY="$(pass show api/anthropic-calendar-gates | head -n 1)"
+    export ANTHROPIC_API_KEY
+    uv run --project tools/llm-gate llm-gate run --check {{ check }} {{ if engine != "" { "--engine " + engine } else { "" } }}
+
+# Run a check with both engines and print the comparison table. Costs API credits (twice).
+[group('llm')]
+llm-compare check:
+    just llm {{ check }} both
 
 # Local equivalent of the deterministic CI gates; run before calling a change done
 [group('test')]

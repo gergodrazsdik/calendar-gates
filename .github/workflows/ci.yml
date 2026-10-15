@@ -88,6 +88,13 @@ jobs:
         run: |
           uvx ruff@0.16.10 check scripts/
           uvx ruff@0.16.10 format --check scripts/
+      - name: llm-gate (ruff, mypy, pytest)
+        working-directory: tools/llm-gate
+        run: |
+          uv run --locked ruff check .
+          uv run --locked ruff format --check .
+          uv run --locked mypy
+          uv run --locked pytest -q
 
   build-test:
     name: build-test

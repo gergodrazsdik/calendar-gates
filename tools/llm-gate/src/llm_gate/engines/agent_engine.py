@@ -1,0 +1,104 @@
+"""Claude Agent SDK engine: runs the prompt as the /llm-<check> slash command in the repository,
+with read-only tools, so the agent can look at callers and tests beyond the diff."""
+
+import asyncio
+import time
+from collections.abc import AsyncIterator, Callable
+from typing import Any
+
+from claude_agent_sdk import (
+    ClaudeAgentOptions,
+    ClaudeSDKError,
+    ResultError,
+    ResultMessage,
+    SystemMessage,
+    query,
+)
+from pydantic import ValidationError
+
+from ..models import EngineResult, Review, Usage
+from . import EngineError, ReviewRequest
+
+READ_ONLY_TOOLS = ["Read", "Grep", "Glob"]
+# `tools` already limits the session to READ_ONLY_TOOLS; the deny list is belt and braces.
+DENIED_TOOLS = ["Bash", "Write", "Edit", "NotebookEdit", "WebFetch", "WebSearch", "Task", "Agent"]
+
+QueryFn = Callable[..., AsyncIterator[Any]]
+
+
+class AgentEngine:
+    name = "agent"
+
+    def __init__(self, query_fn: QueryFn = query) -> None:
+        self._query = query_fn  # tests inject a fake message stream
+
+    def options(self, request: ReviewRequest) -> ClaudeAgentOptions:
+        check = request.check
+        return ClaudeAgentOptions(
+            cwd=str(request.repo_root),
+            model=check.model,
+            tools=READ_ONLY_TOOLS,
+            allowed_tools=READ_ONLY_TOOLS,
+            disallowed_tools=DENIED_TOOLS,
+            permission_mode="dontAsk",  # anything not pre-approved is denied, never prompted
+            # Project settings only: loads .claude/commands (the prompt) and CLAUDE.md, and keeps
+            # personal hooks and skills out of the review, locally and in CI alike.
+            setting_sources=["project"],
+            skills=[],
+            max_turns=check.max_turns,
+            max_budget_usd=check.budget_usd,
+            output_format={"type": "json_schema", "schema": Review.model_json_schema()},
+            env={"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"},
+        )
+
+    def review(self, request: ReviewRequest) -> EngineResult:
+        return asyncio.run(self._review(request))
+
+    async def _review(self, request: ReviewRequest) -> EngineResult:
+        command = request.check.command
+        started = time.monotonic()
+        commands: list[str] | None = None
+        result: ResultMessage | None = None
+        try:
+            async for message in self._query(
+                prompt=f"/{command} {request.diff_ref}", options=self.options(request)
+            ):
+                if isinstance(message, SystemMessage) and message.subtype == "init":
+                    commands = list(message.data.get("slash_commands", []))
+                elif isinstance(message, ResultMessage):
+                    result = message
+        except ResultError as error:
+            raise EngineError(
+                f"agent run ended with {error.subtype}: {'; '.join(error.errors) or error}"
+            ) from error
+        except ClaudeSDKError as error:
+            raise EngineError(f"Claude Agent SDK error: {error}") from error
+
+        # An unknown /command is sent to the model as plain text instead of failing, so check
+        # that the prompt file was actually loaded before trusting the result.
+        if commands is not None and command not in commands:
+            raise EngineError(f"/{command} was not loaded: is .claude/commands/{command}.md there?")
+        if result is None:
+            raise EngineError("the agent run produced no result message")
+        if result.subtype != "success" or result.is_error:
+            raise EngineError(f"agent run ended with {result.subtype}: {result.errors or ''}")
+        if result.structured_output is None:
+            raise EngineError("the agent finished without a structured review")
+        try:
+            review = Review.model_validate(result.structured_output)
+        except ValidationError as error:
+            raise EngineError(f"the agent's review does not match the schema: {error}") from error
+
+        usage = result.usage or {}
+        return EngineResult(
+            engine=self.name,
+            model=request.check.model,
+            review=review,
+            duration_ms=result.duration_ms or int((time.monotonic() - started) * 1000),
+            usage=Usage(
+                input_tokens=usage.get("input_tokens"),
+                output_tokens=usage.get("output_tokens"),
+                cost_usd=result.total_cost_usd,
+                num_turns=result.num_turns,
+            ),
+        )
