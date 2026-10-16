@@ -36,6 +36,12 @@ approve, the v1 configuration reported no findings on an obvious bug; with nothi
   its prompts. It just doesn't review itself. Interactive use is unchanged: `/llm-code-review` in
   Claude Code still runs the same prompt file.
 
+- **Amended 2026-10-16**: "the base commit" is the base branch's head when the run starts
+  (pinned once by `llm-plan` and passed to every check), not the PR's `base.sha`. GitHub doesn't
+  move `base.sha` when the base branch moves on, so a PR opened before a gate fix kept running the
+  old gate: drill PR #31 still reviewed with the tooling from before #32. The audit record's
+  `gate_sha` says which commit it was.
+
 ## Consequences
 
 - A change to the gate takes effect for the PRs **after** it merges. The PR that changes the gate is

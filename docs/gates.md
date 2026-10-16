@@ -66,7 +66,8 @@ is required too (see below).
   Both are set by `just gh-setup`.
 - **Trust model** ([ADR 0004](adr/0004-gate-tooling-from-base-branch.md)): `llm-review.yml` and
   `llm-compare.yml` run `tools/llm-gate`, `checks.yaml`, the prompts and the comment script from the
-  PR's **base commit** (`gate/`); the PR head (`src/`) is only the diff and read-only context, so a PR
+  **base branch's current head** (`gate/`, pinned per run; not the PR's `base.sha`, which GitHub doesn't
+  move); the PR head (`src/`) is only the diff and read-only context, so a PR
   can't soften the prompt, the policy or the code that reviews it. The agent engine loads nothing from
   the reviewed repository (`setting_sources=[]`: no `CLAUDE.md`, rules, commands, skills, hooks,
   settings or MCP servers) and gets the prompt as text with the diff inline. A gate change takes
