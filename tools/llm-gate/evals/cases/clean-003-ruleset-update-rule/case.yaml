@@ -1,9 +1,11 @@
 ---
 id: clean-003-ruleset-update-rule
 kind: clean
-checks: [code-review, security-review]
+checks: [code-review]
 source: 'merged 504bbc5: ci: drop the audit-log update rule, which a personal repository can''t scope
   (#30)'
-description: A merged change; no finding should block it.
+description: 'A merged change; no finding should block it. Not a security-review case: it removes the
+  audit-log ruleset''s update rule, a real (accepted, ADR 0005) weakening that security-review rightly
+  flags now and then.'
 base: d093ef45f12775480ce886eeb748775358696309
 expect: []
