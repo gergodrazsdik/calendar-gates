@@ -15,6 +15,8 @@
   `~/.local/state/calendar-gates/claude-audit/<session-id>.jsonl` (outside the repository; input
   summaries redacted and cut short, never tool output). Commits you make get a
   `Claude-Session: <session-id>` trailer (`scripts/claude-session-trailer.sh`, lefthook
-  `prepare-commit-msg`), which leads from a commit back to that log. Purely local.
+  `prepare-commit-msg`), which leads from a commit back to that log. Purely local. PRs are
+  squash-merged with the PR body as the message, so end PR bodies with the same
+  `Claude-Session: <session-id>` line (`echo "$CLAUDE_CODE_SESSION_ID"`) to keep the link on `main`.
 - Use plan mode for changes to workflows, rulesets or `checks.yaml`: they change what is enforced.
 - Personal notes go in `CLAUDE.local.md` (gitignored).
