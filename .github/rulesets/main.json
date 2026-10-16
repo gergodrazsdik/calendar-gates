@@ -37,7 +37,8 @@
           { "context": "k8s-smoke", "integration_id": 15368 },
           { "context": "gates", "integration_id": 15368 },
           { "context": "llm / code-review", "integration_id": 15368 },
-          { "context": "llm / security-review", "integration_id": 15368 }
+          { "context": "llm / security-review", "integration_id": 15368 },
+          { "context": "llm-eval", "integration_id": 15368 }
         ]
       }
     }

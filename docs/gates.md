@@ -50,7 +50,7 @@ is required too (see below).
   fails: a PR that breaks only the image build would skip `http-tests`, `grype` and `k8s-smoke`,
   which then count as passing (gate drill 8). Requiring `gates` as well closes that; the individual
   checks stay required for a readable list of what failed. `gates` covers `ci.yml` only, so the
-  `llm / …` checks are required on their own.
+  `llm / …` checks and `llm-eval` are required on their own.
 
 - **llm / <check>**: the model returns findings; llm-gate decides from their severities
   ([ADR 0002](adr/0002-llm-gate-policy.md)). Advisory checks never fail. Results are cached per
