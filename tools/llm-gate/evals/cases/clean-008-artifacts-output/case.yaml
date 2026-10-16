@@ -1,0 +1,8 @@
+---
+id: clean-008-artifacts-output
+kind: clean
+checks: [code-review, security-review]
+source: 'merged e314623: build: use artifacts output for all projects (#2)'
+description: A merged change; no finding should block it.
+base: 065294e8cc4c62e763e4f8bbd27e83c8acda4a80
+expect: []

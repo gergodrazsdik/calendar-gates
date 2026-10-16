@@ -1,0 +1,8 @@
+---
+id: clean-009-container-image
+kind: clean
+checks: [code-review, security-review]
+source: 'merged 8615b86: build: container image on the chiseled runtime, grype gate and SBOM'
+description: A merged change; no finding should block it.
+base: 1a29402ce5b5a857c2c77ea75dca22987d4ed2fb
+expect: []

@@ -86,6 +86,20 @@ audit-pull:
     git archive refs/remotes/origin/audit-log | tar -x -C .audit-log
     find .audit-log/events -name '*.jsonl' 2> /dev/null | wc -l | xargs printf '%s record file(s) in .audit-log/events\n'
 
+# Score the review prompts on tools/llm-gate/evals/cases and compare with the baseline; extra args go to `llm-gate eval run` (e.g. --check code-review --engine both). Costs API credits.
+[group('llm')]
+eval *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ANTHROPIC_API_KEY="$(pass show api/anthropic-calendar-gates | head -n 1)"
+    export ANTHROPIC_API_KEY
+    uv run --project tools/llm-gate --locked llm-gate eval run --compare {{ args }}
+
+# Write tools/llm-gate/evals/baseline.json from the last `just eval` (commit it in a PR, deliberately)
+[group('llm')]
+eval-baseline:
+    uv run --project tools/llm-gate --locked llm-gate eval baseline
+
 # List the LLM checks (tools/llm-gate/checks.yaml)
 [group('llm')]
 llm-list:

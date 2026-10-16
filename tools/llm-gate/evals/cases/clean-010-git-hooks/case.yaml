@@ -1,0 +1,8 @@
+---
+id: clean-010-git-hooks
+kind: clean
+checks: [code-review, security-review]
+source: 'merged 1a29402: chore: git hooks, format gate recipes and the CSharpier ADR'
+description: A merged change; no finding should block it.
+base: 7e7b1ce8c22b8b538c3a4117d59481e1a27aa970
+expect: []

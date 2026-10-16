@@ -1,0 +1,9 @@
+---
+id: clean-004-review-other-checkout
+kind: clean
+checks: [code-review, security-review]
+source: 'merged 3285d85: feat(llm-gate): review a repository with tooling and prompts from another checkout
+  (#23)'
+description: A merged change; no finding should block it.
+base: 7b6c5132fe93baf144dd477860c316d9b06ea004
+expect: []

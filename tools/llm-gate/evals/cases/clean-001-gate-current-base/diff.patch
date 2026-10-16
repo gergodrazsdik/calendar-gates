@@ -1,0 +1,139 @@
+diff --git a/.github/workflows/llm-compare.yml b/.github/workflows/llm-compare.yml
+index f85f45f..99d55ea 100644
+--- a/.github/workflows/llm-compare.yml
++++ b/.github/workflows/llm-compare.yml
+@@ -53,12 +53,13 @@ jobs:
+             echo "::error::PR #$PR comes from $head; llm-compare only runs on branches of $REPO"
+             exit 1
+           fi
+-      # ADR 0004: the gate runs from the base (PR event) or the default branch by name (dispatch,
+-      # which can be started on any branch, so not github.sha); the PR head is only data.
+-      - name: Gate tooling from the base commit or the default branch
++      # ADR 0004: the gate runs from the base branch as it is now (PR event; not base.sha, which
++      # GitHub doesn't move) or the default branch by name (dispatch, which can be started on any
++      # branch, so not github.sha); the PR head is only data.
++      - name: Gate tooling from the base branch or the default branch
+         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+         with:
+-          ref: ${{ github.event.pull_request.base.sha || github.event.repository.default_branch }}
++          ref: ${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}
+           path: gate
+           persist-credentials: false
+       - name: The PR head (data and read-only context only)
+diff --git a/.github/workflows/llm-review.yml b/.github/workflows/llm-review.yml
+index 1fa2ed7..d5b16b2 100644
+--- a/.github/workflows/llm-review.yml
++++ b/.github/workflows/llm-review.yml
+@@ -3,7 +3,9 @@
+ # Separate from ci.yml so that adding or removing a label re-runs only these checks.
+ #
+ # ADR 0004: the gate (tools/llm-gate, checks.yaml, the prompts, the comment script) runs from the
+-# PR's **base commit**, checked out into gate/. The PR head is checked out into src/ and is only
++# **base branch as it is now**, checked out into gate/. Not the PR's base.sha: GitHub doesn't move
++# that when the base branch moves on, so a long-open PR would keep an old gate. llm-plan resolves
++# the commit once and every check of the run uses it. The PR head is checked out into src/ and is only
+ # data: the diff, and read-only context for the agent engine. A PR can't weaken or instruct the
+ # gate that reviews it. Remaining hole: this workflow file itself comes from the PR.
+ #
+@@ -31,13 +33,17 @@ jobs:
+       contents: read
+     outputs:
+       checks: ${{ steps.list.outputs.checks }}
++      gate_sha: ${{ steps.gate.outputs.sha }}
+     steps:
+-      - name: Gate tooling from the base commit
++      - name: Gate tooling from the base branch's current head
+         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+         with:
+-          ref: ${{ github.event.pull_request.base.sha }}
++          ref: ${{ github.event.pull_request.base.ref }}
+           path: gate
+           persist-credentials: false
++      - name: Pin the gate commit for this run
++        id: gate
++        run: echo "sha=$(git -C gate rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+         with:
+           cache-dependency-glob: gate/tools/llm-gate/uv.lock
+@@ -67,10 +73,10 @@ jobs:
+       LLM_GATE_PR: ${{ github.event.pull_request.number }}
+       LLM_GATE_PR_EVENT_AT: ${{ github.event.pull_request.updated_at }}
+     steps:
+-      - name: Gate tooling from the base commit
++      - name: Gate tooling, the commit llm-plan pinned
+         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+         with:
+-          ref: ${{ github.event.pull_request.base.sha }}
++          ref: ${{ needs.llm-plan.outputs.gate_sha }}
+           path: gate
+           persist-credentials: false
+       - name: The PR head (data and read-only context only)
+@@ -81,8 +87,10 @@ jobs:
+           fetch-depth: 0 # the diff is taken from the merge base with origin/<base>
+           persist-credentials: false
+       - name: Show what runs and what is reviewed
++        env:
++          BASE_REF: ${{ github.base_ref }}
+         run: |
+-          echo "gate: tools/llm-gate and prompts from $(git -C gate rev-parse HEAD) (base)"
++          echo "gate: tools/llm-gate and prompts from $(git -C gate rev-parse HEAD) ($BASE_REF now)"
+           echo "src:  reviewed PR head $(git -C src rev-parse HEAD)"
+       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+         with:
+diff --git a/AGENTS.md b/AGENTS.md
+index c6f7544..1d0c81b 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -58,7 +58,7 @@ Details, fixes and overrides: `docs/gates.md`.
+ 5. `http-tests`: ijhttp against the built container.
+ 6. `grype`: image vulnerability scan, fails on high.
+ 7. `llm / <check>`: LLM review (`tools/llm-gate`, prompts in `.claude/commands/llm-*.md`, both run
+-   from the PR's base commit, [ADR 0004](docs/adr/0004-gate-tooling-from-base-branch.md)); blocking
++   from the base branch's current head, [ADR 0004](docs/adr/0004-gate-tooling-from-base-branch.md)); blocking
+    checks fail on severity, advisory ones only comment ([ADR 0002](docs/adr/0002-llm-gate-policy.md)).
+    Locally: `just llm <check>` (spends API credits). PR labels: `llm-override` (report blocking
+    findings without failing; needs a `/llm-override <reason>` comment by whoever adds it),
+diff --git a/docs/adr/0004-gate-tooling-from-base-branch.md b/docs/adr/0004-gate-tooling-from-base-branch.md
+index cd44ad0..85f62c3 100644
+--- a/docs/adr/0004-gate-tooling-from-base-branch.md
++++ b/docs/adr/0004-gate-tooling-from-base-branch.md
+@@ -36,6 +36,12 @@ approve, the v1 configuration reported no findings on an obvious bug; with nothi
+   its prompts. It just doesn't review itself. Interactive use is unchanged: `/llm-code-review` in
+   Claude Code still runs the same prompt file.
+ 
++- **Amended 2026-10-16**: "the base commit" is the base branch's head when the run starts
++  (pinned once by `llm-plan` and passed to every check), not the PR's `base.sha`. GitHub doesn't
++  move `base.sha` when the base branch moves on, so a PR opened before a gate fix kept running the
++  old gate: drill PR #31 still reviewed with the tooling from before #32. The audit record's
++  `gate_sha` says which commit it was.
++
+ ## Consequences
+ 
+ - A change to the gate takes effect for the PRs **after** it merges. The PR that changes the gate is
+diff --git a/docs/gates.md b/docs/gates.md
+index e6eb1d3..02125b7 100644
+--- a/docs/gates.md
++++ b/docs/gates.md
+@@ -66,7 +66,8 @@ is required too (see below).
+   Both are set by `just gh-setup`.
+ - **Trust model** ([ADR 0004](adr/0004-gate-tooling-from-base-branch.md)): `llm-review.yml` and
+   `llm-compare.yml` run `tools/llm-gate`, `checks.yaml`, the prompts and the comment script from the
+-  PR's **base commit** (`gate/`); the PR head (`src/`) is only the diff and read-only context, so a PR
++  **base branch's current head** (`gate/`, pinned per run; not the PR's `base.sha`, which GitHub doesn't
++  move); the PR head (`src/`) is only the diff and read-only context, so a PR
+   can't soften the prompt, the policy or the code that reviews it. The agent engine loads nothing from
+   the reviewed repository (`setting_sources=[]`: no `CLAUDE.md`, rules, commands, skills, hooks,
+   settings or MCP servers) and gets the prompt as text with the diff inline. A gate change takes
+diff --git a/tools/llm-gate/README.md b/tools/llm-gate/README.md
+index e5a0588..e295625 100644
+--- a/tools/llm-gate/README.md
++++ b/tools/llm-gate/README.md
+@@ -18,7 +18,7 @@ infrastructure error (API failure, refusal, diff too large) on a blocking check
+ 
+ `--repo <path>` is the repository under review (default: the git repository of the current
+ directory); `--config` defaults to its `tools/llm-gate/checks.yaml`, and the prompts come from
+-the checkout that holds the config. CI runs the gate from the PR's base commit with
++the checkout that holds the config. CI runs the gate from the base branch's current head with
+ `--repo src --config gate/tools/llm-gate/checks.yaml` (ADR 0004).
+ 
+ From the repository root: `just llm <check> [engine]` (key from `pass`), `just llm-compare <check>`,

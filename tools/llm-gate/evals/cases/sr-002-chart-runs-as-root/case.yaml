@@ -1,0 +1,12 @@
+---
+id: sr-002-chart-runs-as-root
+kind: bug
+checks: [security-review]
+source: drill-13
+description: The pod runs as root (runAsUser 0, runAsNonRoot false).
+base: 7e1faf97961a83dbc659b9b8f884d554790c7714
+expect:
+  - file: deploy/helm/calendar-gates/templates/deployment.yaml
+    lines: [24, 24]
+    min_severity: medium
+    category: container-security

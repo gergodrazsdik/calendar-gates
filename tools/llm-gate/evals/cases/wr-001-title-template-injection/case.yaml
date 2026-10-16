@@ -1,0 +1,12 @@
+---
+id: wr-001-title-template-injection
+kind: bug
+checks: [workflow-review, security-review]
+source: drill-6
+description: 'The PR title goes straight into a run: script (template injection).'
+base: 7e1faf97961a83dbc659b9b8f884d554790c7714
+expect:
+  - file: .github/workflows/ci.yml
+    lines: [34, 34]
+    min_severity: medium
+    category: injection

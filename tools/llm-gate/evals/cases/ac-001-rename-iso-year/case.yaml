@@ -1,0 +1,12 @@
+---
+id: ac-001-rename-iso-year
+kind: bug
+checks: [api-contract]
+source: drill-3
+description: 'IsoYear renamed to Year: the JSON property isoYear becomes year, tests untouched.'
+base: 7e1faf97961a83dbc659b9b8f884d554790c7714
+expect:
+  - file: src/CalendarGates.Api/Domain/IsoWeekCalculator.cs
+    lines: [5, 5]
+    min_severity: medium
+    category: breaking-change

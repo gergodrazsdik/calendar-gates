@@ -1,0 +1,163 @@
+# llm-eval gate (docs/PLAN-v2.md 15.4): when a PR changes the review prompts or llm-gate, score them
+# on tools/llm-gate/evals/cases and compare with evals/baseline.json (limits in evals/thresholds.yaml).
+#
+# Unlike llm-review (ADR 0004), this runs the PR's own prompts and code: the change is what's being
+# tested. The eval job therefore gets the API key but only a read-only token; the comment job runs
+# the base branch's script with the write token and none of the PR's code. Fork PRs get no secrets.
+#
+# Runs on every PR (no `paths:` filter) so it can become a required check; unrelated PRs pass as
+# "not applicable" in seconds.
+name: llm-eval
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: llm-eval-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  llm-eval:
+    name: llm-eval
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    outputs:
+      relevant: ${{ steps.relevant.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # every case's base commit, and the merge base for the relevance check
+          persist-credentials: false
+
+      - name: Does the PR change the gate?
+        id: relevant
+        run: |
+          # HEAD is the PR's merge commit; its first parent is the base branch.
+          changed=$(git diff --name-only HEAD^1 HEAD)
+          if grep -qE '^(\.claude/commands/llm-|tools/llm-gate/|\.github/workflows/llm-eval\.yml$)' <<< "$changed"; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+            echo "llm-eval: not applicable, the PR changes no review prompt and nothing in tools/llm-gate." \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: API key available?
+        id: key
+        if: steps.relevant.outputs.relevant == 'true'
+        env:
+          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+        run: |
+          if [ "$HAS_KEY" = true ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=llm-eval skipped::No ANTHROPIC_API_KEY for this PR (fork or Dependabot)."
+          fi
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        if: steps.key.outputs.run == 'true'
+        with:
+          cache-dependency-glob: tools/llm-gate/uv.lock
+
+      # Results are cached per case, repeat, prompt and model: re-runs of an unchanged PR are free.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: steps.key.outputs.run == 'true'
+        with:
+          path: .llm-gate/cache
+          key: llm-eval-pr${{ github.event.pull_request.number }}-${{ github.sha }}
+          restore-keys: |
+            llm-eval-pr${{ github.event.pull_request.number }}-
+            llm-eval-
+
+      - name: Eval
+        id: eval
+        if: steps.key.outputs.run == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          LLM_MODEL_CHEAP: ${{ vars.LLM_MODEL_CHEAP }}
+          LLM_GATE_PR: ${{ github.event.pull_request.number }}
+        run: |
+          set +e
+          uv run --project tools/llm-gate --locked llm-gate -v eval run --compare --repeats 3 --jobs 6 \
+            > "$RUNNER_TEMP/eval.md"
+          status=$?
+          set -e
+          {
+            echo "<!-- llm-gate:llm-eval -->"
+            echo "### $([ "$status" = 0 ] && echo ✅ || echo ❌) llm-eval"
+            echo
+            echo "The PR's review prompts and llm-gate, scored on \`tools/llm-gate/evals/cases\`"
+            echo "and compared with \`evals/baseline.json\`."
+            echo
+            cat "$RUNNER_TEMP/eval.md"
+          } > "$RUNNER_TEMP/comment.md"
+          cat "$RUNNER_TEMP/comment.md" >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p "$RUNNER_TEMP/out" && cp "$RUNNER_TEMP/comment.md" "$RUNNER_TEMP/out/"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: steps.eval.outcome == 'success'
+        with:
+          path: .llm-gate/cache
+          key: llm-eval-pr${{ github.event.pull_request.number }}-${{ github.sha }}
+
+      - name: Upload the report
+        if: steps.eval.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: llm-eval
+          path: |
+            ${{ runner.temp }}/out/comment.md
+            reports/eval/
+            .llm-gate/audit.jsonl
+          retention-days: 90
+          overwrite: true
+
+      - name: Verdict
+        if: steps.eval.outcome == 'success'
+        env:
+          STATUS: ${{ steps.eval.outputs.status }}
+        run: |
+          case "$STATUS" in
+            0) ;;
+            1) echo "::error title=llm-eval::Worse than the baseline; see the job summary." ;;
+            *) echo "::error title=llm-eval::The eval could not finish (budget or error); see the log." ;;
+          esac
+          exit "$STATUS"
+
+  comment:
+    name: llm-eval comment
+    needs: llm-eval
+    if: always() && needs.llm-eval.outputs.relevant == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write # sticky comment
+    steps:
+      - name: The base branch's comment script (none of the PR's code runs here)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.base_ref }}
+          sparse-checkout: scripts
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true # no report when the eval was skipped (no key) or crashed
+        with:
+          name: llm-eval
+          path: ${{ runner.temp }}/report
+      - name: Sticky PR comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          file=$(find "$RUNNER_TEMP/report" -name comment.md -print -quit 2> /dev/null || true)
+          [ -n "$file" ] || { echo "no report to post"; exit 0; }
+          scripts/upsert-pr-comment.sh "$PR" "<!-- llm-gate:llm-eval -->" "$file"

@@ -1,0 +1,22 @@
+diff --git a/src/CalendarGates.Api/Program.cs b/src/CalendarGates.Api/Program.cs
+index afe075f..f3b4151 100644
+--- a/src/CalendarGates.Api/Program.cs
++++ b/src/CalendarGates.Api/Program.cs
+@@ -11,6 +11,17 @@ builder.Services.AddHealthChecks();
+ var app = builder.Build();
+ 
+ app.UseExceptionHandler();
++app.Use(
++    async (context, next) =>
++    {
++        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
++        foreach (var (name, value) in context.Request.Headers)
++        {
++            logger.LogInformation("Request header {Name}: {Value}", name, value.ToString());
++        }
++        await next(context);
++    }
++);
+ app.UseStatusCodePages();
+ 
+ app.MapOpenApi();

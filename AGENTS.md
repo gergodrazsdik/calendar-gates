@@ -64,9 +64,13 @@ Details, fixes and overrides: `docs/gates.md`.
    findings without failing; needs a `/llm-override <reason>` comment by whoever adds it),
    `llm-compare` (both engines, comparison comment). Every decision is an audit record on the
    `audit-log` branch ([ADR 0005](docs/adr/0005-audit-trail.md); `just audit-pull`).
-8. `k8s-smoke`: Helm install on a throwaway kind cluster + ijhttp. Locally on kind-local:
+8. `llm-eval`: on PRs that change the review prompts or `tools/llm-gate/`, scores **the PR's** prompts on
+   `tools/llm-gate/evals/cases` against `evals/baseline.json` ([ADR 0006](docs/adr/0006-llm-eval-gate.md)).
+   Locally: `just eval` (spends API credits, about $2), `just eval-baseline` to update the baseline in a PR.
+   Not required yet.
+9. `k8s-smoke`: Helm install on a throwaway kind cluster + ijhttp. Locally on kind-local:
    `just k8s-load k8s-deploy k8s-http` (port-forward, [ADR 0003](docs/adr/0003-kind-access.md)).
-9. `gates`: aggregator over all of the above.
+10. `gates`: aggregator over the `ci.yml` gates.
 
 ## Don'ts
 

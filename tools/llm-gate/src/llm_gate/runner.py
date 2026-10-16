@@ -48,7 +48,9 @@ def run_check(
     repo_root: Path,
     cache: Cache | None,
     override: bool = False,
+    cache_salt: str = "",
 ) -> RunRecord:
+    """`cache_salt` separates otherwise identical runs in the cache (eval repeats)."""
     result: EngineResult | None = None
     cached = False
     error: str | None = None
@@ -63,7 +65,7 @@ def run_check(
         error = f"diff too large: {diff.size_bytes // 1024} KB > max_diff_kb {check.max_diff_kb}"
     else:
         prompt = load_prompt(check.prompt_path)
-        key = cache_key(check.name, engine.name, check.model, prompt, diff.text)
+        key = cache_key(check.name + cache_salt, engine.name, check.model, prompt, diff.text)
         result = cache.get(key) if cache else None
         cached = result is not None
         if result is None:

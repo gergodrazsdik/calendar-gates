@@ -1,0 +1,13 @@
+diff --git a/src/CalendarGates.Api/Domain/EasterCalculator.cs b/src/CalendarGates.Api/Domain/EasterCalculator.cs
+index 2451adf..672edec 100644
+--- a/src/CalendarGates.Api/Domain/EasterCalculator.cs
++++ b/src/CalendarGates.Api/Domain/EasterCalculator.cs
+@@ -7,7 +7,7 @@ public static class EasterCalculator
+     {
+         Years.ThrowIfUnsupported(year);
+         var a = year % 19;
+-        var b = year / 100;
++        var b = (year - 1) / 100;
+         var c = year % 100;
+         var d = b / 4;
+         var e = b % 4;

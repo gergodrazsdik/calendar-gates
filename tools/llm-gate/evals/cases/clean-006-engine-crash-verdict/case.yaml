@@ -1,0 +1,9 @@
+---
+id: clean-006-engine-crash-verdict
+kind: clean
+checks: [code-review, security-review]
+source: 'merged 84e96ff: fix(llm-gate): an engine crash is an error verdict, not a failed advisory check
+  (#20)'
+description: A merged change; no finding should block it.
+base: 81e8218a092a19974777100e89c26e8bc8e3a516
+expect: []

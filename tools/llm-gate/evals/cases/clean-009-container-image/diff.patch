@@ -1,0 +1,161 @@
+diff --git a/.dockerignore b/.dockerignore
+new file mode 100644
+index 0000000..4d03016
+--- /dev/null
++++ b/.dockerignore
+@@ -0,0 +1,22 @@
++# Build context = what the Dockerfile needs: props, global.json and src/
++.git
++.github
++.claude
++.config
++.vscode
++.idea
++**/bin/
++**/obj/
++tests/
++tools/
++deploy/
++docs/
++http/
++scripts/
++reports/
++TestResults/
++.llm-gate/
++*.md
++Dockerfile
++.dockerignore
++.env*
+diff --git a/.grype.yaml b/.grype.yaml
+new file mode 100644
+index 0000000..9891047
+--- /dev/null
++++ b/.grype.yaml
+@@ -0,0 +1,12 @@
++# grype config for `just scan` and the `grype` CI gate.
++fail-on-severity: high
++
++# Accepted risks. Every entry needs a reason with an expiry date and gets reviewed when it expires;
++# an ignore is a gate change, so say so in the PR (AGENTS.md).
++#
++# - vulnerability: GHSA-xxxx-xxxx-xxxx      # or CVE-YYYY-NNNNN
++#   package:
++#     name: example.package
++#     version: 1.2.3
++#   reason: "Not reachable: <why>. Expires 2026-12-31."
++ignore: []
+diff --git a/Dockerfile b/Dockerfile
+new file mode 100644
+index 0000000..3a9366a
+--- /dev/null
++++ b/Dockerfile
+@@ -0,0 +1,35 @@
++# calendar-gates API image. Local: `just image`; CI: docker/build-push-action.
++# Base images are pinned by multi-arch index digest; Dependabot (docker) keeps them current.
++
++# Build on the builder's own platform: the output is portable IL (framework-dependent, no
++# RID), so the same publish runs on every target platform without QEMU-emulated builds.
++FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0@sha256:0d99ebf1ccad15037b5c98c9fe8979d6b8dbac23812feae2277a0b277b5c5ffa AS build
++WORKDIR /src
++
++# Restore layer: only what restore needs, so source edits don't invalidate the package cache
++COPY global.json Directory.Build.props Directory.Packages.props ./
++COPY src/CalendarGates.Api/CalendarGates.Api.csproj src/CalendarGates.Api/packages.lock.json src/CalendarGates.Api/
++RUN dotnet restore src/CalendarGates.Api --locked-mode
++
++COPY src/ src/
++
++# .git is not in the build context: the version comes in as a build arg (MinVer would
++# otherwise warn, and warnings are errors), the commit too.
++ARG VERSION=0.0.0-docker
++ARG COMMIT=unknown
++RUN dotnet publish src/CalendarGates.Api --no-restore -c Release -o /app \
++    -p:UseAppHost=false \
++    -p:MinVerVersionOverride="$VERSION" \
++    -p:Commit="$COMMIT" \
++    -p:EnableSourceControlManagerQueries=false
++
++# Runtime: Ubuntu chiseled, no shell or package manager, runs as the non-root `app` user (1654)
++FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled@sha256:84def277556c2843a44fdeefbd3145d0a2e32d8f736d0c1a7b0a96b2880b0187 AS runtime
++LABEL org.opencontainers.image.title="calendar-gates" \
++      org.opencontainers.image.licenses="MIT" \
++      org.opencontainers.image.source="https://github.com/gergodrazsdik/calendar-gates"
++WORKDIR /app
++COPY --from=build /app ./
++USER app
++EXPOSE 8080
++ENTRYPOINT ["dotnet", "CalendarGates.Api.dll"]
+diff --git a/justfile b/justfile
+index e1e7fed..83e1722 100644
+--- a/justfile
++++ b/justfile
+@@ -1,6 +1,7 @@
+ # calendar-gates: the single entry point, locally and in CI. `just` lists the recipes.
+ 
+ repo := "gergodrazsdik/calendar-gates"
++image := "localhost/calendar-gates:dev"
+ 
+ # List recipes
+ default:
+@@ -24,6 +25,37 @@ fmt-check:
+     dotnet format style --verify-no-changes
+     dotnet format analyzers --verify-no-changes
+ 
++# Build the container image localhost/calendar-gates:dev (version from MinVer, commit from git)
++[group('container')]
++image:
++    docker build -t {{ image }} \
++        --build-arg VERSION="$(dotnet minver -t v -v e)" \
++        --build-arg COMMIT="$(git rev-parse --short HEAD)" .
++
++# Run the image on host port 8081 (kind-local owns 8080) and run the HTTP contract tests against it
++[group('container')]
++http-docker:
++    #!/usr/bin/env bash
++    set -euo pipefail
++    docker run -d --rm --name calendar-gates-http -p 8081:8080 {{ image }} >/dev/null
++    trap 'docker stop calendar-gates-http >/dev/null' EXIT
++    if ! scripts/wait-for-health.sh http://localhost:8081/health 60; then
++        docker logs calendar-gates-http >&2
++        exit 1
++    fi
++    just http docker
++
++# Vulnerability gate: grype on the image, fails on high or worse (.grype.yaml)
++[group('container')]
++scan:
++    grype podman:{{ image }} --config .grype.yaml
++
++# SPDX SBOM of the image into reports/
++[group('container')]
++sbom:
++    mkdir -p reports
++    syft podman:{{ image }} -o spdx-json=reports/sbom.spdx.json
++
+ # Local equivalent of the deterministic CI gates; run before calling a change done
+ [group('test')]
+ ci: fmt-check build test
+diff --git a/scripts/wait-for-health.sh b/scripts/wait-for-health.sh
+new file mode 100755
+index 0000000..6669a7c
+--- /dev/null
++++ b/scripts/wait-for-health.sh
+@@ -0,0 +1,18 @@
++#!/usr/bin/env bash
++# Poll a health URL until it answers 200 or the timeout runs out.
++# Usage: wait-for-health.sh <url> [timeout-seconds]
++set -euo pipefail
++
++url=${1:?usage: wait-for-health.sh <url> [timeout-seconds]}
++timeout=${2:-60}
++
++for ((i = 0; i < timeout; i++)); do
++    if curl -fsS -o /dev/null "$url" 2>/dev/null; then
++        echo "healthy after ${i}s: $url"
++        exit 0
++    fi
++    sleep 1
++done
++
++echo "not healthy after ${timeout}s: $url" >&2
++exit 1

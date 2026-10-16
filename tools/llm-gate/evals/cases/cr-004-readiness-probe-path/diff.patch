@@ -1,0 +1,10 @@
+diff --git a/deploy/helm/calendar-gates/values.yaml b/deploy/helm/calendar-gates/values.yaml
+index 7512ff3..f6a8110 100644
+--- a/deploy/helm/calendar-gates/values.yaml
++++ b/deploy/helm/calendar-gates/values.yaml
+@@ -26,4 +26,4 @@ resources:
+     memory: 256Mi
+ 
+ probes:
+-  path: /health
++  path: /healthz

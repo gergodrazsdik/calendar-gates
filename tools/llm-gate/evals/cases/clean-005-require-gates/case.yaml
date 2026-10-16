@@ -1,0 +1,8 @@
+---
+id: clean-005-require-gates
+kind: clean
+checks: [code-review, security-review]
+source: 'merged 61a41cf: ci: require the gates aggregator too (#21)'
+description: A merged change; no finding should block it.
+base: 84e96ffd0905e661ccde1913f58f52f308fe37f4
+expect: []

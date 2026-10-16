@@ -1,0 +1,12 @@
+---
+id: sr-001-log-request-headers
+kind: bug
+checks: [security-review]
+source: drill-5
+description: Middleware logs every request header, Authorization included.
+base: 7e1faf97961a83dbc659b9b8f884d554790c7714
+expect:
+  - file: src/CalendarGates.Api/Program.cs
+    lines: [20, 20]
+    min_severity: medium
+    category: sensitive-data-logging

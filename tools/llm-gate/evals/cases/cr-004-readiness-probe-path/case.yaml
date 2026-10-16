@@ -1,0 +1,12 @@
+---
+id: cr-004-readiness-probe-path
+kind: bug
+checks: [code-review]
+source: drill-12
+description: The chart probes /healthz, which the API doesn't serve (it maps /health).
+base: 7e1faf97961a83dbc659b9b8f884d554790c7714
+expect:
+  - file: deploy/helm/calendar-gates/values.yaml
+    lines: [29, 29]
+    min_severity: medium
+    category: configuration

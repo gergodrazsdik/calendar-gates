@@ -11,6 +11,9 @@ llm-gate run     --check <name> [--engine api|agent|both] [--base origin/main] [
 llm-gate compare --check <name> [--in .llm-gate]
 llm-gate report  [--in .llm-gate] [--check <name>] [--format md|sarif]
 llm-gate audit   skip | validate | collect | override   (see "Audit records")
+llm-gate eval    run [--check <c>]... [--engine api|agent|both] [--model <m>] [--repeats 3]
+                 [--jobs 4] [--cases <glob>] [--budget-usd <x>] [--compare]
+                 | baseline | add-from-fp <finding-id>   (see evals/README.md)
 ```
 
 Exit codes: `0` pass (or advisory, not applicable, overridden), `1` blocking findings, `2`
@@ -69,6 +72,7 @@ title) are shown in the sticky comment, so people can refer to a finding.
 | `runner.py` | one check with one engine: applicability, size cap, cache, engine, policy, result file |
 | `report.py`, `compare.py` | Markdown (job summary, sticky comment), SARIF, engine comparison |
 | `audit.py` | `audit/v1` records, validation and collection of untrusted artifacts, override reasons |
+| `evals.py` | eval cases, scoring, baseline and thresholds, fp-regression cases from the audit log (`evals/`) |
 | `redact.py` | secret patterns and length limits that the record schema applies to every free-text field |
 
 Tests use fake engines and stubbed SDKs (`uv run pytest`); `uv run pytest -m live` calls the real
