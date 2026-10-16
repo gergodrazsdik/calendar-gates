@@ -443,7 +443,7 @@ def cmd_eval(
                     cache=cache,
                     repeats=args.repeats,
                     budget_usd=budget,
-                    spent=lambda: sum(r.metrics.cost_usd for r in runs),
+                    spent=lambda: sum(r.metrics.spent_usd for r in runs),
                     progress=log.info,
                     jobs=args.jobs,
                 )

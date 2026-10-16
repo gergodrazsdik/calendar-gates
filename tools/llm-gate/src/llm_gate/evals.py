@@ -214,14 +214,21 @@ class Attempt(BaseModel):
 
     repeat: int
     verdict: str
+    exit_code: int  # what the gate would have exited with: non-zero fails the PR
     found: list[bool]  # per expectation
     forbidden_hits: int
     below_threshold: int  # findings under fail_on (noise on clean cases)
     findings: int
-    cost_usd: float | None
+    cost_usd: float | None  # what the review cost, also when it came from the cache
+    spent_usd: float = 0.0  # what this run paid: 0 on a cache hit
     duration_ms: int | None
     cached: bool
     error: str | None = None
+    locations: list[str] = Field(default_factory=list)  # "high src/A.cs:15", to explain misses
+
+    @property
+    def outcome(self) -> Literal["pass", "fail"]:
+        return "fail" if self.exit_code != 0 else "pass"
 
 
 class CaseResult(BaseModel):
@@ -232,7 +239,7 @@ class CaseResult(BaseModel):
 
     @property
     def flipped(self) -> bool:
-        return len({a.verdict for a in self.attempts}) > 1
+        return len({a.outcome for a in self.attempts}) > 1
 
 
 def score_attempt(repeat: int, record: RunRecord, case: Case, check: Check) -> Attempt:
@@ -250,14 +257,17 @@ def score_attempt(repeat: int, record: RunRecord, case: Case, check: Check) -> A
     return Attempt(
         repeat=repeat,
         verdict=verdict,
+        exit_code=record.exit_code,
         found=[any(matches(f, e) for f in findings) for e in case.expect],
         forbidden_hits=sum(1 for f in findings for x in case.forbid if forbidden_hit(f, x)),
         below_threshold=below,
         findings=len(findings),
-        cost_usd=usage.cost_usd if usage and not record.cached else None,
-        duration_ms=record.result.duration_ms if record.result and not record.cached else None,
+        cost_usd=usage.cost_usd if usage else None,
+        spent_usd=0.0 if record.cached or not usage else usage.cost_usd or 0.0,
+        duration_ms=record.result.duration_ms if record.result else None,
         cached=record.cached,
         error=record.reason if verdict == Verdict.ERROR else None,
+        locations=[f"{f.severity} {f.file}:{f.line}" for f in findings],
     )
 
 
@@ -284,7 +294,8 @@ class Metrics(BaseModel):
     injection_resistance: float | None
     fp_regressions: int
     errors: int
-    cost_usd: float
+    cost_usd: float  # what the reviews cost (cached ones included): comparable across runs
+    spent_usd: float  # what this run paid
     cost_p50: float | None
     cost_p90: float | None
     latency_p50_ms: float | None
@@ -303,19 +314,20 @@ def metrics(results: Sequence[CaseResult], repeats: int) -> Metrics:
         cases=len(results),
         repeats=repeats,
         recall=_ratio(found, expected),
-        false_block_rate=_ratio(sum(1 for a in clean if a.verdict == Verdict.FAIL), len(clean)),
+        false_block_rate=_ratio(sum(1 for a in clean if a.outcome == "fail"), len(clean)),
         noise=_ratio(sum(a.below_threshold for a in clean), len(clean)),
         verdict_accuracy=_ratio(
-            sum(1 for r, a in attempts if a.verdict == r.expected_verdict), len(attempts)
+            sum(1 for r, a in attempts if a.outcome == r.expected_verdict), len(attempts)
         ),
         flip_rate=_ratio(sum(1 for r in results if r.flipped), len(results)),
         injection_resistance=_ratio(
-            sum(1 for r, a in injection if all(a.found) and a.verdict == r.expected_verdict),
+            sum(1 for r, a in injection if all(a.found) and a.outcome == r.expected_verdict),
             len(injection),
         ),
         fp_regressions=sum(a.forbidden_hits for _, a in attempts),
         errors=sum(1 for _, a in attempts if a.error is not None),
         cost_usd=round(sum(costs), 6),
+        spent_usd=round(sum(a.spent_usd for _, a in attempts), 6),
         cost_p50=percentile(costs, 0.5),
         cost_p90=percentile(costs, 0.9),
         latency_p50_ms=percentile(latencies, 0.5),
@@ -389,7 +401,7 @@ def run_eval(
                 )
                 attempt = score_attempt(repeat, record, case, check)
                 with lock:
-                    total += attempt.cost_usd or 0.0
+                    total += attempt.spent_usd
                 attempts.append(attempt)
                 progress(
                     f"{check.name}/{engine.name} {case.id} r{repeat}: {attempt.verdict}"
@@ -542,7 +554,7 @@ def _fmt(value: float | None, kind: str = "ratio") -> str:
 def render_runs(runs: Sequence[EvalRun]) -> str:
     lines = [
         "| Check | Engine / model | Cases x repeats | Recall | False blocks | Noise | Verdicts "
-        "| Flips | Injection | Errors | Cost | p50 / p90 latency |",
+        "| Flips | Injection | Errors | Cost (paid this run) | p50 / p90 latency |",
         "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for run in runs:
@@ -552,7 +564,7 @@ def render_runs(runs: Sequence[EvalRun]) -> str:
             f"| {run.check} | `{run.engine}` / `{run.model}`{incomplete} | {m.cases} x {m.repeats} "
             f"| {_fmt(m.recall)} | {_fmt(m.false_block_rate)} | {_fmt(m.noise)} "
             f"| {_fmt(m.verdict_accuracy)} | {_fmt(m.flip_rate)} | {_fmt(m.injection_resistance)} "
-            f"| {m.errors} | {_fmt(m.cost_usd, 'usd')} "
+            f"| {m.errors} | {_fmt(m.cost_usd, 'usd')} ({_fmt(m.spent_usd, 'usd')} now) "
             f"| {_fmt(m.latency_p50_ms, 'ms')} / {_fmt(m.latency_p90_ms, 'ms')} |"
         )
     return "\n".join(lines) + "\n"
@@ -567,9 +579,16 @@ def render_misses(runs: Sequence[EvalRun]) -> str:
             missed = sum(1 for a in result.attempts for f in a.found if not f)
             if missed:
                 problems.append(f"missed {missed}x")
-            wrong = sum(1 for a in result.attempts if a.verdict != result.expected_verdict)
+            wrong = sum(1 for a in result.attempts if a.outcome != result.expected_verdict)
             if wrong:
                 problems.append(f"verdict wrong {wrong}/{len(result.attempts)}")
+            if any(a.verdict == Verdict.NOT_APPLICABLE for a in result.attempts):
+                problems.append("not applicable (the check's `paths:` skipped it)")
+            if missed:
+                seen = sorted({loc for a in result.attempts for loc in a.locations})
+                problems.append(
+                    "found instead: " + (", ".join(f"`{x}`" for x in seen) or "nothing")
+                )
             if result.flipped:
                 problems.append("flipped")
             if problems:

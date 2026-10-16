@@ -1,0 +1,194 @@
+{
+  "api-contract": {
+    "agent/claude-sonnet-5-5": {
+      "cases": 1,
+      "metrics": {
+        "cases": 1,
+        "cost_p50": null,
+        "cost_p90": null,
+        "cost_usd": 0.0,
+        "errors": 0,
+        "false_block_rate": null,
+        "flip_rate": 0.0,
+        "fp_regressions": 0,
+        "injection_resistance": null,
+        "latency_p50_ms": null,
+        "latency_p90_ms": null,
+        "noise": null,
+        "recall": 0.0,
+        "repeats": 3,
+        "spent_usd": 0.0,
+        "verdict_accuracy": 1.0
+      },
+      "prompt_sha256": "12703d826e8073c984aa6197194d0285ea1c5066c1039a43fd59bf5fce2a383d",
+      "repeats": 3
+    },
+    "api/claude-sonnet-5-5": {
+      "cases": 1,
+      "metrics": {
+        "cases": 1,
+        "cost_p50": null,
+        "cost_p90": null,
+        "cost_usd": 0.0,
+        "errors": 0,
+        "false_block_rate": null,
+        "flip_rate": 0.0,
+        "fp_regressions": 0,
+        "injection_resistance": null,
+        "latency_p50_ms": null,
+        "latency_p90_ms": null,
+        "noise": null,
+        "recall": 0.0,
+        "repeats": 3,
+        "spent_usd": 0.0,
+        "verdict_accuracy": 1.0
+      },
+      "prompt_sha256": "12703d826e8073c984aa6197194d0285ea1c5066c1039a43fd59bf5fce2a383d",
+      "repeats": 3
+    }
+  },
+  "code-review": {
+    "agent/claude-sonnet-5-5": {
+      "cases": 16,
+      "metrics": {
+        "cases": 16,
+        "cost_p50": 0.011057500000000001,
+        "cost_p90": 0.0264665,
+        "cost_usd": 0.693831,
+        "errors": 0,
+        "false_block_rate": 0.0,
+        "flip_rate": 0.0,
+        "fp_regressions": 0,
+        "injection_resistance": 1.0,
+        "latency_p50_ms": 5622.0,
+        "latency_p90_ms": 10781.0,
+        "noise": 0.23333333333333334,
+        "recall": 1.0,
+        "repeats": 3,
+        "spent_usd": 0.0,
+        "verdict_accuracy": 1.0
+      },
+      "prompt_sha256": "3b5310c6013cc561462238d9170a7fca0b2253a4a7dfdb1ec833a1184689933b",
+      "repeats": 3
+    },
+    "api/claude-sonnet-5-5": {
+      "cases": 16,
+      "metrics": {
+        "cases": 16,
+        "cost_p50": 0.01186,
+        "cost_p90": 0.02554,
+        "cost_usd": 0.762306,
+        "errors": 0,
+        "false_block_rate": 0.0,
+        "flip_rate": 0.0,
+        "fp_regressions": 0,
+        "injection_resistance": 1.0,
+        "latency_p50_ms": 6395.0,
+        "latency_p90_ms": 12902.0,
+        "noise": 0.5333333333333333,
+        "recall": 0.8333333333333334,
+        "repeats": 3,
+        "spent_usd": 0.0,
+        "verdict_accuracy": 0.9375
+      },
+      "prompt_sha256": "3b5310c6013cc561462238d9170a7fca0b2253a4a7dfdb1ec833a1184689933b",
+      "repeats": 3
+    }
+  },
+  "security-review": {
+    "agent/claude-sonnet-5-5": {
+      "cases": 14,
+      "metrics": {
+        "cases": 14,
+        "cost_p50": 0.007730999999999999,
+        "cost_p90": 0.0121403,
+        "cost_usd": 0.380414,
+        "errors": 0,
+        "false_block_rate": 0.0,
+        "flip_rate": 0.0,
+        "fp_regressions": 0,
+        "injection_resistance": 1.0,
+        "latency_p50_ms": 4591.0,
+        "latency_p90_ms": 9177.0,
+        "noise": 0.26666666666666666,
+        "recall": 1.0,
+        "repeats": 3,
+        "spent_usd": 0.0,
+        "verdict_accuracy": 1.0
+      },
+      "prompt_sha256": "88db8dfe2b7286260e4c00b59716faa34ad6992202e360f0ece78c0802a9601f",
+      "repeats": 3
+    },
+    "api/claude-sonnet-5-5": {
+      "cases": 14,
+      "metrics": {
+        "cases": 14,
+        "cost_p50": 0.011126,
+        "cost_p90": 0.020666,
+        "cost_usd": 0.577838,
+        "errors": 0,
+        "false_block_rate": 0.0,
+        "flip_rate": 0.0,
+        "fp_regressions": 0,
+        "injection_resistance": 1.0,
+        "latency_p50_ms": 4846.0,
+        "latency_p90_ms": 11703.0,
+        "noise": 0.6,
+        "recall": 1.0,
+        "repeats": 3,
+        "spent_usd": 0.0,
+        "verdict_accuracy": 1.0
+      },
+      "prompt_sha256": "88db8dfe2b7286260e4c00b59716faa34ad6992202e360f0ece78c0802a9601f",
+      "repeats": 3
+    }
+  },
+  "workflow-review": {
+    "agent/claude-sonnet-5-5": {
+      "cases": 1,
+      "metrics": {
+        "cases": 1,
+        "cost_p50": 0.0052645999999999995,
+        "cost_p90": 0.008260299999999998,
+        "cost_usd": 0.018619,
+        "errors": 0,
+        "false_block_rate": null,
+        "flip_rate": 0.0,
+        "fp_regressions": 0,
+        "injection_resistance": null,
+        "latency_p50_ms": 4014.0,
+        "latency_p90_ms": 4065.0,
+        "noise": null,
+        "recall": 1.0,
+        "repeats": 3,
+        "spent_usd": 0.0,
+        "verdict_accuracy": 1.0
+      },
+      "prompt_sha256": "6a1a9392e9d998b26bb87dc1ad63bc4bde5d967c0d6b6b0f9f62f3e288c21689",
+      "repeats": 3
+    },
+    "api/claude-sonnet-5-5": {
+      "cases": 1,
+      "metrics": {
+        "cases": 1,
+        "cost_p50": 0.008284,
+        "cost_p90": 0.008734,
+        "cost_usd": 0.025252,
+        "errors": 0,
+        "false_block_rate": null,
+        "flip_rate": 0.0,
+        "fp_regressions": 0,
+        "injection_resistance": null,
+        "latency_p50_ms": 4247.0,
+        "latency_p90_ms": 4462.0,
+        "noise": null,
+        "recall": 1.0,
+        "repeats": 3,
+        "spent_usd": 0.0,
+        "verdict_accuracy": 1.0
+      },
+      "prompt_sha256": "6a1a9392e9d998b26bb87dc1ad63bc4bde5d967c0d6b6b0f9f62f3e288c21689",
+      "repeats": 3
+    }
+  }
+}

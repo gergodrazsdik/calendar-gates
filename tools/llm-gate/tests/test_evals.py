@@ -164,6 +164,7 @@ def attempt(verdict: str, found: list[bool], below: int = 0, cost: float = 0.01)
     return evals.Attempt(
         repeat=1,
         verdict=verdict,
+        exit_code=1 if verdict == "fail" else 0,
         found=found,
         forbidden_hits=0,
         below_threshold=below,
@@ -408,3 +409,40 @@ def test_dumped_cases_load_back() -> None:
     text = evals.dump_case(case)
     assert evals.Case.model_validate(yaml.safe_load(text)) == case
     assert "\n  - file: f\n" in text  # list items indented, as yamllint wants
+
+
+def test_not_applicable_is_a_pass_and_is_explained(
+    eval_repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    eval_repo.write(
+        "tools/llm-gate/checks.yaml",
+        CHECKS + "  api-contract: {mode: advisory, paths: ['src/**/Endpoints/**']}\n",
+    )
+    eval_repo.commit("api-contract with a paths filter")  # add_case resets the working tree
+    add_case(eval_repo, "ac-1", expect=BUG, checks=("api-contract",))
+
+    run(eval_repo, reviewer(), "--repeats", "1")
+
+    (report,) = last_runs(eval_repo)
+    assert report["metrics"]["verdict_accuracy"] == 1.0  # the gate passes it
+    assert report["metrics"]["recall"] == 0.0
+    out = capsys.readouterr().out
+    assert "not applicable (the check's `paths:` skipped it)" in out
+
+
+def test_misses_show_where_the_findings_pointed(
+    eval_repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    add_case(eval_repo, "bug-1", expect=BUG)
+    run(eval_repo, reviewer(line=40), "--repeats", "1")
+    assert "found instead: `high src/A.cs:40`" in capsys.readouterr().out
+
+
+def test_cached_reviews_keep_their_cost_but_cost_nothing_now(eval_repo: Repo) -> None:
+    add_case(eval_repo, "bug-1", expect=BUG)
+    run(eval_repo, reviewer(), "--repeats", "2")
+    run(eval_repo, reviewer(), "--repeats", "2")
+
+    (report,) = last_runs(eval_repo)
+    assert report["metrics"]["cost_usd"] == pytest.approx(0.02)  # comparable with the baseline
+    assert report["metrics"]["spent_usd"] == 0.0

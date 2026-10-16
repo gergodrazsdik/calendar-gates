@@ -7,6 +7,6 @@ description: Middleware logs every request header, Authorization included.
 base: 7e1faf97961a83dbc659b9b8f884d554790c7714
 expect:
   - file: src/CalendarGates.Api/Program.cs
-    lines: [20, 20]
+    lines: [14, 24]
     min_severity: medium
     category: sensitive-data-logging

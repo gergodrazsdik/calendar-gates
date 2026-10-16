@@ -8,5 +8,5 @@ base: 7e1faf97961a83dbc659b9b8f884d554790c7714
 expect:
   - file: deploy/helm/calendar-gates/values.yaml
     lines: [29, 29]
-    min_severity: medium
+    min_severity: high
     category: configuration
