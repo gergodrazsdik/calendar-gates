@@ -40,6 +40,11 @@ def run(engines: dict[str, FakeEngine], *args: str) -> int:
     return main(["run", "--base", "main", *args], engines=engines)
 
 
+def audit_lines(repo: Repo) -> list[dict[str, object]]:
+    path = repo.root / ".llm-gate" / "audit.jsonl"
+    return [json.loads(line) for line in path.read_text().splitlines()]
+
+
 def record(repo: Repo, check: str, engine: str) -> dict[str, object]:
     path = repo.root / ".llm-gate" / "results" / f"{check}.{engine}.json"
     data: dict[str, object] = json.loads(path.read_text())
@@ -114,10 +119,33 @@ def test_override_label_passes_with_findings(
 ) -> None:
     change(gate)
     monkeypatch.setenv("LLM_GATE_OVERRIDE", "true")
+    monkeypatch.setenv("LLM_GATE_OVERRIDE_REASON", "hotfix, reviewed by hand")
+    monkeypatch.setenv("LLM_GATE_OVERRIDE_BY", "maintainer")
     api = FakeEngine("api", result(finding(Severity.CRITICAL)))
 
     assert run({"api": api}, "--check", "code-review") == 0
     assert "llm / code-review: overridden" in capsys.readouterr().out
+    gate_run, override = audit_lines(gate)
+    assert gate_run["verdict"] == "fail"
+    assert gate_run["override_honoured"] is True
+    assert override["type"] == "override"
+    assert override["by"] == "maintainer"
+    assert override["reason"] == "hotfix, reviewed by hand"
+    assert override["checks"] == ["code-review"]
+
+
+def test_an_override_without_a_reason_is_not_honoured(
+    gate: Repo, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    change(gate)
+    monkeypatch.setenv("LLM_GATE_OVERRIDE", "true")
+    monkeypatch.delenv("LLM_GATE_OVERRIDE_REASON", raising=False)
+    api = FakeEngine("api", result(finding(Severity.CRITICAL)))
+
+    assert run({"api": api}, "--check", "code-review") == 1
+    assert "llm / code-review: fail" in capsys.readouterr().out
+    (gate_run,) = audit_lines(gate)
+    assert gate_run["override_honoured"] is False
 
 
 def test_engine_errors_fail_closed_for_blocking_checks(gate: Repo) -> None:
@@ -324,3 +352,66 @@ def test_repo_defaults_to_the_checkout_of_the_current_directory(
     assert run({"api": api}, "--check", "code-review") == 0
 
     assert api.requests[0].repo_root == gate.root
+
+
+def test_every_run_appends_a_gate_run_record(gate: Repo, monkeypatch: pytest.MonkeyPatch) -> None:
+    for key, value in {
+        "GITHUB_REPOSITORY": "owner/repo",
+        "GITHUB_RUN_ID": "77",
+        "GITHUB_RUN_ATTEMPT": "2",
+        "GITHUB_ACTOR": "someone",
+        "LLM_GATE_PR": "5",
+        "LLM_GATE_PR_EVENT_AT": "2026-10-16T08:00:00Z",
+    }.items():
+        monkeypatch.setenv(key, value)
+    change(gate)
+    api = FakeEngine("api", result(finding(Severity.HIGH)))
+
+    run({"api": api}, "--check", "code-review")
+    run({"api": api}, "--check", "code-review")  # cache hit, appended too
+
+    first, second = audit_lines(gate)
+    head = git(gate.root, "rev-parse", "HEAD").strip()
+    assert first["schema"] == "audit/v1"
+    assert first["type"] == "gate_run"
+    assert first["repo"] == "owner/repo"
+    assert first["pr"] == 5
+    assert first["workflow_run_id"] == 77
+    assert first["run_url"] == "https://github.com/owner/repo/actions/runs/77/attempts/2"
+    assert first["head_sha"] == head
+    assert first["base_sha"] == git(gate.root, "rev-parse", "main").strip()
+    assert first["gate_sha"] == head  # locally the gate and the reviewed repo are one checkout
+    assert first["prompt_file"] == ".claude/commands/llm-code-review.md"
+    assert first["verdict"] == "fail"
+    assert first["exit_code"] == 1
+    assert first["blocking"] is True
+    assert first["cache_hit"] is False
+    assert first["cost_usd"] == 0.001
+    assert first["pr_event_at"] == "2026-10-16T08:00:00Z"
+    assert first["workflow_modified"] is None
+    findings = first["findings"]
+    assert isinstance(findings, list)
+    assert findings[0]["id"].startswith("cr-")
+    assert "detail" not in findings[0]  # titles only: the rest is in the artifact
+    assert "diff" not in first and len(str(first["diff_sha256"])) == 64
+    assert second["cache_hit"] is True
+    assert second["cost_usd"] is None  # nothing was spent on a cache hit
+    assert first["id"] != second["id"]
+
+
+def test_not_applicable_runs_are_recorded(gate: Repo) -> None:
+    run({"api": FakeEngine("api")}, "--check", "code-review")
+
+    (entry,) = audit_lines(gate)
+    assert entry["verdict"] == "not_applicable"
+    assert entry["exit_code"] == 0
+
+
+def test_audit_skip_records_a_check_that_did_not_run(gate: Repo) -> None:
+    assert main(["audit", "skip", "--check", "security-review", "--reason", "skipped_no_key"]) == 0
+
+    (entry,) = audit_lines(gate)
+    assert entry["check"] == "security-review"
+    assert entry["verdict"] == "skipped_no_key"
+    assert entry["engine"] == "agent"
+    assert entry["blocking"] is True

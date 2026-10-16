@@ -217,3 +217,25 @@ def test_agent_engine_counts_cached_input_tokens(tmp_path: Path) -> None:
     out = AgentEngine(query).review(request(tmp_path))
 
     assert out.usage.input_tokens == 4906
+
+
+def test_agent_engine_logs_tool_calls_through_its_pre_tool_use_hook(tmp_path: Path) -> None:
+    async def query(**kwargs: Any) -> AsyncIterator[object]:
+        # What Claude Code does before each tool call: call the registered callback.
+        (matcher,) = kwargs["options"].hooks["PreToolUse"]
+        for name, tool_input in (
+            ("Read", {"file_path": f"{tmp_path}/src/Workdays.cs"}),
+            ("Grep", {"pattern": "sk-ant-api03-" + "x" * 30, "path": str(tmp_path)}),
+        ):
+            data = {"hook_event_name": "PreToolUse", "tool_name": name, "tool_input": tool_input}
+            assert await matcher.hooks[0](data, "toolu_1", {"signal": None}) == {}
+        yield init()
+        yield result_message()
+
+    out = AgentEngine(query).review(request(tmp_path))
+
+    assert [(c.tool, c.input) for c in out.tool_calls] == [
+        ("Read", "file_path=src/Workdays.cs"),
+        ("Grep", "pattern=[REDACTED] path=."),
+    ]
+    assert all(c.ts.tzinfo is not None for c in out.tool_calls)

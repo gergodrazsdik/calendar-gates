@@ -1,8 +1,10 @@
 """The review schema both engines must return (structured output) and the result types around it."""
 
+import hashlib
+import re
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 
 class Severity(StrEnum):
@@ -36,6 +38,15 @@ class Finding(BaseModel):
     suggestion: str | None = Field(description="How to fix it, or null")
 
 
+def finding_id(check: str, finding: Finding) -> str:
+    """Short, stable id people can refer to (`cr-3f2a`): check initials plus a hash of check, file
+    and the title's words, so a re-run that rewords nothing but punctuation keeps the id."""
+    prefix = "".join(part[0] for part in check.split("-") if part) or "x"
+    words = " ".join(re.findall(r"[a-z0-9]+", finding.title.lower()))
+    digest = hashlib.sha256(f"{check}\n{finding.file}\n{words}".encode()).hexdigest()
+    return f"{prefix}-{digest[:4]}"
+
+
 class Review(BaseModel):
     """What the model returns. Deliberately no free-form reasoning field: the verdict comes from
     severities in code, and `detail` carries the short explanation per finding."""
@@ -52,9 +63,21 @@ class Usage(BaseModel):
     num_turns: int | None = None
 
 
+class ToolCall(BaseModel):
+    """One tool call of the agent engine, as logged by its PreToolUse hook. `input` is a short,
+    redacted summary (audit.summarise_tool_input), never the full tool input."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tool: str
+    input: str
+    ts: AwareDatetime
+
+
 class EngineResult(BaseModel):
     engine: str
     model: str  # the model that actually answered (a refusal fallback can change it)
     review: Review
     duration_ms: int
     usage: Usage = Field(default_factory=Usage)
+    tool_calls: list[ToolCall] = Field(default_factory=list)
