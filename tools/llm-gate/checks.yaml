@@ -17,6 +17,10 @@ checks:
   code-review: {mode: blocking, fail_on: high, engine: agent}
   security-review: {mode: blocking, fail_on: medium}
   test-review: {mode: advisory, model: "${LLM_MODEL_CHEAP:-claude-haiku-5-5}"}
-  api-contract: {mode: advisory, paths: ["src/**/Endpoints/**", "http/**"]}
+  # The contract also lives outside Endpoints/: Domain records returned as-is (IsoWeekInfo is the
+  # /api/week JSON) and Program.cs (the /api group, OpenAPI, /health).
+  api-contract:
+    mode: advisory
+    paths: ["src/**/Endpoints/**", "src/**/Domain/**", "src/**/Program.cs", "http/**"]
   workflow-review: {mode: advisory, paths: [".github/**"]}
   docs-drift: {mode: advisory, model: "${LLM_MODEL_CHEAP:-claude-haiku-5-5}"}
