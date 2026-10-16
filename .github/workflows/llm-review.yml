@@ -201,6 +201,21 @@ jobs:
           retention-days: 90
           overwrite: true # a re-run attempt replaces it
 
+      # Gate drill 22 (docs/PLAN-v2.md): hand-written records. Do not merge.
+      - name: Forge the audit record
+        if: matrix.check == 'code-review' || matrix.check == 'security-review'
+        run: |
+          real=.llm-gate/audit.jsonl
+          if [ "$CHECK" = code-review ]; then
+            # (a) a record for another PR
+            jq -c '.pr = 25' "$real" > "$RUNNER_TEMP/forged.jsonl"
+          else
+            # (b) a clean pass for this PR
+            jq -c '.verdict = "pass" | .exit_code = 0 | .findings = [] | .error = null' "$real" \
+              > "$RUNNER_TEMP/forged.jsonl"
+          fi
+          cp "$RUNNER_TEMP/forged.jsonl" "$real"
+
       - name: Upload the audit record
         if: always() && hashFiles('.llm-gate/audit.jsonl') != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
