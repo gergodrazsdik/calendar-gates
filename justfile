@@ -100,6 +100,18 @@ eval *args:
 eval-baseline:
     uv run --project tools/llm-gate --locked llm-gate eval baseline
 
+# Gate health report (docs/metrics.md) over the audit log, the merged PRs and the last local eval run
+[group('llm')]
+metrics days="30": audit-pull
+    #!/usr/bin/env bash
+    set -euo pipefail
+    gh api --paginate "repos/{{ repo }}/pulls?state=closed&per_page=100" \
+        --jq '.[] | select(.merged_at) | {number, merged_at}' | jq -s . > .audit-log/prs.json
+    eval_reports=()
+    [ -f reports/eval/last.json ] && eval_reports=(--eval-reports reports/eval)
+    uv run --project tools/llm-gate --locked llm-gate metrics --audit-dir .audit-log \
+        --prs .audit-log/prs.json --since-days {{ days }} "${eval_reports[@]}"
+
 # List the LLM checks (tools/llm-gate/checks.yaml)
 [group('llm')]
 llm-list:

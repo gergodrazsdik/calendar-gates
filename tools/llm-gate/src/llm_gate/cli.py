@@ -12,7 +12,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from . import audit, evals
+from . import audit, evals, feedback, metrics
 from .cache import Cache
 from .compare import render_comparison
 from .config import ENGINES, Check, ConfigError, load_config
@@ -64,6 +64,12 @@ def _head(root: Path) -> str | None:
         return git(root, "rev-parse", "HEAD").strip()
     except DiffError:
         return None
+
+
+WRITERS_HELP = (
+    "logins with write access (JSON array; scripts/override-writers.sh): needed to honour a "
+    "llm-override label added by the feedback workflow"
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -169,12 +175,14 @@ def build_parser() -> argparse.ArgumentParser:
     collect.add_argument(
         "--comments", type=Path, required=True, help="the PR's issue comments (JSON array)"
     )
+    collect.add_argument("--writers", type=Path, help=WRITERS_HELP)
 
     override = asub.add_parser("override", help="find the reason for the override label")
     override.add_argument("--events", type=Path, required=True, help="issue events (JSON array)")
     override.add_argument(
         "--comments", type=Path, required=True, help="issue comments (JSON array)"
     )
+    override.add_argument("--writers", type=Path, help=WRITERS_HELP)
 
     eval_ = sub.add_parser("eval", help="score the review prompts on known cases (evals/)")
     esub = eval_.add_subparsers(dest="eval_command", required=True)
@@ -195,6 +203,26 @@ def build_parser() -> argparse.ArgumentParser:
     erun.add_argument("--no-cache", action="store_true")
     ebase = esub.add_parser("baseline", help="write evals/baseline.json from the last run")
     ebase.add_argument("--in", dest="in_dir", type=Path, help="default: <repo>/reports/eval")
+    fb = sub.add_parser("feedback", help="/llm-* PR comment commands (llm-feedback.yml)")
+    fbsub = fb.add_subparsers(dest="feedback_command", required=True)
+    fbh = fbsub.add_parser("handle", help="validate a comment event; print the actions as JSON")
+    fbh.add_argument("--event", type=Path, required=True, help="the issue_comment event payload")
+    fbh.add_argument("--audit-dir", type=Path, required=True, help="audit-log checkout")
+    fbh.add_argument("--out", type=Path, required=True, help="where the record file is written")
+    fbh.add_argument(
+        "--permission", help="the commenter's repository role (collaborators/<login>/permission)"
+    )
+    fbm = fbsub.add_parser("mark", help="mark a finding as a false positive in a sticky comment")
+    fbm.add_argument("--body-file", type=Path, required=True)
+    fbm.add_argument("--finding", required=True)
+    fbm.add_argument("--by", required=True)
+
+    met = sub.add_parser("metrics", help="gate health report over the audit log (Markdown)")
+    met.add_argument("--audit-dir", type=Path, help="default: <repo>/.audit-log")
+    met.add_argument("--prs", type=Path, help="merged PRs from the GitHub API (JSON array)")
+    met.add_argument("--eval-reports", type=Path, help="reports/eval of the latest eval run")
+    met.add_argument("--since-days", type=int, default=30)
+
     efp = esub.add_parser("add-from-fp", help="turn a false positive into an fp-regression case")
     efp.add_argument("finding_id")
     efp.add_argument(
@@ -341,9 +369,15 @@ def _expected(args: argparse.Namespace) -> audit.Expected:
 
 
 def _find_override(args: argparse.Namespace) -> audit.OverrideRequest | str:
+    writers = (
+        {str(login) for login in json.loads(args.writers.read_text(encoding="utf-8"))}
+        if args.writers
+        else None
+    )
     return audit.find_override(
         json.loads(args.events.read_text(encoding="utf-8")),
         json.loads(args.comments.read_text(encoding="utf-8")),
+        writers=writers,
     )
 
 
@@ -473,6 +507,52 @@ def cmd_eval(
     return 1 if failed else 0
 
 
+def cmd_feedback(args: argparse.Namespace, checks: Mapping[str, Check]) -> int:
+    if args.feedback_command == "mark":
+        body = args.body_file.read_text(encoding="utf-8")
+        marked = feedback.mark_false_positive(body, args.finding, args.by)
+        if marked is None:
+            log.warning("finding %s not in the comment, or already marked", args.finding)
+            return 1
+        print(marked, end="")
+        return 0
+    event = json.loads(args.event.read_text(encoding="utf-8"))
+    context = audit.context_from_env(os.environ, head_sha=None, base_sha=None)
+    actions = feedback.handle(
+        event,
+        audit_dir=args.audit_dir,
+        blocking_checks=[c.name for c in checks.values() if c.blocking],
+        context=context,
+        now=datetime.now(UTC),
+        permission=args.permission,
+    )
+    if actions.path and actions.records:
+        target = args.out / actions.path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("".join(line + "\n" for line in actions.records), encoding="utf-8")
+    print(actions.to_json())
+    return 0
+
+
+def cmd_metrics(args: argparse.Namespace, checks: Mapping[str, Check], *, root: Path) -> int:
+    audit_dir = args.audit_dir or root / ".audit-log"
+    if not (audit_dir / "events").is_dir():
+        log.error("no audit log in %s (run `just audit-pull`)", audit_dir)
+        return EXIT_ERROR
+    prs = json.loads(args.prs.read_text(encoding="utf-8")) if args.prs else []
+    now = datetime.now(UTC)
+    report = metrics.compute(
+        metrics.load_records(audit_dir),
+        prs,
+        blocking_checks=[c.name for c in checks.values() if c.blocking],
+        now=now,
+        since_days=args.since_days,
+        eval_runs=metrics.load_eval_runs(args.eval_reports),
+    )
+    print(metrics.render(report, generated=now), end="")
+    return 0
+
+
 def _record_eval_runs(runs: Sequence[evals.EvalRun], *, root: Path) -> None:
     try:
         context = audit.context_from_env(os.environ, head_sha=_head(root), base_sha=None)
@@ -540,6 +620,10 @@ def main(argv: Sequence[str] | None = None, engines: Mapping[str, Engine] | None
         gate = GateCheckout(root=gate_root, config=config, sha=_head(gate_root))
         if args.command == "list":
             return cmd_list(checks, as_json=args.json, blocking_only=args.blocking)
+        if args.command == "feedback":
+            return cmd_feedback(args, checks)
+        if args.command == "metrics":
+            return cmd_metrics(args, checks, root=root)
         if args.command == "eval":
             return cmd_eval(
                 args, checks, root=root, config=config, engines=engines or _lazy_engines(args)

@@ -177,9 +177,26 @@ class Override(_Record):
 class Feedback(_Record):
     type: Literal["feedback"] = "feedback"
     finding_id: FindingId
+    check: CheckName | None = None
     kind: Literal["fp", "ack"]
     by: Login
     reason: Text | None = None
+
+
+FeedbackCommand = Literal["fp", "ack", "override", "risk", "unknown"]
+RejectionCode = Literal[
+    "not_a_collaborator", "unknown_command", "bad_arguments", "unknown_finding", "not_a_pr"
+]
+
+
+class FeedbackRejected(_Record):
+    """A `/llm-*` comment that wasn't honoured. Fixed fields only: anyone can comment on a public
+    repository's PRs, and the log is permanent."""
+
+    type: Literal["feedback_rejected"] = "feedback_rejected"
+    by: Login
+    command: FeedbackCommand
+    code: RejectionCode
 
 
 class RiskOverride(_Record):
@@ -207,7 +224,14 @@ class TamperSuspected(_Record):
 
 
 AuditRecord = Annotated[
-    GateRun | Triage | Override | Feedback | RiskOverride | EvalRun | TamperSuspected,
+    GateRun
+    | Triage
+    | Override
+    | Feedback
+    | FeedbackRejected
+    | RiskOverride
+    | EvalRun
+    | TamperSuspected,
     Field(discriminator="type"),
 ]
 _ADAPTER: TypeAdapter[AuditRecord] = TypeAdapter(AuditRecord)
@@ -420,6 +444,13 @@ def skipped_run(
 
 OVERRIDE_LABEL = "llm-override"
 OVERRIDE_COMMAND = "/llm-override"
+# The feedback workflow adds the label for `/llm-override` with GITHUB_TOKEN, so it shows up as
+# added by this bot; the person is then whoever wrote the command (a collaborator).
+WORKFLOW_BOT = "github-actions[bot]"
+TRUSTED_ASSOCIATIONS = frozenset({"OWNER", "MEMBER", "COLLABORATOR"})
+# Repository roles that may override a gate (collaborators/<login>/permission, role_name).
+# author_association is only a hint: MEMBER and COLLABORATOR don't imply write access.
+WRITE_ROLES = frozenset({"admin", "maintain", "write"})
 
 
 @dataclass(frozen=True)
@@ -433,6 +464,7 @@ def find_override(
     comments: Sequence[Mapping[str, Any]],
     *,
     label: str = OVERRIDE_LABEL,
+    writers: Collection[str] | None = None,
 ) -> OverrideRequest | str:
     """The reason for the PR's override label, or why there is none.
 
@@ -440,15 +472,19 @@ def find_override(
     override counts only if whoever added the label most recently also wrote an unedited
     `/llm-override <reason>` comment for this round: after the label was last removed (any time,
     if it never was). Before or after adding it both work, so the comment can come first and the
-    labelled run sees it.
+    labelled run sees it. When the feedback workflow added the label (`/llm-override` as a
+    command), the comment's author must instead be in `writers` (logins with a write, maintain or
+    admin role, looked up by the caller), and is the one recorded. Without `writers`, such a
+    label is never honoured.
     """
     mine = [e for e in events if (e.get("label") or {}).get("name") == label]
     labelled = [e for e in mine if e.get("event") == "labeled"]
     if not labelled:
         return f"the {label} label was not added through the issue events API"
-    by = (labelled[-1].get("actor") or {}).get("login")
-    if not by:
+    labeller = (labelled[-1].get("actor") or {}).get("login")
+    if not labeller:
         return f"cannot tell who added the {label} label"
+    via_command = labeller == WORKFLOW_BOT
     labelled_at = _when(labelled[-1].get("created_at"))
     if labelled_at is None:
         return f"cannot tell when the {label} label was added"
@@ -461,7 +497,11 @@ def find_override(
     ]
     round_start = max(removals, default=None)
     for comment in reversed(comments):
-        if (comment.get("user") or {}).get("login") != by:
+        author = (comment.get("user") or {}).get("login")
+        if via_command:
+            if writers is None or author not in writers:
+                continue
+        elif author != labeller:
             continue
         created = _when(comment.get("created_at"))
         # Only a comment written for this round counts (a reason from an earlier override doesn't
@@ -473,10 +513,15 @@ def find_override(
         body = str(comment.get("body") or "").strip()
         first, _, _ = body.partition("\n")
         command, _, reason = first.partition(" ")
-        if command == OVERRIDE_COMMAND and reason.strip():
-            return OverrideRequest(by=by, reason=reason.strip())
+        if command == OVERRIDE_COMMAND and reason.strip() and author:
+            return OverrideRequest(by=author, reason=reason.strip())
+    if via_command:
+        return (
+            f"{label} came from `{OVERRIDE_COMMAND}`, but no one with write access wrote an "
+            f"unedited `{OVERRIDE_COMMAND} <reason>` since it was last removed"
+        )
     return (
-        f"{by} added {label} but wrote no unedited `{OVERRIDE_COMMAND} <reason>` comment "
+        f"{labeller} added {label} but wrote no unedited `{OVERRIDE_COMMAND} <reason>` comment "
         "since it was last removed"
     )
 
@@ -564,6 +609,7 @@ _FIELD_NAMES = (
             Triage,
             Override,
             Feedback,
+            FeedbackRejected,
             RiskOverride,
             EvalRun,
             TamperSuspected,
@@ -576,7 +622,7 @@ _FIELD_NAMES = (
         if name
     )
     | ARTIFACT_TYPES
-    | {"triage", "feedback", "risk_override", "eval_run", "tamper_suspected"}
+    | {"triage", "feedback", "feedback_rejected", "risk_override", "eval_run", "tamper_suspected"}
 )
 
 

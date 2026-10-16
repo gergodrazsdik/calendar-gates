@@ -120,20 +120,23 @@ jobs:
       # The llm-override label counts only with an unedited `/llm-override <reason>` comment by
       # whoever added it, since the label was last removed (ADR 0005). Without one, the findings
       # still fail. Comment first, then add the label: the labelled run sees the comment.
+      # The labels come from the API, not the event: `/llm-override` (llm-feedback.yml) adds the
+      # label and re-runs this run, and a re-run keeps the original event's labels.
       - name: Override reason
         id: override
-        if: >-
-          steps.key.outputs.run == 'true'
-          && contains(github.event.pull_request.labels.*.name, 'llm-override')
+        if: steps.key.outputs.run == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
+          labels=$(gh api "repos/$REPO/issues/$PR/labels" --jq '.[].name')
+          grep -qx llm-override <<< "$labels" || exit 0
           gh api --paginate "repos/$REPO/issues/$PR/events" --jq '.[]' | jq -s . > "$RUNNER_TEMP/events.json"
           gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[]' | jq -s . > "$RUNNER_TEMP/comments.json"
+          gate/scripts/override-writers.sh "$RUNNER_TEMP/comments.json" > "$RUNNER_TEMP/writers.json"
           if found=$(uv run --project gate/tools/llm-gate --locked llm-gate audit override \
               --events "$RUNNER_TEMP/events.json" --comments "$RUNNER_TEMP/comments.json" \
-              2> "$RUNNER_TEMP/override-why.txt"); then
+              --writers "$RUNNER_TEMP/writers.json" 2> "$RUNNER_TEMP/override-why.txt"); then
             {
               echo "honoured=true"
               echo "by=$(jq -r .by <<< "$found")"
