@@ -226,6 +226,7 @@ def test_agent_engine_logs_tool_calls_through_its_pre_tool_use_hook(tmp_path: Pa
         for name, tool_input in (
             ("Read", {"file_path": f"{tmp_path}/src/Workdays.cs"}),
             ("Grep", {"pattern": "sk-ant-api03-" + "x" * 30, "path": str(tmp_path)}),
+            ("StructuredOutput", {"summary": "raw model output", "findings": []}),
         ):
             data = {"hook_event_name": "PreToolUse", "tool_name": name, "tool_input": tool_input}
             assert await matcher.hooks[0](data, "toolu_1", {"signal": None}) == {}

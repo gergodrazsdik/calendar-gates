@@ -401,7 +401,7 @@ OVERRIDE_COMMAND = "/llm-override"
 
 @dataclass(frozen=True)
 class OverrideRequest:
-    by: str
+    by: str | None
     reason: str
 
 

@@ -39,6 +39,10 @@ READ_ONLY_TOOLS = ["Read", "Grep", "Glob"]
 # `tools` already limits the session to READ_ONLY_TOOLS; the deny list is belt and braces.
 DENIED_TOOLS = ["Bash", "Write", "Edit", "NotebookEdit", "WebFetch", "WebSearch", "Task", "Agent"]
 
+# The SDK returns the structured review through this synthetic tool; its input is the raw model
+# output, which the audit trail deliberately doesn't store (the review itself is the result).
+STRUCTURED_OUTPUT_TOOL = "StructuredOutput"
+
 # Applied with --settings, which outranks every other source: no hooks run, whatever is on disk.
 NO_HOOKS = json.dumps({"disableAllHooks": True})
 
@@ -55,7 +59,7 @@ class ToolCallLog:
     async def hook(
         self, data: HookInput, tool_use_id: str | None, context: HookContext
     ) -> HookJSONOutput:
-        if data["hook_event_name"] == "PreToolUse":
+        if data["hook_event_name"] == "PreToolUse" and data["tool_name"] != STRUCTURED_OUTPUT_TOOL:
             tool = data["tool_name"]
             summary = summarise_tool_input(tool, data["tool_input"], self.root)
             self.calls.append(ToolCall(tool=tool, input=summary, ts=datetime.now(UTC)))

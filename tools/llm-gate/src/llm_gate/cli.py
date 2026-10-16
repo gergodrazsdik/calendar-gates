@@ -258,7 +258,9 @@ def override_request(
     if not reason or not reason.strip():
         log.warning("override requested without a reason: not honoured (ADR 0005)")
         return None
-    return audit.OverrideRequest(by=by or os.environ.get("GITHUB_ACTOR", ""), reason=reason.strip())
+    return audit.OverrideRequest(
+        by=by or os.environ.get("GITHUB_ACTOR") or None, reason=reason.strip()
+    )
 
 
 def cmd_skip(check: Check, *, root: Path, gate: GateCheckout, out: Path, reason: str) -> int:
@@ -284,6 +286,14 @@ def _expected(args: argparse.Namespace) -> audit.Expected:
 
 def cmd_audit(args: argparse.Namespace) -> int:
     """The audit subcommands that need no repository (the trusted collector's side)."""
+    try:
+        return _audit(args)
+    except (OSError, ValueError, KeyError) as error:  # unreadable or malformed input files
+        log.error("audit %s: %s: %s", args.audit_command, type(error).__name__, error)
+        return EXIT_ERROR
+
+
+def _audit(args: argparse.Namespace) -> int:
     if args.audit_command == "validate":
         records, problems = audit.validate_file(args.file, _expected(args), args.check)
         for problem in problems:
@@ -381,7 +391,7 @@ def main(argv: Sequence[str] | None = None, engines: Mapping[str, Engine] | None
             override=override_request(args.override, args.override_reason, args.override_by),
             engines=engines or default_engines(),
         )
-    except (ConfigError, DiffError, OSError, ValueError) as error:
+    except (ConfigError, DiffError) as error:
         log.error("%s", error)
         return EXIT_ERROR
 

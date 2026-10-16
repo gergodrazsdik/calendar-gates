@@ -370,3 +370,14 @@ def test_cli_override(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Non
     comments.write_text("[]")
     assert main(args) == 1
     assert "no `/llm-override <reason>`" in capsys.readouterr().err
+
+
+def test_cli_reports_unreadable_inputs_as_errors(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    bad = tmp_path / "events.json"
+    bad.write_text("not json")
+    args = ["audit", "override", "--events", str(bad), "--comments", str(bad)]
+
+    assert main(args) == 2
+    assert "JSONDecodeError" in caplog.text
