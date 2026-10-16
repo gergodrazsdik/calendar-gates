@@ -32,9 +32,9 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write # the record on the audit-log branch
-      issues: write # reaction, label, sticky-comment mark
+      issues: write # the label
       actions: write # re-run llm-review after /llm-override
-      pull-requests: read # the PR's head commit
+      pull-requests: write # reactions to and edits of PR comments, the label, the PR's head
     env:
       REPO: ${{ github.repository }}
       PR: ${{ github.event.issue.number }}
@@ -106,6 +106,7 @@ jobs:
 
       - name: React
         if: steps.handle.outputs.reaction != ''
+        continue-on-error: true # feedback for the person; never blocks the label or the re-run
         env:
           GH_TOKEN: ${{ github.token }}
           REACTION: ${{ steps.handle.outputs.reaction }}
@@ -120,6 +121,7 @@ jobs:
 
       - name: Mark the false positive in the sticky comment
         if: steps.handle.outputs.mark_finding != ''
+        continue-on-error: true # cosmetic: the record is what counts
         env:
           GH_TOKEN: ${{ github.token }}
           CHECK: ${{ steps.handle.outputs.mark_check }}
