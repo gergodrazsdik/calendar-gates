@@ -250,12 +250,11 @@ def cmd_run(
                     checks=[check.name],
                 )
             )
-    except ValidationError as error:
-        # The review is done and decided; a record that can't be built must not change that.
-        # The missing record shows up as a gap in the audit log.
-        log.error("audit record not written: %s", error)
-    else:
         audit.append(out / audit.AUDIT_FILE, entries)
+    except (ValidationError, OSError) as error:
+        # The review is done and decided; a record that can't be built or written must not
+        # change that. The missing record shows up as a gap in the audit log.
+        log.error("audit record not written: %s", error)
 
     markdown = render_markdown(records[primary])
     (out / f"{check.name}.md").write_text(markdown, encoding="utf-8")
@@ -294,10 +293,9 @@ def cmd_skip(check: Check, *, root: Path, gate: GateCheckout, out: Path, reason:
         entry = audit.skipped_run(
             check, context=context, gate=info, reason=verdict, at=datetime.now(UTC)
         )
-    except ValidationError as error:
+        audit.append(out / audit.AUDIT_FILE, [entry])
+    except (ValidationError, OSError) as error:
         log.error("audit record not written: %s", error)  # a gap in the log, not a failed job
-        return 0
-    audit.append(out / audit.AUDIT_FILE, [entry])
     return 0
 
 

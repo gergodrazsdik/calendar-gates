@@ -33,7 +33,7 @@ from pydantic import (
 )
 
 from .config import Check, EngineName
-from .models import Severity, ToolCall, finding_id
+from .models import Severity, ToolCall, finding_id, finding_prefix
 from .policy import Verdict
 from .redact import MAX_SUMMARY, Short, Text, clip, redact
 from .runner import RunRecord
@@ -138,7 +138,7 @@ class GateRun(_Record):
     gate_sha: Sha | None  # the commit the gate tooling ran from (the PR's base in CI)
     diff_sha256: Digest | None
     diff_bytes: Count
-    risk: Short | None = None  # Phase 17 (triage)
+    risk: Literal["low", "medium", "high"] | None = None  # Phase 17 (triage)
     blocking: bool
     cache_hit: bool
     pr_event_at: AwareDatetime | None = None
@@ -508,13 +508,16 @@ def validate_file(
     """Strictly parse an untrusted audit file. Returns the records and the problems found; any
     problem means none of the records may be written."""
     problems: list[str] = []
+    if path.is_symlink() or not path.is_file():
+        return [], [f"{AUDIT_FILE} is not a regular file"]
     try:
         size = path.stat().st_size
+        if size > MAX_FILE_BYTES:
+            return [], [f"{AUDIT_FILE} is {size} bytes, over the {MAX_FILE_BYTES} limit"]
+        content = path.read_bytes()
     except OSError as error:
-        return [], [f"cannot read {path.name}: {error}"]
-    if size > MAX_FILE_BYTES:
-        return [], [f"{path.name} is {size} bytes, over the {MAX_FILE_BYTES} limit"]
-    lines = [line for line in path.read_bytes().split(b"\n") if line.strip()]
+        return [], [f"cannot read {AUDIT_FILE} ({type(error).__name__})"]
+    lines = [line for line in content.split(b"\n") if line.strip()]
     if not lines:
         return [], [f"{path.name} has no records"]
     if len(lines) > MAX_RECORDS:
@@ -603,8 +606,11 @@ def _record_problems(record: AuditRecord, expected: Expected, check: str | None)
         if record.exit_code not in exits:
             override = " with override_honoured" if record.override_honoured else ""
             problems.append(f"verdict {record.verdict}{override} with exit code {record.exit_code}")
-    if isinstance(record, Override) and check is not None and check not in record.checks:
-        problems.append(f"override for {record.checks} in the artifact for {check!r}")
+        prefix = f"{finding_prefix(record.check)}-"
+        if any(not f.id.startswith(prefix) for f in record.findings):
+            problems.append(f"finding ids not of the form {prefix}xxxx")
+    if isinstance(record, Override) and check is not None and record.checks != [check]:
+        problems.append(f"an override in the artifact for {check!r} must name only that check")
     return problems
 
 
@@ -667,11 +673,14 @@ def collect(
             )
         else:
             check = match["check"]
-            files = sorted(p.name for p in directory.iterdir())
-            if files != [AUDIT_FILE]:
-                problems.append(f"expected only {AUDIT_FILE}, found {len(files)} file(s)")
-            else:
-                records, problems = validate_file(directory / AUDIT_FILE, expected, check)
+            try:
+                files = sorted(p.name for p in directory.iterdir())
+                if files != [AUDIT_FILE]:
+                    problems.append(f"expected only {AUDIT_FILE}, found {len(files)} file(s)")
+                else:
+                    records, problems = validate_file(directory / AUDIT_FILE, expected, check)
+            except Exception as error:  # one bad artifact must not stop the rest
+                problems.append(f"the collector could not process it ({type(error).__name__})")
 
         finished: list[AuditRecord] = []
         if not problems:
@@ -733,7 +742,7 @@ def _withhold(record: AuditRecord) -> AuditRecord:
 
 
 def _total_bytes(directories: Iterable[Path]) -> int:
-    return sum(f.stat().st_size for d in directories for f in d.iterdir() if f.is_file())
+    return sum(f.lstat().st_size for d in directories for f in d.iterdir() if not f.is_symlink())
 
 
 def _tamper(expected: Expected, artifact: str, problems: Sequence[str]) -> TamperSuspected:

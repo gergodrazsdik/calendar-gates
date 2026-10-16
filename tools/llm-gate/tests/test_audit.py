@@ -641,3 +641,74 @@ def test_tamper_events_never_quote_the_artifact(tmp_path: Path) -> None:
         assert text not in json.dumps(lines)
         assert text.lower() not in json.dumps(lines)
         assert text not in info.artifact
+
+
+@pytest.mark.parametrize("shape", ["directory", "symlink"])
+def test_an_audit_file_that_is_not_a_regular_file_is_a_tamper_event(
+    tmp_path: Path, shape: str
+) -> None:
+    good = artifact(tmp_path, "audit-100-code-review", audit.dumps(gate_run()))
+    bad = tmp_path / "artifacts" / "audit-100-docs-drift"
+    bad.mkdir()
+    if shape == "directory":
+        (bad / audit.AUDIT_FILE).mkdir()
+    else:
+        (bad / audit.AUDIT_FILE).symlink_to(good / audit.AUDIT_FILE)
+
+    results = {info.path.rsplit("-", 2)[-1]: (info, lines) for info, lines in collect(tmp_path)}
+
+    assert results["review.jsonl"][0].tamper is False  # the good artifact is still collected
+    info, lines = results["drift.jsonl"]
+    assert info.tamper is True
+    assert "not a regular file" in lines[0]["problems"][0]
+
+
+def test_unknown_tool_names_are_logged_as_other() -> None:
+    call = {"tool": "mcp__evil__SHOUTING", "input": "x", "ts": T}
+    parsed = audit.parse(audit.dumps(gate_run(tool_calls=[call])))
+    assert isinstance(parsed, audit.GateRun)
+    assert parsed.tool_calls[0].tool == "other"
+
+
+@pytest.mark.parametrize(
+    ("record", "problem"),
+    [
+        (
+            gate_run(
+                findings=[
+                    audit.AuditFinding(
+                        id="abuse-0000",
+                        severity=Severity.LOW,
+                        category="c",
+                        file="f",
+                        line=1,
+                        title="t",
+                    )
+                ]
+            ),
+            "finding ids not of the form cr-xxxx",
+        ),
+    ],
+)
+def test_finding_ids_must_carry_their_checks_prefix(
+    tmp_path: Path, record: audit.GateRun, problem: str
+) -> None:
+    artifact(tmp_path, "audit-100-code-review", audit.dumps(record))
+    ((info, lines),) = collect(tmp_path)
+    assert info.tamper is True
+    assert any(problem in p for p in lines[0]["problems"])
+
+
+def test_an_override_names_only_its_artifacts_check(tmp_path: Path) -> None:
+    claim = override_record(checks=["code-review", "everything-is-fine"])
+    artifact(tmp_path, "audit-100-code-review", audit.dumps(claim))
+    trusted = audit.OverrideRequest(by="alice", reason="hotfix")
+    ((info, lines),) = collect(tmp_path, jobs={}, override=trusted)
+    assert info.tamper is True
+    assert "must name only that check" in lines[0]["problems"][0]
+
+
+def test_risk_is_one_of_three_levels() -> None:
+    raw = {**json.loads(audit.dumps(gate_run())), "risk": "free text"}
+    with pytest.raises(ValueError, match="risk"):
+        audit.parse(json.dumps(raw))

@@ -5,7 +5,7 @@ import re
 from enum import StrEnum
 from typing import Annotated
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import AfterValidator, AwareDatetime, BaseModel, ConfigDict, Field
 
 from .redact import Summary
 
@@ -41,10 +41,15 @@ class Finding(BaseModel):
     suggestion: str | None = Field(description="How to fix it, or null")
 
 
+def finding_prefix(check: str) -> str:
+    """The check's initials, letters only, at most eight (`code-review` -> `cr`)."""
+    return "".join(part[0] for part in check.split("-") if part[:1].isalpha())[:8] or "x"
+
+
 def finding_id(check: str, finding: Finding) -> str:
     """Short, stable id people can refer to (`cr-3f2a`): check initials plus a hash of check, file
     and the title's words, so a re-run that rewords nothing but punctuation keeps the id."""
-    prefix = "".join(part[0] for part in check.split("-") if part[:1].isalpha())[:8] or "x"
+    prefix = finding_prefix(check)
     words = " ".join(re.findall(r"[a-z0-9]+", finding.title.lower()))
     digest = hashlib.sha256(f"{check}\n{finding.file}\n{words}".encode()).hexdigest()
     return f"{prefix}-{digest[:4]}"
@@ -66,13 +71,40 @@ class Usage(BaseModel):
     num_turns: int | None = None
 
 
+# Claude Code's built-in tools. Any other name (an MCP tool, something new) is logged as "other":
+# a tool name is text the reviewed session chose, and the audit log is permanent.
+KNOWN_TOOLS = frozenset(
+    {
+        "Agent",
+        "Bash",
+        "Edit",
+        "Glob",
+        "Grep",
+        "LS",
+        "MultiEdit",
+        "NotebookEdit",
+        "Read",
+        "StructuredOutput",
+        "Task",
+        "TodoWrite",
+        "WebFetch",
+        "WebSearch",
+        "Write",
+    }
+)
+
+
+def _known_tool(name: str) -> str:
+    return name if name in KNOWN_TOOLS else "other"
+
+
 class ToolCall(BaseModel):
     """One tool call of the agent engine, as logged by its PreToolUse hook. `input` is a short,
     redacted summary (audit.summarise_tool_input), never the full tool input."""
 
     model_config = ConfigDict(extra="forbid")
 
-    tool: Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_]{1,64}$")]  # Read, mcp__x__y
+    tool: Annotated[str, AfterValidator(_known_tool)]
     input: Summary
     ts: AwareDatetime
 

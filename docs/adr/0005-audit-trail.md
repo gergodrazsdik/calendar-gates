@@ -70,6 +70,9 @@ output can't simply be trusted either.
   history. That is the price of a log that answers "what did the reviewer look at" with more than
   hashes. Only collaborators can open PRs here, and there is no budget per PR across runs; a
   public repository taking outside PRs should add one, or keep titles in a prunable store.
+- Model names must start with `claude-` and tool names outside Claude Code's built-in set are
+  logged as `other`: both are text the run chose. A run with another model writes no record (the
+  review itself is unaffected); widen the pattern when that becomes real.
 - A record whose job was cancelled or never finished is written as `tamper_suspected` too: the
   name means "couldn't be confirmed", not proof of an attack, and its `problems` say which.
 - The collector compares the record with the job's conclusion from the Actions jobs API (the
