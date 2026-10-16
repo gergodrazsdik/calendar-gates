@@ -60,6 +60,10 @@ is required too (see below).
   applicable" only updates an existing one). PRs without the API key (forks, Dependabot) skip with a
   notice; set the repo variable `LLM_GATE_MISSING_KEY=fail` to make blocking checks fail closed
   instead (gate drill 9). Adding or removing a label re-runs only these checks, from the cache.
+- **api-contract** runs when a PR touches `Endpoints/`, `Domain/`, `Program.cs` or `http/`. The JSON
+  contract isn't only in `Endpoints/`: `IsoWeekInfo` (in `Domain/`) is returned as-is by `/api/week`, and
+  `Program.cs` holds the `/api` group and OpenAPI. Found by the evals (`ac-001`, drill 3), where the
+  narrower filter made the check "not applicable".
 - **llm-compare** (`llm-compare.yml`, not a gate): the `llm-compare` label or a manual run with a PR
   number reviews one check with both engines and posts the comparison table.
 - **Who can trigger LLM reviews**: only collaborators can open PRs (`pull_request_creation_policy`),
