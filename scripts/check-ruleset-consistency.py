@@ -20,7 +20,7 @@ from typing import Any
 import yaml
 
 GITHUB_ACTIONS_APP_ID = 15368
-WORKFLOWS = ("ci.yml", "llm-review.yml")
+WORKFLOWS = ("ci.yml", "llm-review.yml", "llm-eval.yml")
 MATRIX_CHECK = "${{ matrix.check }}"
 
 

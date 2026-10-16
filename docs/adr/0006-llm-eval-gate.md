@@ -48,4 +48,6 @@ missed bugs or annoyed authors later.
   kind of bug. Confirmed false positives (Phase 16) and new drill bugs should become cases.
 - `eval_run` records go into the run's `.llm-gate/audit.jsonl` and the report artifact. They don't
   reach the `audit-log` branch yet: the collector only collects `llm-review` runs.
-- `llm-eval` becomes a required check (ruleset and consistency script) once it is stable.
+- `llm-eval` is a required check since 2026-10-16 (`main.json`, checked by
+  `scripts/check-ruleset-consistency.py`), after it ran green on #37, #38 and `main` and red only
+  for drill 14 (recall 1.00 → 0.17).

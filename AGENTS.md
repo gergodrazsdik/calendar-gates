@@ -66,8 +66,8 @@ Details, fixes and overrides: `docs/gates.md`.
    `audit-log` branch ([ADR 0005](docs/adr/0005-audit-trail.md); `just audit-pull`).
 8. `llm-eval`: on PRs that change the review prompts or `tools/llm-gate/`, scores **the PR's** prompts on
    `tools/llm-gate/evals/cases` against `evals/baseline.json` ([ADR 0006](docs/adr/0006-llm-eval-gate.md)).
-   Locally: `just eval` (spends API credits, about $2), `just eval-baseline` to update the baseline in a PR.
-   Not required yet.
+   Locally: `just eval` (spends API credits; a PR pays only for the checks it changes),
+   `just eval-baseline` to update the baseline in a PR. Required, on its own (not part of `gates`).
 9. `k8s-smoke`: Helm install on a throwaway kind cluster + ijhttp. Locally on kind-local:
    `just k8s-load k8s-deploy k8s-http` (port-forward, [ADR 0003](docs/adr/0003-kind-access.md)).
 10. `gates`: aggregator over the `ci.yml` gates.
