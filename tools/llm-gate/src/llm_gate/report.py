@@ -3,7 +3,7 @@
 from collections.abc import Iterable
 from typing import Any
 
-from .models import Finding, Severity
+from .models import Finding, Severity, finding_id
 from .policy import Verdict
 from .runner import RunRecord
 
@@ -83,16 +83,17 @@ def render_markdown(record: RunRecord) -> str:
 
     blocking = {(f.file, f.line, f.title) for f in record.blocking}
     findings = sorted(review.findings, key=lambda f: -f.severity.rank)
-    lines += ["", "| Severity | Location | Finding |", "|---|---|---|"]
+    # The ids are stable across runs, so people can refer to a finding (feedback, overrides).
+    lines += ["", "| Severity | ID | Location | Finding |", "|---|---|---|---|"]
     for f in findings:
         flag = " **(blocking)**" if (f.file, f.line, f.title) in blocking else ""
         lines.append(
-            f"| {SEVERITY_ICONS[f.severity]} {f.severity}{flag} | `{_cell(_location(f))}` "
-            f"| {_cell(f.title)} |"
+            f"| {SEVERITY_ICONS[f.severity]} {f.severity}{flag} | `{finding_id(record.check, f)}` "
+            f"| `{_cell(_location(f))}` | {_cell(f.title)} |"
         )
     lines += ["", "<details><summary>Details</summary>", ""]
     for number, f in enumerate(findings, start=1):
-        meta = f"`{_location(f)}` · {f.severity} · {f.category}"
+        meta = f"`{finding_id(record.check, f)}` · `{_location(f)}` · {f.severity} · {f.category}"
         lines += [f"#### {number}. {f.title}", "", meta]
         lines += ["", f.detail]
         if f.suggestion:

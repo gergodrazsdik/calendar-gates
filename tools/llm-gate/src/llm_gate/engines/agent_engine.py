@@ -4,24 +4,34 @@ review with read-only tools, so the agent can look at callers and tests beyond t
 The prompt text comes from the gate's own checkout (ADR 0004). Nothing is loaded from the
 repository under review: no CLAUDE.md, rules, commands, skills, hooks, settings or MCP servers, so
 its files are data the agent may read, never instructions it receives.
+
+Every tool call is logged through an SDK `PreToolUse` callback hook (an in-process callback, not a
+settings hook, so `disableAllHooks` doesn't switch it off) into the result's `tool_calls`.
 """
 
 import asyncio
 import json
 import time
 from collections.abc import AsyncIterator, Callable
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from claude_agent_sdk import (
     ClaudeAgentOptions,
     ClaudeSDKError,
+    HookContext,
+    HookInput,
+    HookJSONOutput,
+    HookMatcher,
     ResultError,
     ResultMessage,
     query,
 )
 from pydantic import ValidationError
 
-from ..models import EngineResult, Review, Usage
+from ..audit import summarise_tool_input
+from ..models import EngineResult, Review, ToolCall, Usage
 from ..prompts import DIFF_REFERENCE, diff_block, render
 from . import EngineError, ReviewRequest
 
@@ -29,10 +39,31 @@ READ_ONLY_TOOLS = ["Read", "Grep", "Glob"]
 # `tools` already limits the session to READ_ONLY_TOOLS; the deny list is belt and braces.
 DENIED_TOOLS = ["Bash", "Write", "Edit", "NotebookEdit", "WebFetch", "WebSearch", "Task", "Agent"]
 
+# The SDK returns the structured review through this synthetic tool; its input is the raw model
+# output, which the audit trail deliberately doesn't store (the review itself is the result).
+STRUCTURED_OUTPUT_TOOL = "StructuredOutput"
+
 # Applied with --settings, which outranks every other source: no hooks run, whatever is on disk.
 NO_HOOKS = json.dumps({"disableAllHooks": True})
 
 QueryFn = Callable[..., AsyncIterator[Any]]
+
+
+class ToolCallLog:
+    """Collects the session's tool calls; `hook` is registered as the PreToolUse callback."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.calls: list[ToolCall] = []
+
+    async def hook(
+        self, data: HookInput, tool_use_id: str | None, context: HookContext
+    ) -> HookJSONOutput:
+        if data["hook_event_name"] == "PreToolUse" and data["tool_name"] != STRUCTURED_OUTPUT_TOOL:
+            tool = data["tool_name"]
+            summary = summarise_tool_input(tool, data["tool_input"], self.root)
+            self.calls.append(ToolCall(tool=tool, input=summary, ts=datetime.now(UTC)))
+        return {}  # observe only: the permission decision stays with tools/allowed_tools
 
 
 def agent_prompt(request: ReviewRequest) -> str:
@@ -48,8 +79,9 @@ class AgentEngine:
     def __init__(self, query_fn: QueryFn = query) -> None:
         self._query = query_fn  # tests inject a fake message stream
 
-    def options(self, request: ReviewRequest) -> ClaudeAgentOptions:
+    def options(self, request: ReviewRequest, log: ToolCallLog | None = None) -> ClaudeAgentOptions:
         check = request.check
+        hooks = {"PreToolUse": [HookMatcher(hooks=[log.hook])]} if log else None
         return ClaudeAgentOptions(
             cwd=str(request.repo_root),
             model=check.model,
@@ -64,6 +96,7 @@ class AgentEngine:
             settings=NO_HOOKS,
             # Project MCP servers (.mcp.json) start commands: use none.
             mcp_servers={},
+            hooks=hooks,  # type: ignore[arg-type]  # dict invariance: HookEvent keys
             extra_args={"strict-mcp-config": None},
             max_turns=check.max_turns,
             max_budget_usd=check.budget_usd,
@@ -80,9 +113,10 @@ class AgentEngine:
     async def _review(self, request: ReviewRequest) -> EngineResult:
         started = time.monotonic()
         result: ResultMessage | None = None
+        log = ToolCallLog(request.repo_root)
         try:
             async for message in self._query(
-                prompt=agent_prompt(request), options=self.options(request)
+                prompt=agent_prompt(request), options=self.options(request, log)
             ):
                 if isinstance(message, ResultMessage):
                     result = message
@@ -127,4 +161,5 @@ class AgentEngine:
                 cost_usd=result.total_cost_usd,
                 num_turns=result.num_turns,
             ),
+            tool_calls=log.calls,
         )
