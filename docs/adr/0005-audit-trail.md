@@ -53,6 +53,12 @@ output can't simply be trusted either.
   last removed, before or after adding it (issue events API); `llm-gate run` ignores an override without a reason and records one with it
   as an `override` event.
 
+- **Local AI session log** (14.6, local only): a project hook appends each tool call of a Claude
+  Code session to `~/.local/state/calendar-gates/claude-audit/<session-id>.jsonl`. A commit made
+  from the session gets a `Claude-Session: <session-id>` trailer, added by lefthook's
+  `prepare-commit-msg` when `CLAUDECODE=1`. So for AI-assisted work, a commit leads back to what the
+  session did.
+
 ## Consequences
 
 - An audit question is a `jq` over `just audit-pull`'s checkout, not an archaeology dig through
