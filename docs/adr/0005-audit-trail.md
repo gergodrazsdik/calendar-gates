@@ -49,8 +49,8 @@ output can't simply be trusted either.
   (commits signed by GitHub). A ruleset blocks deletion and force pushes for everyone, so history
   only grows.
 - **Overrides need a reason.** `llm-override` is honoured only with an unedited
-  `/llm-override <reason>` comment by whoever added the label last, written after the label
-  (issue events API); `llm-gate run` ignores an override without a reason and records one with it
+  `/llm-override <reason>` comment by whoever added the label last, written since the label was
+  last removed, before or after adding it (issue events API); `llm-gate run` ignores an override without a reason and records one with it
   as an `override` event.
 
 ## Consequences

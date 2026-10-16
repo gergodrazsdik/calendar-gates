@@ -110,7 +110,8 @@ jobs:
           fi
 
       # The llm-override label counts only with an unedited `/llm-override <reason>` comment by
-      # whoever added it, written after the label (ADR 0005). Without one, the findings still fail.
+      # whoever added it, since the label was last removed (ADR 0005). Without one, the findings
+      # still fail. Comment first, then add the label: the labelled run sees the comment.
       - name: Override reason
         id: override
         if: >-
