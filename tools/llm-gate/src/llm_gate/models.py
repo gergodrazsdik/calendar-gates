@@ -3,8 +3,9 @@
 import hashlib
 import re
 from enum import StrEnum
+from typing import Annotated
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints
 
 from .redact import Summary
 
@@ -71,7 +72,7 @@ class ToolCall(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    tool: str
+    tool: Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_]{1,64}$")]  # Read, mcp__x__y
     input: Summary
     ts: AwareDatetime
 

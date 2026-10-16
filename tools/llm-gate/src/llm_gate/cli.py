@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from . import audit
 from .cache import Cache
 from .compare import render_comparison
@@ -225,26 +227,35 @@ def cmd_run(
     )
     info = audit.gate_info(check, config=gate.config, gate_root=gate.root, gate_sha=gate.sha)
     finished = datetime.now(UTC)
-    entries: list[audit.GateRun | audit.Override] = [
-        audit.gate_run(
-            record,
-            check=check,
-            context=context,
-            gate=info,
-            diff_text=diff.text,
-            started_at=started,
-            finished_at=finished,
-            pr_event_at=_timestamp(os.environ.get("LLM_GATE_PR_EVENT_AT")),
-        )
-        for record in records.values()
-    ]
-    if override is not None:
-        entries.append(
-            audit.Override(
-                **context.model_dump(), by=override.by, reason=override.reason, checks=[check.name]
+    try:
+        entries: list[audit.GateRun | audit.Override] = [
+            audit.gate_run(
+                record,
+                check=check,
+                context=context,
+                gate=info,
+                diff_text=diff.text,
+                started_at=started,
+                finished_at=finished,
+                pr_event_at=_timestamp(os.environ.get("LLM_GATE_PR_EVENT_AT")),
             )
-        )
-    audit.append(out / audit.AUDIT_FILE, entries)
+            for record in records.values()
+        ]
+        if override is not None:
+            entries.append(
+                audit.Override(
+                    **context.model_dump(),
+                    by=override.by,
+                    reason=override.reason,
+                    checks=[check.name],
+                )
+            )
+    except ValidationError as error:
+        # The review is done and decided; a record that can't be built must not change that.
+        # The missing record shows up as a gap in the audit log.
+        log.error("audit record not written: %s", error)
+    else:
+        audit.append(out / audit.AUDIT_FILE, entries)
 
     markdown = render_markdown(records[primary])
     (out / f"{check.name}.md").write_text(markdown, encoding="utf-8")

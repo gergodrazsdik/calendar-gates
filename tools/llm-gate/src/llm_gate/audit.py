@@ -46,6 +46,8 @@ MAX_FILE_BYTES = 1024 * 1024
 MAX_LINE_BYTES = 256 * 1024
 MAX_RECORDS = 20
 MAX_ARTIFACTS = 20  # one per check; checks.yaml has six
+MAX_TOOL_CALLS = 200
+MAX_FINDINGS = 100
 
 # --- schema ---------------------------------------------------------------------------------
 
@@ -143,8 +145,8 @@ class GateRun(_Record):
     finished_at: AwareDatetime
     usage: TokenUsage = Field(default_factory=TokenUsage)
     cost_usd: Annotated[float, Field(ge=0)] | None = None
-    tool_calls: list[ToolCall] = Field(default_factory=list, max_length=200)
-    findings: list[AuditFinding] = Field(default_factory=list, max_length=100)
+    tool_calls: list[ToolCall] = Field(default_factory=list, max_length=MAX_TOOL_CALLS)
+    findings: list[AuditFinding] = Field(default_factory=list, max_length=MAX_FINDINGS)
     verdict: GateVerdict
     exit_code: Annotated[int, Field(ge=0, le=2)]  # the job's exit code; compared with the job
     override_honoured: bool = False
@@ -361,17 +363,21 @@ def gate_run(
         if result
         else TokenUsage(),
         cost_usd=result.usage.cost_usd if result and not record.cached else None,
-        tool_calls=result.tool_calls if result and not record.cached else [],
+        # Clamped to the schema's limits: a finished review must never fail to be recorded
+        # because the model returned line 0 or a long list (the most severe findings are kept).
+        tool_calls=result.tool_calls[:MAX_TOOL_CALLS] if result and not record.cached else [],
         findings=[
             AuditFinding(
                 id=finding_id(record.check, f),
                 severity=f.severity,
                 category=f.category,
                 file=f.file,
-                line=f.line,
+                line=f.line if f.line and f.line > 0 else None,
                 title=f.title,
             )
-            for f in (result.review.findings if result else [])
+            for f in sorted(
+                result.review.findings if result else [], key=lambda f: -f.severity.rank
+            )[:MAX_FINDINGS]
         ],
         verdict=_VERDICTS[verdict],
         exit_code=record.exit_code,
@@ -487,6 +493,12 @@ class Expected:
     run_attempt: int
     head_sha: str
     pr: int
+    server: str = "https://github.com"
+
+    @property
+    def run_url(self) -> str:
+        run = f"{self.workflow_run_id}/attempts/{self.run_attempt}"
+        return f"{self.server}/{self.repo}/actions/runs/{run}"
 
 
 def validate_file(
@@ -535,13 +547,16 @@ def _record_problems(record: AuditRecord, expected: Expected, check: str | None)
     problems: list[str] = []
     if record.type not in ARTIFACT_TYPES:
         problems.append(f"type {record.type!r} may not come from a PR's workflow")
-    for field in ("repo", "workflow_run_id", "run_attempt", "head_sha", "pr"):
+    for field in ("repo", "workflow_run_id", "run_attempt", "head_sha", "pr", "run_url"):
         got, want = getattr(record, field), getattr(expected, field)
         if got != want:
             problems.append(f"{field} is {got!r}, the triggering run has {want!r}")
     if isinstance(record, GateRun):
         if check is not None and record.check != check:
             problems.append(f"check {record.check!r} in the artifact for {check!r}")
+        prompt = f".claude/commands/llm-{record.check}.md"
+        if record.prompt_file != prompt:
+            problems.append(f"prompt_file is {record.prompt_file!r}, not {prompt!r}")
         if record.workflow_modified is not None or record.check_run_conclusion is not None:
             problems.append("sets fields only the collector may set")
         exits = VERDICT_EXITS[record.verdict]

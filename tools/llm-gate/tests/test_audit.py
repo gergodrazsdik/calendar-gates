@@ -25,6 +25,7 @@ def gate_run(**overrides: Any) -> audit.GateRun:
         "base_sha": "b" * 40,
         "workflow_run_id": 100,
         "run_attempt": 1,
+        "run_url": EXPECTED.run_url,
         "check": "code-review",
         "engine": "agent",
         "model": "m",
@@ -197,6 +198,7 @@ def test_a_valid_artifact_is_collected_with_the_collector_fields(tmp_path: Path)
         head_sha="a" * 40,
         workflow_run_id=100,
         run_attempt=1,
+        run_url=EXPECTED.run_url,
         by="me",
         reason="r",
         checks=["code-review"],
@@ -222,6 +224,8 @@ def test_a_valid_artifact_is_collected_with_the_collector_fields(tmp_path: Path)
         (gate_run(pr=8), "pr is 8"),
         (gate_run(repo="evil/repo"), "repo is 'evil/repo'"),
         (gate_run(run_attempt=2), "run_attempt"),
+        (gate_run(run_url="https://evil.example/run"), "run_url"),
+        (gate_run(prompt_file=".claude/commands/llm-softer.md"), "prompt_file"),
         (gate_run(check="docs-drift"), "check 'docs-drift' in the artifact for 'code-review'"),
         (gate_run(workflow_modified=False), "only the collector"),
         (gate_run(exit_code=0, verdict="pass"), "concluded failure, but the record says pass"),
@@ -517,6 +521,7 @@ def override_record(**overrides: Any) -> audit.Override:
         "head_sha": "a" * 40,
         "workflow_run_id": 100,
         "run_attempt": 1,
+        "run_url": EXPECTED.run_url,
         "by": "alice",
         "reason": "hotfix",
         "checks": ["code-review"],
@@ -544,3 +549,37 @@ def test_override_claims_must_match_what_the_collector_found(
 
     assert info.tamper is True
     assert any(problem in p for p in out[0]["problems"]), out[0]["problems"]
+
+
+def test_a_finished_review_is_recorded_within_the_schema_limits(tmp_path: Path) -> None:
+    from conftest import make_check, result
+
+    from llm_gate.runner import RunRecord
+
+    many = [finding(Severity.LOW, line=0)] * 150 + [finding(Severity.CRITICAL, line=-3)]
+    record = RunRecord(
+        check="code-review",
+        mode="blocking",
+        fail_on=Severity.HIGH,
+        engine="api",
+        model="m",
+        verdict="fail",
+        exit_code=1,
+        reason="x",
+        result=result(*many),
+    )
+    info = audit.GateInfo(None, "1" * 64, ".claude/commands/llm-code-review.md", "0" * 64)
+
+    entry = audit.gate_run(
+        record,
+        check=make_check(tmp_path),
+        context=audit.RunContext(),
+        gate=info,
+        diff_text="",
+        started_at=T,
+        finished_at=T,
+    )
+
+    assert len(entry.findings) == audit.MAX_FINDINGS
+    assert entry.findings[0].severity == Severity.CRITICAL  # the most severe are kept
+    assert all(f.line is None for f in entry.findings)
