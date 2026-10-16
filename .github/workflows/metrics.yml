@@ -47,9 +47,11 @@ jobs:
 
       - name: Report
         run: |
+          # The artifact keeps the common parent of its paths (the runner's temp dir and the
+          # workspace), so the reports sit a few levels down: find them.
           eval_reports=()
-          [ -f "$RUNNER_TEMP/eval/reports/eval/last.json" ] \
-            && eval_reports=(--eval-reports "$RUNNER_TEMP/eval/reports/eval")
+          last=$(find "$RUNNER_TEMP/eval" -path '*/reports/eval/last.json' -print -quit 2> /dev/null || true)
+          [ -n "$last" ] && eval_reports=(--eval-reports "$(dirname "$last")")
           uv run --project tools/llm-gate --locked llm-gate metrics --audit-dir .audit-log \
             --prs "$RUNNER_TEMP/prs.json" "${eval_reports[@]}" > "$RUNNER_TEMP/report.md"
           cat "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
