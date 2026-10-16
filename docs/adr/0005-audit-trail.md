@@ -21,18 +21,21 @@ output can't simply be trusted either.
   and config hashes, the diff's hash and size, model, usage and cost, cache hit, the agent's tool
   calls, finding titles with stable ids, verdict, exit code, override. **Not stored**: the diff
   (it's in git), the raw model output (a 90-day workflow artifact), anything else from the
-  environment. Every free-text field (tool-call summaries, finding titles and files, errors,
-  reasons) is redacted with gitleaks-style patterns and truncated by the schema itself
-  (`redact.py`), so it happens when a record is built and again when the collector parses an
-  artifact: the log is public and can't be rewritten. The SDK's `StructuredOutput` call (the raw
+  environment. Every string field is either a strict pattern (SHAs, digests, repository, login,
+  check, model and engine names) or free text that the schema itself redacts with gitleaks-style
+  patterns and truncates (`redact.py`), and lists have caps. That happens when a record is built
+  and again when the collector parses an artifact: the log is public and can't be rewritten. The SDK's `StructuredOutput` call (the raw
   review) isn't logged.
 - **Untrusted side**: `llm-gate run` appends its records to `.llm-gate/audit.jsonl`, the `llm` job
   uploads it as `audit-<run_id>-<check>` with its read-only token. Checks that don't run record
   that too (`llm-gate audit skip`).
 - **Trusted side**: `audit-collect.yml` runs on `workflow_run` (code from the default branch),
   never checks out the PR, downloads the artifacts and runs `llm-gate audit collect`. That parses
-  strictly, enforces size limits, and compares every record with what the event says (run id,
-  attempt, head SHA, PR, repository) and with the job's real conclusion. It sets
+  strictly, enforces size and count limits, accepts only `gate_run` and `override` records for
+  checks in the default branch's `checks.yaml`, and compares every record with what the event says
+  (run id, attempt, head SHA, PR, repository) and with its job: the job must exist and have
+  finished with the conclusion the record's exit code implies, and verdict and exit code must
+  agree. It sets
   `workflow_modified` when the PR changed the review workflow; such reviews never count as
   verified. It looks up the override itself (`find_override` on the PR's issue events and
   comments), and an `override` record or `override_honoured` that doesn't match is a problem.
@@ -41,9 +44,10 @@ output can't simply be trusted either.
   (`events/YYYY/MM/DD/<run_id>-<attempt>-<check>.jsonl`), written through the contents API
   (commits signed by GitHub), serialised by `concurrency: audit-log`. A ruleset blocks deletion and
   force pushes, so history only grows.
-- **Overrides need a reason.** `llm-override` is honoured only with a `/llm-override <reason>`
-  comment by whoever added the label last (issue events API); `llm-gate run` ignores an override
-  without a reason and records one with it as an `override` event.
+- **Overrides need a reason.** `llm-override` is honoured only with an unedited
+  `/llm-override <reason>` comment by whoever added the label last, written after the label
+  (issue events API); `llm-gate run` ignores an override without a reason and records one with it
+  as an `override` event.
 
 ## Consequences
 
@@ -55,5 +59,7 @@ output can't simply be trusted either.
   so its validation has its own tests (gate drill 22 forges an artifact).
 - The file name includes the attempt, which the plan's `<run_id>-<check>` didn't: re-runs would
   otherwise overwrite the first attempt's record.
+- A record whose job was cancelled or never finished is written as `tamper_suspected` too: the
+  name means "couldn't be confirmed", not proof of an attack, and its `problems` say which.
 - The collector compares the record with the job's conclusion from the Actions jobs API (the
   `llm / <check>` job *is* that check run), so it needs `actions: read` and no `checks: read`.

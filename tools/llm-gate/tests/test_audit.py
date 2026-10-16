@@ -60,6 +60,7 @@ def collect(tmp_path: Path, jobs: dict[str, str | None] | None = None, **kwargs:
     collected = audit.collect(
         tmp_path / "artifacts",
         expected=EXPECTED,
+        checks=kwargs.get("checks", {"code-review", "docs-drift"}),
         jobs=jobs if jobs is not None else {"llm / code-review": "failure"},
         workflow_modified=kwargs.get("workflow_modified", False),
         override=kwargs.get("override", NO_OVERRIDE),
@@ -150,12 +151,17 @@ def test_tool_input_summaries_are_relative_short_and_redacted(tmp_path: Path) ->
 # --- overrides ---
 
 
-def labeled(by: str, label: str = "llm-override") -> dict[str, Any]:
-    return {"event": "labeled", "label": {"name": label}, "actor": {"login": by}}
+LABELLED_AT = "2026-10-16T10:00:00Z"
 
 
-def comment(by: str, body: str) -> dict[str, Any]:
-    return {"user": {"login": by}, "body": body}
+def labeled(by: str, label: str = "llm-override", at: str = LABELLED_AT) -> dict[str, Any]:
+    return {"event": "labeled", "label": {"name": label}, "actor": {"login": by}, "created_at": at}
+
+
+def comment(
+    by: str, body: str, at: str = "2026-10-16T10:01:00Z", edited: str | None = None
+) -> dict[str, Any]:
+    return {"user": {"login": by}, "body": body, "created_at": at, "updated_at": edited or at}
 
 
 def test_override_needs_a_reason_from_whoever_added_the_label() -> None:
@@ -165,7 +171,7 @@ def test_override_needs_a_reason_from_whoever_added_the_label() -> None:
     assert found == audit.OverrideRequest(by="alice", reason="hotfix for prod")
 
     no_reason = audit.find_override(events, [comment("alice", "/llm-override   ")])
-    assert isinstance(no_reason, str) and "no `/llm-override <reason>`" in no_reason
+    assert isinstance(no_reason, str) and "`/llm-override <reason>`" in no_reason
 
     someone_else = audit.find_override(events, [comment("mallory", "/llm-override trust me")])
     assert isinstance(someone_else, str)
@@ -300,11 +306,98 @@ def test_artifact_names_and_contents_are_checked(tmp_path: Path) -> None:
     assert "events/2026/10/16/100-1-code-review.jsonl" in paths
 
 
-def test_a_cancelled_job_is_recorded_not_flagged(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("jobs", "problem"),
+    [
+        ({}, "has no job 'llm / code-review'"),
+        ({"llm / code-review": "cancelled"}, "concluded cancelled, so the record can't be checked"),
+        ({"llm / code-review": None}, "concluded None"),
+    ],
+)
+def test_a_record_needs_a_finished_job_to_confirm_it(
+    tmp_path: Path, jobs: dict[str, str | None], problem: str
+) -> None:
     artifact(tmp_path, "audit-100-code-review", audit.dumps(gate_run()))
-    ((info, lines),) = collect(tmp_path, jobs={"llm / code-review": "cancelled"})
-    assert info.tamper is False
-    assert lines[0]["check_run_conclusion"] == "cancelled"
+    ((info, lines),) = collect(tmp_path, jobs=jobs)
+    assert info.tamper is True
+    assert any(problem in p for p in lines[0]["problems"]), lines[0]["problems"]
+
+
+def test_only_checks_from_the_default_branch_are_collected(tmp_path: Path) -> None:
+    artifact(tmp_path, "audit-100-made-up", audit.dumps(gate_run(check="made-up")))
+    ((info, lines),) = collect(tmp_path)
+    assert info.tamper is True
+    assert info.path.endswith("-invalid-0.jsonl")
+    assert "not a check in the default branch" in lines[0]["problems"][0]
+
+
+@pytest.mark.parametrize(
+    ("fields", "problem"),
+    [
+        ({"verdict": "pass", "exit_code": 1}, "verdict pass with exit code 1"),
+        ({"verdict": "fail", "exit_code": 0}, "verdict fail with exit code 0"),
+        ({"verdict": "pass", "exit_code": 0, "override_honoured": True}, "override_honoured"),
+    ],
+)
+def test_verdict_and_exit_code_must_agree(
+    tmp_path: Path, fields: dict[str, Any], problem: str
+) -> None:
+    artifact(tmp_path, "audit-100-code-review", audit.dumps(gate_run(**fields)))
+    conclusion = "success" if fields["exit_code"] == 0 else "failure"
+    ((info, lines),) = collect(tmp_path, jobs={"llm / code-review": conclusion})
+    assert info.tamper is True
+    assert any(problem in p for p in lines[0]["problems"]), lines[0]["problems"]
+
+
+def test_too_many_artifacts_are_one_tamper_event(tmp_path: Path) -> None:
+    for n in range(audit.MAX_ARTIFACTS + 1):
+        artifact(tmp_path, f"audit-100-check-{n}", "{}")
+
+    ((info, lines),) = collect(tmp_path)
+
+    assert info.path == "events/2026/10/16/100-1-too-many.jsonl"
+    assert "over the 20 limit" in lines[0]["problems"][0]
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        {"model": "bad model\nname"},
+        {"engine": "other"},
+        {"prompt_sha256": "not-a-digest"},
+        {"gate_sha": "../../etc"},
+        {"actor": "<script>"},
+        {
+            "findings": [
+                {
+                    "id": "cr-0000",
+                    "severity": "high",
+                    "category": "x",
+                    "file": "f",
+                    "line": 1,
+                    "title": "t",
+                }
+            ]
+            * 101
+        },
+    ],
+)
+def test_strict_types_reject_free_text_where_none_belongs(field: dict[str, Any]) -> None:
+    raw = {**json.loads(audit.dumps(gate_run())), **field}
+    with pytest.raises(ValueError):
+        audit.parse(json.dumps(raw))
+
+
+def test_an_override_comment_must_follow_the_label_and_be_unedited() -> None:
+    events = [labeled("alice")]
+    stale = comment("alice", "/llm-override old reason", at="2026-10-15T09:00:00Z")
+    edited = comment("alice", "/llm-override new", edited="2026-10-16T11:00:00Z")
+
+    assert isinstance(audit.find_override(events, [stale]), str)
+    assert isinstance(audit.find_override(events, [edited]), str)
+    assert audit.find_override(events, [stale, comment("alice", "/llm-override ok")]) == (
+        audit.OverrideRequest(by="alice", reason="ok")
+    )
 
 
 # --- CLI ---
@@ -350,6 +443,8 @@ def test_cli_collect(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None
             *expected_args(),
             "--artifacts",
             str(tmp_path / "artifacts"),
+            "--checks",
+            '["code-review"]',
             "--jobs",
             str(jobs),
             "--out",
@@ -381,7 +476,7 @@ def test_cli_override(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Non
 
     comments.write_text("[]")
     assert main(args) == 1
-    assert "no `/llm-override <reason>`" in capsys.readouterr().err
+    assert "`/llm-override <reason>`" in capsys.readouterr().err
 
 
 def test_cli_reports_unreadable_inputs_as_errors(
@@ -399,7 +494,7 @@ def test_model_written_text_is_scrubbed_on_both_sides() -> None:
     secret = "sk-ant-api03-" + "x" * 40
     f = audit.AuditFinding(
         id="cr-0000",
-        severity="high",
+        severity=Severity.HIGH,
         category="secrets",
         file="appsettings.json",
         line=3,

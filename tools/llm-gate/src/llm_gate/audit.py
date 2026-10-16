@@ -15,16 +15,25 @@ import hashlib
 import json
 import re
 import uuid
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Annotated, Any, Final, Literal
+from typing import Annotated, Any, Final, Literal, cast
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
+from pydantic import (
+    UUID4,
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    TypeAdapter,
+    ValidationError,
+)
 
-from .config import Check
-from .models import ToolCall, finding_id
+from .config import Check, EngineName
+from .models import Severity, ToolCall, finding_id
 from .policy import Verdict
 from .redact import MAX_SUMMARY, Short, Text, clip, redact
 from .runner import RunRecord
@@ -36,6 +45,7 @@ AUDIT_FILE = "audit.jsonl"
 MAX_FILE_BYTES = 1024 * 1024
 MAX_LINE_BYTES = 256 * 1024
 MAX_RECORDS = 20
+MAX_ARTIFACTS = 20  # one per check; checks.yaml has six
 
 # --- schema ---------------------------------------------------------------------------------
 
@@ -44,17 +54,34 @@ class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, validate_by_name=True)
 
 
+# Every string an artifact can carry is either a strict pattern or scrubbed text (redact.py): the
+# PR's workflow writes the artifact, and the log is public and can't be rewritten.
+type Sha = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{40}$")]
+type Digest = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
+type RepoName = Annotated[
+    str, StringConstraints(pattern=r"^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$")
+]
+type Login = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9-]{1,39}(\[bot\])?$")]
+type CheckName = Annotated[str, StringConstraints(pattern=r"^[a-z0-9][a-z0-9-]{0,40}$")]
+type ModelName = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9.:@_-]{0,80}$")]
+type FindingId = Annotated[str, StringConstraints(pattern=r"^[a-z]{1,8}-[0-9a-f]{4}$")]
+type Count = Annotated[int, Field(ge=0)]
+type Conclusion = Literal[
+    "success", "failure", "cancelled", "skipped", "neutral", "timed_out", "action_required", "stale"
+]
+
+
 class RunContext(_Strict):
     """Where a record comes from. All empty for local runs."""
 
-    repo: str | None = None
-    pr: int | None = None
-    head_sha: str | None = None
-    base_sha: str | None = None
-    actor: str | None = None
-    workflow_run_id: int | None = None
-    run_attempt: int | None = None
-    run_url: str | None = None
+    repo: RepoName | None = None
+    pr: Count | None = None
+    head_sha: Sha | None = None
+    base_sha: Sha | None = None
+    actor: Login | None = None
+    workflow_run_id: Count | None = None
+    run_attempt: Count | None = None
+    run_url: Text | None = None
 
 
 def _now() -> datetime:
@@ -63,99 +90,109 @@ def _now() -> datetime:
 
 class _Record(RunContext):
     schema_: Literal["audit/v1"] = Field(default=SCHEMA, alias="schema")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    id: UUID4 = Field(default_factory=uuid.uuid4)
     ts: AwareDatetime = Field(default_factory=_now)
 
 
 class AuditFinding(_Strict):
     """A finding as the log keeps it: the model wrote these strings, so they are scrubbed."""
 
-    id: Short
-    severity: Short
+    id: FindingId
+    severity: Severity
     category: Short
     file: Text
-    line: int | None
+    line: Count | None
     title: Text
 
 
 class TokenUsage(_Strict):
-    input_tokens: int | None = None
-    output_tokens: int | None = None
-    num_turns: int | None = None
+    input_tokens: Count | None = None
+    output_tokens: Count | None = None
+    num_turns: Count | None = None
 
 
 GateVerdict = Literal["pass", "fail", "error", "not_needed", "not_applicable", "skipped_no_key"]
 
+# The exit codes each verdict can come with (policy.py); anything else is a contradiction.
+VERDICT_EXITS: dict[str, frozenset[int]] = {
+    "pass": frozenset({0}),
+    "not_applicable": frozenset({0}),
+    "not_needed": frozenset({0}),
+    "skipped_no_key": frozenset({0}),
+    "error": frozenset({0, 2}),  # 0 for advisory checks and on_error: pass
+    "fail": frozenset({1}),  # 0 only with override_honoured
+}
+
 
 class GateRun(_Record):
     type: Literal["gate_run"] = "gate_run"
-    check: str
-    engine: str
-    model: str
-    prompt_file: str
-    prompt_sha256: str
-    config_sha256: str
-    gate_sha: str | None  # the commit the gate tooling ran from (the PR's base in CI)
-    diff_sha256: str | None
-    diff_bytes: int
-    risk: str | None = None  # Phase 17 (triage)
+    check: CheckName
+    engine: EngineName
+    model: ModelName
+    prompt_file: Text
+    prompt_sha256: Digest
+    config_sha256: Digest
+    gate_sha: Sha | None  # the commit the gate tooling ran from (the PR's base in CI)
+    diff_sha256: Digest | None
+    diff_bytes: Count
+    risk: Short | None = None  # Phase 17 (triage)
     blocking: bool
     cache_hit: bool
     pr_event_at: AwareDatetime | None = None
     started_at: AwareDatetime
     finished_at: AwareDatetime
     usage: TokenUsage = Field(default_factory=TokenUsage)
-    cost_usd: float | None = None
-    tool_calls: list[ToolCall] = Field(default_factory=list)
-    findings: list[AuditFinding] = Field(default_factory=list)
+    cost_usd: Annotated[float, Field(ge=0)] | None = None
+    tool_calls: list[ToolCall] = Field(default_factory=list, max_length=200)
+    findings: list[AuditFinding] = Field(default_factory=list, max_length=100)
     verdict: GateVerdict
-    exit_code: int  # what the check's job exited with; the collector compares it with the job
+    exit_code: Annotated[int, Field(ge=0, le=2)]  # the job's exit code; compared with the job
     override_honoured: bool = False
     error: Text | None = None
     # Only the collector sets these; an artifact that sets them is rejected.
     workflow_modified: bool | None = None
-    check_run_conclusion: str | None = None
+    check_run_conclusion: Conclusion | None = None
 
 
 class Triage(_Record):
     type: Literal["triage"] = "triage"
-    rules_risk: str
-    model_risk: str | None
-    final_risk: str
-    reasons: list[str]
+    rules_risk: Short
+    model_risk: Short | None
+    final_risk: Short
+    reasons: list[Text] = Field(max_length=20)
     ai_assisted: bool
-    checks_plan: list[str]
+    checks_plan: list[CheckName] = Field(max_length=20)
 
 
 class Override(_Record):
     type: Literal["override"] = "override"
-    by: Short | None
+    by: Login | None
     reason: Text
-    checks: list[str]
+    checks: list[CheckName] = Field(min_length=1, max_length=20)
 
 
 class Feedback(_Record):
     type: Literal["feedback"] = "feedback"
-    finding_id: str
+    finding_id: FindingId
     kind: Literal["fp", "ack"]
-    by: Short
+    by: Login
     reason: Text | None = None
 
 
 class RiskOverride(_Record):
     type: Literal["risk_override"] = "risk_override"
-    from_: str = Field(alias="from")
-    to: str
-    by: Short
+    from_: Short = Field(alias="from")
+    to: Short
+    by: Login
     reason: Text
 
 
 class EvalRun(_Record):
     type: Literal["eval_run"] = "eval_run"
-    prompt_sha256: str
-    model: str
-    engine: str
-    scores: dict[str, float]
+    prompt_sha256: Digest
+    model: ModelName
+    engine: EngineName
+    scores: dict[Short, float] = Field(max_length=50)
 
 
 class TamperSuspected(_Record):
@@ -163,7 +200,7 @@ class TamperSuspected(_Record):
 
     type: Literal["tamper_suspected"] = "tamper_suspected"
     artifact: Short
-    problems: list[Text]  # may quote the artifact, so scrubbed like everything else
+    problems: list[Text] = Field(max_length=50)  # may quote the artifact, so scrubbed too
 
 
 AuditRecord = Annotated[
@@ -172,12 +209,12 @@ AuditRecord = Annotated[
 ]
 _ADAPTER: TypeAdapter[AuditRecord] = TypeAdapter(AuditRecord)
 
-# What the untrusted side may write. Feedback, risk overrides, evals and tamper events come from
-# trusted workflows only.
-ARTIFACT_TYPES = frozenset({"gate_run", "override", "triage"})
+# What the untrusted side may write. Triage joins once Phase 17 produces it; feedback, risk
+# overrides, evals and tamper events come from trusted workflows only.
+ARTIFACT_TYPES = frozenset({"gate_run", "override"})
 
 
-def dumps(record: _Record) -> str:
+def dumps(record: BaseModel) -> str:
     return record.model_dump_json(by_alias=True)
 
 
@@ -185,7 +222,7 @@ def parse(line: str) -> AuditRecord:
     return _ADAPTER.validate_json(line)
 
 
-def append(path: Path, records: Iterable[_Record]) -> None:
+def append(path: Path, records: Iterable[BaseModel]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as file:
         for record in records:
@@ -303,7 +340,7 @@ def gate_run(
     return GateRun(
         **context.model_dump(),
         check=record.check,
-        engine=record.engine,
+        engine=cast(EngineName, record.engine),  # an engine's name; pydantic checks it
         model=record.model,
         prompt_file=gate.prompt_file,
         prompt_sha256=gate.prompt_sha256,
@@ -328,7 +365,7 @@ def gate_run(
         findings=[
             AuditFinding(
                 id=finding_id(record.check, f),
-                severity=str(f.severity),
+                severity=f.severity,
                 category=f.category,
                 file=f.file,
                 line=f.line,
@@ -406,15 +443,34 @@ def find_override(
     by = (labelled[-1].get("actor") or {}).get("login")
     if not by:
         return f"cannot tell who added the {label} label"
+    labelled_at = _when(labelled[-1].get("created_at"))
+    if labelled_at is None:
+        return f"cannot tell when the {label} label was added"
     for comment in reversed(comments):
         if (comment.get("user") or {}).get("login") != by:
+            continue
+        created = _when(comment.get("created_at"))
+        # Only a comment written for this labelling counts, and only as written: an edit could
+        # change the reason after the override was honoured.
+        if created is None or created < labelled_at:
+            continue
+        if _when(comment.get("updated_at")) != created:
             continue
         body = str(comment.get("body") or "").strip()
         first, _, _ = body.partition("\n")
         command, _, reason = first.partition(" ")
         if command == OVERRIDE_COMMAND and reason.strip():
             return OverrideRequest(by=by, reason=reason.strip())
-    return f"{by} added {label} but wrote no `{OVERRIDE_COMMAND} <reason>` comment"
+    return (
+        f"{by} added {label} but wrote no unedited `{OVERRIDE_COMMAND} <reason>` comment after it"
+    )
+
+
+def _when(value: object) -> datetime | None:
+    try:
+        return datetime.fromisoformat(str(value)) if value else None
+    except ValueError:
+        return None
 
 
 # --- validating and collecting (trusted side) ---------------------------------------------------
@@ -488,6 +544,12 @@ def _record_problems(record: AuditRecord, expected: Expected, check: str | None)
             problems.append(f"check {record.check!r} in the artifact for {check!r}")
         if record.workflow_modified is not None or record.check_run_conclusion is not None:
             problems.append("sets fields only the collector may set")
+        exits = VERDICT_EXITS[record.verdict]
+        if record.override_honoured:
+            exits = frozenset({0}) if record.verdict == "fail" else frozenset()
+        if record.exit_code not in exits:
+            override = " with override_honoured" if record.override_honoured else ""
+            problems.append(f"verdict {record.verdict}{override} with exit code {record.exit_code}")
     if isinstance(record, Override) and check is not None and check not in record.checks:
         problems.append(f"override for {record.checks} in the artifact for {check!r}")
     return problems
@@ -509,6 +571,7 @@ def collect(
     artifacts: Path,
     *,
     expected: Expected,
+    checks: Collection[str],
     jobs: Mapping[str, str | None],
     workflow_modified: bool,
     override: OverrideRequest | str,
@@ -517,11 +580,20 @@ def collect(
 ) -> list[Collected]:
     """Validate every `audit-<run_id>-<check>` artifact directory under `artifacts` and write one
     file per artifact under `out/events/YYYY/MM/DD/`. `jobs` maps job names of the triggering run
-    to their conclusions (Actions API); `override` is `find_override` on the PR's issue events and
-    comments as the collector fetched them (or why there is none)."""
+    to their conclusions (Actions API); `checks` are the checks in the default branch's
+    checks.yaml; `override` is `find_override` on the PR's issue events and comments as the
+    collector fetched them (or why there is none)."""
     folder = Path("events", f"{day:%Y}", f"{day:%m}", f"{day:%d}")
+    prefix = f"{expected.workflow_run_id}-{expected.run_attempt}"
+    directories = sorted(p for p in artifacts.iterdir() if p.is_dir())
+    if len(directories) > MAX_ARTIFACTS:
+        problem = f"{len(directories)} artifacts, over the {MAX_ARTIFACTS} limit; none collected"
+        target = folder / f"{prefix}-too-many.jsonl"
+        _write(out / target, [_tamper(expected, "(all)", [problem])])
+        return [Collected(target.as_posix(), "(all)", 1, tamper=True)]
+
     collected: list[Collected] = []
-    for index, directory in enumerate(sorted(p for p in artifacts.iterdir() if p.is_dir())):
+    for index, directory in enumerate(directories):
         name = directory.name
         match = _ARTIFACT_NAME.fullmatch(name)
         problems: list[str] = []
@@ -530,6 +602,11 @@ def collect(
             check = f"invalid-{index}"
             want = f"audit-{expected.workflow_run_id}-<check>"
             problems.append(f"artifact name {name[:80]!r} is not {want}")
+        elif match["check"] not in checks:
+            check = f"invalid-{index}"
+            problems.append(
+                f"{match['check']!r} is not a check in the default branch's checks.yaml"
+            )
         else:
             check = match["check"]
             files = sorted(p.name for p in directory.iterdir())
@@ -543,12 +620,18 @@ def collect(
             problems += _override_problems(records, override)
             for record in records:
                 if isinstance(record, GateRun):
-                    conclusion = jobs.get(f"llm / {record.check}")
-                    if conclusion in {"success", "failure"} and conclusion != expected_conclusion(
-                        record
-                    ):
+                    job = f"llm / {record.check}"
+                    conclusion = jobs.get(job)
+                    if job not in jobs:
+                        problems.append(f"the triggering run has no job {job!r}")
+                    elif conclusion not in {"success", "failure"}:
+                        # Only a finished job can confirm the record; anything else is unverified.
                         problems.append(
-                            f"llm / {record.check} concluded {conclusion}, but the record says "
+                            f"{job} concluded {conclusion}, so the record can't be checked"
+                        )
+                    elif conclusion != expected_conclusion(record):
+                        problems.append(
+                            f"{job} concluded {conclusion}, but the record says "
                             f"{record.verdict} (exit {record.exit_code})"
                         )
                     record = record.model_copy(
@@ -559,26 +642,31 @@ def collect(
                     )
                 finished.append(record)
 
-        target = folder / f"{expected.workflow_run_id}-{expected.run_attempt}-{check}.jsonl"
+        target = folder / f"{prefix}-{check}.jsonl"
         if problems:
-            finished = [
-                TamperSuspected(
-                    repo=expected.repo,
-                    pr=expected.pr,
-                    head_sha=expected.head_sha,
-                    workflow_run_id=expected.workflow_run_id,
-                    run_attempt=expected.run_attempt,
-                    artifact=name[:120],
-                    problems=problems[:50],
-                )
-            ]
-        path = out / target
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("".join(dumps(r) + "\n" for r in finished), encoding="utf-8")
+            finished = [_tamper(expected, name, problems)]
+        _write(out / target, finished)
         collected.append(
             Collected(target.as_posix(), name[:120], len(finished), tamper=bool(problems))
         )
     return collected
+
+
+def _tamper(expected: Expected, artifact: str, problems: Sequence[str]) -> TamperSuspected:
+    return TamperSuspected(
+        repo=expected.repo,
+        pr=expected.pr,
+        head_sha=expected.head_sha,
+        workflow_run_id=expected.workflow_run_id,
+        run_attempt=expected.run_attempt,
+        artifact=artifact,
+        problems=list(problems[:50]),
+    )
+
+
+def _write(path: Path, records: Iterable[BaseModel]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(dumps(r) + "\n" for r in records), encoding="utf-8")
 
 
 def _override_problems(records: Sequence[AuditRecord], trusted: OverrideRequest | str) -> list[str]:

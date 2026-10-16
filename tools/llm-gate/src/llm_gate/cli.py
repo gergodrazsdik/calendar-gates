@@ -143,6 +143,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     collect.add_argument("--artifacts", type=Path, required=True, help="one directory each")
     collect.add_argument(
+        "--checks",
+        type=json.loads,
+        required=True,
+        help="the default branch's checks as a JSON array (`llm-gate list --json`)",
+    )
+    collect.add_argument(
         "--jobs", type=Path, required=True, help="job conclusions, one JSON object per line"
     )
     collect.add_argument(
@@ -318,6 +324,7 @@ def _audit(args: argparse.Namespace) -> int:
         collected = audit.collect(
             args.artifacts,
             expected=_expected(args),
+            checks=frozenset(str(name) for name in args.checks),
             jobs=audit.read_jobs(args.jobs),
             workflow_modified=args.workflow_modified,
             override=_find_override(args),
