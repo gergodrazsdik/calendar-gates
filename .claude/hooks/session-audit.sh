@@ -9,6 +9,7 @@
 # failure is swallowed and it exits 0.
 set -uo pipefail
 
+umask 077 # the log can hold commands and paths: only the user can read it
 dir="${XDG_STATE_HOME:-$HOME/.local/state}/calendar-gates/claude-audit"
 input=$(cat) || exit 0
 session=$(jq -r '.session_id // empty' <<< "$input" 2> /dev/null) || exit 0
@@ -24,6 +25,8 @@ jq -c --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg root "${CLAUDE_PROJECT_DIR
     | gsub("github_pat_[A-Za-z0-9_]{22,}"; "[REDACTED]")
     | gsub("(A3T[A-Z0-9]|AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16}"; "[REDACTED]")
     | gsub("-----BEGIN[A-Z ]*PRIVATE KEY-----"; "[REDACTED]")
+    | gsub("bearer\\s+[A-Za-z0-9._~+/=-]{16,}"; "Bearer [REDACTED]"; "i")
+    | gsub("://[^/\\s:@]+:[^/\\s@]+@"; "://[REDACTED]@")
     | gsub("(api[_-]?key|secret|token|passw(or)?d)[\"'"'"']?\\s*[=:]\\s*[\"'"'"']?[^\\s\"'"'"',}]{8,}"; "[REDACTED]"; "i");
   def clip: if length > 200 then .[0:199] + "…" else . end;
   def relative: if $root == "/" then . else split($root) | join("") end;  # project paths, relative
