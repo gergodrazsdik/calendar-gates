@@ -28,7 +28,7 @@ def gate_run(**overrides: Any) -> audit.GateRun:
         "run_url": EXPECTED.run_url,
         "check": "code-review",
         "engine": "agent",
-        "model": "m",
+        "model": "claude-sonnet-5-5",
         "prompt_file": ".claude/commands/llm-code-review.md",
         "prompt_sha256": "0" * 64,
         "config_sha256": "1" * 64,
@@ -257,10 +257,10 @@ def test_a_run_has_a_byte_budget(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("record", "problem"),
     [
-        (gate_run(workflow_run_id=99), "workflow_run_id is 99"),
+        (gate_run(workflow_run_id=99), "workflow_run_id does not match"),
         (gate_run(head_sha="c" * 40), "head_sha"),
-        (gate_run(pr=8), "pr is 8"),
-        (gate_run(repo="evil/repo"), "repo is 'evil/repo'"),
+        (gate_run(pr=8), "pr does not match"),
+        (gate_run(repo="evil/repo"), "repo does not match"),
         (gate_run(run_attempt=2), "run_attempt"),
         (gate_run(run_url="https://evil.example/run"), "run_url"),
         (gate_run(prompt_file=".claude/commands/llm-softer.md"), "prompt_file"),
@@ -468,7 +468,7 @@ def test_cli_validate(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Non
 
     assert main(["audit", "validate", str(good), *expected_args()]) == 0
     assert main(["audit", "validate", str(bad), *expected_args()]) == 1
-    assert "pr is 8" in capsys.readouterr().out
+    assert "pr does not match" in capsys.readouterr().out
 
 
 def test_cli_collect(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -600,7 +600,7 @@ def test_a_finished_review_is_recorded_within_the_schema_limits(tmp_path: Path) 
         mode="blocking",
         fail_on=Severity.HIGH,
         engine="api",
-        model="m",
+        model="claude-test-model",
         verdict="fail",
         exit_code=1,
         reason="x",
@@ -621,3 +621,23 @@ def test_a_finished_review_is_recorded_within_the_schema_limits(tmp_path: Path) 
     assert len(entry.findings) == audit.MAX_FINDINGS
     assert entry.findings[0].severity == Severity.CRITICAL  # the most severe are kept
     assert all(f.line is None for f in entry.findings)
+
+
+def test_tamper_events_never_quote_the_artifact(tmp_path: Path) -> None:
+    text = "SHOUTING ABUSE or personal data"
+    raw = json.loads(audit.dumps(gate_run()))
+    artifact(tmp_path, "audit-100-code-review", json.dumps({**raw, "model": text}))
+    artifact(tmp_path, "audit-100-docs-drift", json.dumps({**raw, text.lower(): 1}))
+    artifact(tmp_path, f"audit-100-{text}", "{}")
+    weird = artifact(tmp_path, "audit-100-docs-drift-x", "{}")
+    (weird / text).write_text("x")
+    artifact(tmp_path, "audit-99-code-review", json.dumps({**raw, "run_url": text}))
+
+    results = collect(tmp_path, checks={"code-review", "docs-drift", "docs-drift-x"})
+
+    assert len(results) == 5
+    for info, lines in results:
+        assert info.tamper is True
+        assert text not in json.dumps(lines)
+        assert text.lower() not in json.dumps(lines)
+        assert text not in info.artifact

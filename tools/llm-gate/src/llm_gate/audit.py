@@ -66,7 +66,7 @@ type RepoName = Annotated[
 ]
 type Login = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9-]{1,39}(\[bot\])?$")]
 type CheckName = Annotated[str, StringConstraints(pattern=r"^[a-z0-9][a-z0-9-]{0,40}$")]
-type ModelName = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9.:@_-]{0,80}$")]
+type ModelName = Annotated[str, StringConstraints(pattern=r"^claude-[a-z0-9.@-]{1,60}$")]
 type FindingId = Annotated[str, StringConstraints(pattern=r"^[a-z]{1,8}-[0-9a-f]{4}$")]
 type Count = Annotated[int, Field(ge=0)]
 type Conclusion = Literal[
@@ -529,7 +529,7 @@ def validate_file(
         try:
             record = parse(raw.decode("utf-8"))
         except (UnicodeDecodeError, ValidationError) as error:
-            problems.append(f"{where}: not a valid {SCHEMA} record: {_short(error)}")
+            problems.append(f"{where}: not a valid {SCHEMA} record: {_describe(error)}")
             continue
         problems += [f"{where}: {p}" for p in _record_problems(record, expected, check)]
         records.append(record)
@@ -539,9 +539,46 @@ def validate_file(
     return records, problems
 
 
-def _short(error: Exception) -> str:
-    text = str(error).replace("\n", " ")
-    return text if len(text) <= 300 else text[:299] + "…"
+# Tamper events never quote the artifact (it could say anything, and the log is permanent): only
+# fixed messages, our own field names and pydantic's error codes.
+_FIELD_NAMES = (
+    frozenset(
+        name
+        for model in (
+            GateRun,
+            Triage,
+            Override,
+            Feedback,
+            RiskOverride,
+            EvalRun,
+            TamperSuspected,
+            AuditFinding,
+            TokenUsage,
+            ToolCall,
+        )
+        for field, info in model.model_fields.items()
+        for name in (field, info.alias)
+        if name
+    )
+    | ARTIFACT_TYPES
+    | {"triage", "feedback", "risk_override", "eval_run", "tamper_suspected"}
+)
+
+
+def _describe(error: UnicodeDecodeError | ValidationError) -> str:
+    if isinstance(error, UnicodeDecodeError):
+        return "not UTF-8"
+    parts: list[str] = []
+    for item in error.errors(include_input=False, include_url=False, include_context=False)[:5]:
+        if item["type"] == "extra_forbidden":
+            parts.append("unexpected field")  # its name is the artifact's text
+            continue
+        loc = ".".join(
+            str(part) if isinstance(part, int) or part in _FIELD_NAMES else "?"
+            for part in item["loc"]
+        )
+        parts.append(f"{loc or 'record'}: {item['type']}")
+    return "; ".join(parts)
 
 
 def _record_problems(record: AuditRecord, expected: Expected, check: str | None) -> list[str]:
@@ -551,13 +588,13 @@ def _record_problems(record: AuditRecord, expected: Expected, check: str | None)
     for field in ("repo", "workflow_run_id", "run_attempt", "head_sha", "pr", "run_url"):
         got, want = getattr(record, field), getattr(expected, field)
         if got != want:
-            problems.append(f"{field} is {got!r}, the triggering run has {want!r}")
+            problems.append(f"{field} does not match the triggering run")
     if isinstance(record, GateRun):
         if check is not None and record.check != check:
             problems.append(f"check {record.check!r} in the artifact for {check!r}")
         prompt = f".claude/commands/llm-{record.check}.md"
         if record.prompt_file != prompt:
-            problems.append(f"prompt_file is {record.prompt_file!r}, not {prompt!r}")
+            problems.append(f"prompt_file is not {prompt}")
         if record.workflow_modified is not None or record.check_run_conclusion is not None:
             problems.append("sets fields only the collector may set")
         exits = VERDICT_EXITS[record.verdict]
@@ -616,12 +653,13 @@ def collect(
     for index, directory in enumerate(directories):
         name = directory.name
         match = _ARTIFACT_NAME.fullmatch(name)
+        safe_name = name if match else "(invalid name)"  # never echo an arbitrary name
         problems: list[str] = []
         records: list[AuditRecord] = []
         if match is None or int(match["run_id"]) != expected.workflow_run_id:
             check = f"invalid-{index}"
             want = f"audit-{expected.workflow_run_id}-<check>"
-            problems.append(f"artifact name {name[:80]!r} is not {want}")
+            problems.append(f"artifact name is not {want}")
         elif match["check"] not in checks:
             check = f"invalid-{index}"
             problems.append(
@@ -631,7 +669,7 @@ def collect(
             check = match["check"]
             files = sorted(p.name for p in directory.iterdir())
             if files != [AUDIT_FILE]:
-                problems.append(f"expected only {AUDIT_FILE}, found {files[:10]}")
+                problems.append(f"expected only {AUDIT_FILE}, found {len(files)} file(s)")
             else:
                 records, problems = validate_file(directory / AUDIT_FILE, expected, check)
 
@@ -664,10 +702,10 @@ def collect(
 
         target = folder / f"{prefix}-{check}.jsonl"
         if problems:
-            finished = [_tamper(expected, name, problems)]
+            finished = [_tamper(expected, safe_name, problems)]
         _write(out / target, finished)
         collected.append(
-            Collected(target.as_posix(), name[:120], len(finished), tamper=bool(problems))
+            Collected(target.as_posix(), safe_name, len(finished), tamper=bool(problems))
         )
     return collected
 

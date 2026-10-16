@@ -222,12 +222,12 @@ def cmd_run(
         write_record(out, record)
         records[name] = record
 
-    context = audit.context_from_env(
-        os.environ, head_sha=_head(root), base_sha=_merge_base(root, base)
-    )
-    info = audit.gate_info(check, config=gate.config, gate_root=gate.root, gate_sha=gate.sha)
     finished = datetime.now(UTC)
     try:
+        context = audit.context_from_env(
+            os.environ, head_sha=_head(root), base_sha=_merge_base(root, base)
+        )
+        info = audit.gate_info(check, config=gate.config, gate_root=gate.root, gate_sha=gate.sha)
         entries: list[audit.GateRun | audit.Override] = [
             audit.gate_run(
                 record,
@@ -287,12 +287,16 @@ def override_request(
 
 
 def cmd_skip(check: Check, *, root: Path, gate: GateCheckout, out: Path, reason: str) -> int:
-    context = audit.context_from_env(os.environ, head_sha=_head(root), base_sha=None)
-    info = audit.gate_info(check, config=gate.config, gate_root=gate.root, gate_sha=gate.sha)
     verdict: audit.GateVerdict = "not_needed" if reason == "not_needed" else "skipped_no_key"
-    entry = audit.skipped_run(
-        check, context=context, gate=info, reason=verdict, at=datetime.now(UTC)
-    )
+    try:
+        context = audit.context_from_env(os.environ, head_sha=_head(root), base_sha=None)
+        info = audit.gate_info(check, config=gate.config, gate_root=gate.root, gate_sha=gate.sha)
+        entry = audit.skipped_run(
+            check, context=context, gate=info, reason=verdict, at=datetime.now(UTC)
+        )
+    except ValidationError as error:
+        log.error("audit record not written: %s", error)  # a gap in the log, not a failed job
+        return 0
     audit.append(out / audit.AUDIT_FILE, [entry])
     return 0
 

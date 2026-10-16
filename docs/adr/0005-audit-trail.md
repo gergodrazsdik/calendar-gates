@@ -41,7 +41,9 @@ output can't simply be trusted either.
   verified, and their free text (finding titles and files, tool-call inputs, errors, override
   reasons) is withheld: only ids, severities, verdicts, hashes and counts reach the log. It looks up the override itself (`find_override` on the PR's issue events and
   comments), and an `override` record or `override_honoured` that doesn't match is a problem.
-  Anything that doesn't check out is written as one `tamper_suspected` event instead.
+  Anything that doesn't check out is written as one `tamper_suspected` event instead. Its
+  problems are fixed messages with field names and pydantic error codes, never values or names
+  from the artifact, so a deliberately invalid artifact can't smuggle text past the withholding.
 - The log is the orphan branch **`audit-log`**: one file per run, check and attempt
   (`events/YYYY/MM/DD/<run_id>-<attempt>-<check>.jsonl`), written through the contents API
   (commits signed by GitHub), serialised by `concurrency: audit-log`. A ruleset blocks deletion and

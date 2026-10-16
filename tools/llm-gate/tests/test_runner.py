@@ -9,7 +9,7 @@ from llm_gate.engines import EngineError
 from llm_gate.models import EngineResult, Severity
 
 CHECKS = """\
-defaults: {model: test-model, max_diff_kb: 1}
+defaults: {model: claude-test-model, max_diff_kb: 1}
 checks:
   code-review: {mode: blocking, fail_on: high}
   security-review: {mode: blocking, fail_on: medium, engine: agent}
@@ -415,3 +415,17 @@ def test_audit_skip_records_a_check_that_did_not_run(gate: Repo) -> None:
     assert entry["verdict"] == "skipped_no_key"
     assert entry["engine"] == "agent"
     assert entry["blocking"] is True
+
+
+def test_a_record_that_cannot_be_built_does_not_change_the_verdict(
+    gate: Repo, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setenv("GITHUB_ACTOR", "not a valid login")  # fails the record's schema
+    change(gate)
+    api = FakeEngine("api", result(finding(Severity.HIGH)))
+
+    assert run({"api": api}, "--check", "code-review") == 1
+
+    assert "audit record not written" in caplog.text
+    assert not (gate.root / ".llm-gate" / "audit.jsonl").exists()
+    assert record(gate, "code-review", "api")["verdict"] == "fail"
