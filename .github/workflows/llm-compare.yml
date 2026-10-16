@@ -53,12 +53,13 @@ jobs:
             echo "::error::PR #$PR comes from $head; llm-compare only runs on branches of $REPO"
             exit 1
           fi
-      # ADR 0004: the gate runs from the base (PR event) or the default branch by name (dispatch,
-      # which can be started on any branch, so not github.sha); the PR head is only data.
-      - name: Gate tooling from the base commit or the default branch
+      # ADR 0004: the gate runs from the base branch as it is now (PR event; not base.sha, which
+      # GitHub doesn't move) or the default branch by name (dispatch, which can be started on any
+      # branch, so not github.sha); the PR head is only data.
+      - name: Gate tooling from the base branch or the default branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha || github.event.repository.default_branch }}
+          ref: ${{ github.event.pull_request.base.ref || github.event.repository.default_branch }}
           path: gate
           persist-credentials: false
       - name: The PR head (data and read-only context only)

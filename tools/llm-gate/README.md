@@ -18,7 +18,7 @@ infrastructure error (API failure, refusal, diff too large) on a blocking check 
 
 `--repo <path>` is the repository under review (default: the git repository of the current
 directory); `--config` defaults to its `tools/llm-gate/checks.yaml`, and the prompts come from
-the checkout that holds the config. CI runs the gate from the PR's base commit with
+the checkout that holds the config. CI runs the gate from the base branch's current head with
 `--repo src --config gate/tools/llm-gate/checks.yaml` (ADR 0004).
 
 From the repository root: `just llm <check> [engine]` (key from `pass`), `just llm-compare <check>`,

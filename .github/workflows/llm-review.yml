@@ -3,7 +3,9 @@
 # Separate from ci.yml so that adding or removing a label re-runs only these checks.
 #
 # ADR 0004: the gate (tools/llm-gate, checks.yaml, the prompts, the comment script) runs from the
-# PR's **base commit**, checked out into gate/. The PR head is checked out into src/ and is only
+# **base branch as it is now**, checked out into gate/. Not the PR's base.sha: GitHub doesn't move
+# that when the base branch moves on, so a long-open PR would keep an old gate. llm-plan resolves
+# the commit once and every check of the run uses it. The PR head is checked out into src/ and is only
 # data: the diff, and read-only context for the agent engine. A PR can't weaken or instruct the
 # gate that reviews it. Remaining hole: this workflow file itself comes from the PR.
 #
@@ -31,13 +33,17 @@ jobs:
       contents: read
     outputs:
       checks: ${{ steps.list.outputs.checks }}
+      gate_sha: ${{ steps.gate.outputs.sha }}
     steps:
-      - name: Gate tooling from the base commit
+      - name: Gate tooling from the base branch's current head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.event.pull_request.base.ref }}
           path: gate
           persist-credentials: false
+      - name: Pin the gate commit for this run
+        id: gate
+        run: echo "sha=$(git -C gate rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           cache-dependency-glob: gate/tools/llm-gate/uv.lock
@@ -67,10 +73,10 @@ jobs:
       LLM_GATE_PR: ${{ github.event.pull_request.number }}
       LLM_GATE_PR_EVENT_AT: ${{ github.event.pull_request.updated_at }}
     steps:
-      - name: Gate tooling from the base commit
+      - name: Gate tooling, the commit llm-plan pinned
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ needs.llm-plan.outputs.gate_sha }}
           path: gate
           persist-credentials: false
       - name: The PR head (data and read-only context only)
@@ -81,8 +87,10 @@ jobs:
           fetch-depth: 0 # the diff is taken from the merge base with origin/<base>
           persist-credentials: false
       - name: Show what runs and what is reviewed
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          echo "gate: tools/llm-gate and prompts from $(git -C gate rev-parse HEAD) (base)"
+          echo "gate: tools/llm-gate and prompts from $(git -C gate rev-parse HEAD) ($BASE_REF now)"
           echo "src:  reviewed PR head $(git -C src rev-parse HEAD)"
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
