@@ -54,7 +54,7 @@ title) are shown in the sticky comment, so people can refer to a finding.
 |---|---|---|
 | `audit skip --check <c> --reason skipped_no_key\|not_needed` | untrusted | records a check that didn't run |
 | `audit validate <file> --repo-name --run-id --run-attempt --head-sha --pr [--check]` | trusted | strict parse plus the run's identity; exit 1 on any problem |
-| `audit collect --artifacts <dir> --jobs <jsonl> [--workflow-modified] --out <dir> ...` | trusted | one file per artifact under `events/YYYY/MM/DD/`; forged or mismatched artifacts become `tamper_suspected` events |
+| `audit collect --artifacts <dir> --jobs <jsonl> --events <json> --comments <json> [--workflow-modified] --out <dir> ...` | trusted | one file per artifact under `events/YYYY/MM/DD/`; forged or mismatched artifacts (including override claims the issue events and comments don't back) become `tamper_suspected` events |
 | `audit override --events <json> --comments <json>` | either | the `/llm-override <reason>` of whoever added the label, as JSON; exit 1 with the reason it doesn't count |
 
 ## Layout
@@ -68,7 +68,8 @@ title) are shown in the sticky comment, so people can refer to a finding.
 | `cache.py` | results keyed by check, engine, model, prompt and diff (`.llm-gate/cache/`) |
 | `runner.py` | one check with one engine: applicability, size cap, cache, engine, policy, result file |
 | `report.py`, `compare.py` | Markdown (job summary, sticky comment), SARIF, engine comparison |
-| `audit.py` | `audit/v1` records, redaction, validation and collection of untrusted artifacts, override reasons |
+| `audit.py` | `audit/v1` records, validation and collection of untrusted artifacts, override reasons |
+| `redact.py` | secret patterns and length limits that the record schema applies to every free-text field |
 
 Tests use fake engines and stubbed SDKs (`uv run pytest`); `uv run pytest -m live` calls the real
 API once with a cheap model.

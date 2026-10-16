@@ -26,6 +26,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, TypeAdapter, V
 from .config import Check
 from .models import ToolCall, finding_id
 from .policy import Verdict
+from .redact import MAX_SUMMARY, Short, Text, clip, redact
 from .runner import RunRecord
 
 SCHEMA: Final = "audit/v1"
@@ -67,12 +68,14 @@ class _Record(RunContext):
 
 
 class AuditFinding(_Strict):
-    id: str
-    severity: str
-    category: str
-    file: str
+    """A finding as the log keeps it: the model wrote these strings, so they are scrubbed."""
+
+    id: Short
+    severity: Short
+    category: Short
+    file: Text
     line: int | None
-    title: str
+    title: Text
 
 
 class TokenUsage(_Strict):
@@ -108,7 +111,7 @@ class GateRun(_Record):
     verdict: GateVerdict
     exit_code: int  # what the check's job exited with; the collector compares it with the job
     override_honoured: bool = False
-    error: str | None = None
+    error: Text | None = None
     # Only the collector sets these; an artifact that sets them is rejected.
     workflow_modified: bool | None = None
     check_run_conclusion: str | None = None
@@ -126,8 +129,8 @@ class Triage(_Record):
 
 class Override(_Record):
     type: Literal["override"] = "override"
-    by: str | None
-    reason: str
+    by: Short | None
+    reason: Text
     checks: list[str]
 
 
@@ -135,16 +138,16 @@ class Feedback(_Record):
     type: Literal["feedback"] = "feedback"
     finding_id: str
     kind: Literal["fp", "ack"]
-    by: str
-    reason: str | None = None
+    by: Short
+    reason: Text | None = None
 
 
 class RiskOverride(_Record):
     type: Literal["risk_override"] = "risk_override"
     from_: str = Field(alias="from")
     to: str
-    by: str
-    reason: str
+    by: Short
+    reason: Text
 
 
 class EvalRun(_Record):
@@ -159,8 +162,8 @@ class TamperSuspected(_Record):
     """Written by the collector instead of an artifact's records when they don't check out."""
 
     type: Literal["tamper_suspected"] = "tamper_suspected"
-    artifact: str
-    problems: list[str]
+    artifact: Short
+    problems: list[Text]  # may quote the artifact, so scrubbed like everything else
 
 
 AuditRecord = Annotated[
@@ -191,35 +194,12 @@ def append(path: Path, records: Iterable[_Record]) -> None:
 
 # --- redaction --------------------------------------------------------------------------------
 
-# After gitleaks' default rules: the subset that can plausibly turn up in a tool call here.
-SECRET_PATTERNS = tuple(
-    re.compile(pattern)
-    for pattern in (
-        r"sk-ant-[A-Za-z0-9_\-]{20,}",  # Anthropic
-        r"gh[pousr]_[A-Za-z0-9]{36,}",  # GitHub tokens
-        r"github_pat_[A-Za-z0-9_]{22,}",
-        r"(?:A3T[A-Z0-9]|AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16}",  # AWS access key ids
-        r"xox[baprs]-[A-Za-z0-9-]{10,}",  # Slack
-        r"eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}",  # JWT
-        r"-----BEGIN[A-Z ]*PRIVATE KEY-----",
-        r"(?i)(?:api[_-]?key|secret|token|passw(?:or)?d)[\"']?\s*[=:]\s*[\"']?[^\s\"',}]{8,}",
-    )
-)
-REDACTED = "[REDACTED]"
-MAX_SUMMARY = 200
-
 # The input fields worth keeping per tool; anything else is summarised as compact JSON.
 _TOOL_FIELDS = {
     "Read": ("file_path", "offset", "limit"),
     "Grep": ("pattern", "path", "glob"),
     "Glob": ("pattern", "path"),
 }
-
-
-def redact(text: str) -> str:
-    for pattern in SECRET_PATTERNS:
-        text = pattern.sub(REDACTED, text)
-    return text
 
 
 def summarise_tool_input(tool: str, tool_input: Mapping[str, Any], root: Path | None) -> str:
@@ -231,8 +211,7 @@ def summarise_tool_input(tool: str, tool_input: Mapping[str, Any], root: Path | 
     if root is not None:
         # Repository-relative paths, so the record doesn't carry the runner's layout.
         text = text.replace(f"{root}/", "").replace(str(root), ".")
-    text = redact(text)  # before truncating, so a cut can't leave half a secret unmatched
-    return text if len(text) <= MAX_SUMMARY else text[: MAX_SUMMARY - 1] + "…"
+    return clip(redact(text), MAX_SUMMARY)  # redact first: a cut can't hide half a secret
 
 
 # --- building records (untrusted side) ---------------------------------------------------------
@@ -532,12 +511,14 @@ def collect(
     expected: Expected,
     jobs: Mapping[str, str | None],
     workflow_modified: bool,
+    override: OverrideRequest | str,
     out: Path,
     day: date,
 ) -> list[Collected]:
     """Validate every `audit-<run_id>-<check>` artifact directory under `artifacts` and write one
     file per artifact under `out/events/YYYY/MM/DD/`. `jobs` maps job names of the triggering run
-    to their conclusions (Actions API)."""
+    to their conclusions (Actions API); `override` is `find_override` on the PR's issue events and
+    comments as the collector fetched them (or why there is none)."""
     folder = Path("events", f"{day:%Y}", f"{day:%m}", f"{day:%d}")
     collected: list[Collected] = []
     for index, directory in enumerate(sorted(p for p in artifacts.iterdir() if p.is_dir())):
@@ -559,6 +540,7 @@ def collect(
 
         finished: list[AuditRecord] = []
         if not problems:
+            problems += _override_problems(records, override)
             for record in records:
                 if isinstance(record, GateRun):
                     conclusion = jobs.get(f"llm / {record.check}")
@@ -597,6 +579,22 @@ def collect(
             Collected(target.as_posix(), name[:120], len(finished), tamper=bool(problems))
         )
     return collected
+
+
+def _override_problems(records: Sequence[AuditRecord], trusted: OverrideRequest | str) -> list[str]:
+    """Override claims in the artifact must match what the collector found itself."""
+    problems: list[str] = []
+    for record in records:
+        if isinstance(record, Override):
+            if isinstance(trusted, str):
+                problems.append(f"override record, but the collector found none: {trusted}")
+            elif (record.by, record.reason) != (trusted.by, clip(redact(trusted.reason), 500)):
+                problems.append(
+                    f"override by {record.by!r} does not match {trusted.by!r}'s /llm-override"
+                )
+        elif isinstance(record, GateRun) and record.override_honoured and isinstance(trusted, str):
+            problems.append(f"{record.check}: override honoured, but the collector found none")
+    return problems
 
 
 def read_jobs(path: Path) -> dict[str, str | None]:

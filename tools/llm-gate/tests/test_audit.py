@@ -9,6 +9,7 @@ from conftest import finding
 from llm_gate import audit
 from llm_gate.cli import main
 from llm_gate.models import Severity, finding_id
+from llm_gate.redact import MAX_SUMMARY, REDACTED, redact
 
 EXPECTED = audit.Expected(
     repo="owner/repo", workflow_run_id=100, run_attempt=1, head_sha="a" * 40, pr=7
@@ -51,6 +52,9 @@ def artifact(root: Path, name: str, *lines: str) -> Path:
     return directory
 
 
+NO_OVERRIDE = "no llm-override label"
+
+
 def collect(tmp_path: Path, jobs: dict[str, str | None] | None = None, **kwargs: Any) -> list[Any]:
     out = tmp_path / "out"
     collected = audit.collect(
@@ -58,6 +62,7 @@ def collect(tmp_path: Path, jobs: dict[str, str | None] | None = None, **kwargs:
         expected=EXPECTED,
         jobs=jobs if jobs is not None else {"llm / code-review": "failure"},
         workflow_modified=kwargs.get("workflow_modified", False),
+        override=kwargs.get("override", NO_OVERRIDE),
         out=out,
         day=date(2026, 10, 16),
     )
@@ -123,8 +128,8 @@ def test_finding_ids_are_short_stable_and_ignore_punctuation() -> None:
     ],
 )
 def test_secrets_are_redacted(secret: str) -> None:
-    redacted = audit.redact(f"before {secret} after")
-    assert audit.REDACTED in redacted
+    redacted = redact(f"before {secret} after")
+    assert REDACTED in redacted
     assert secret not in redacted
 
 
@@ -135,10 +140,10 @@ def test_tool_input_summaries_are_relative_short_and_redacted(tmp_path: Path) ->
     assert read == "file_path=src/A.cs offset=10"
 
     grep = audit.summarise_tool_input("Grep", {"pattern": "ghp_" + "A" * 36}, tmp_path)
-    assert grep == f"pattern={audit.REDACTED}"
+    assert grep == f"pattern={REDACTED}"
 
     long = audit.summarise_tool_input("Other", {"q": "x" * 1000}, None)
-    assert len(long) == audit.MAX_SUMMARY
+    assert len(long) == MAX_SUMMARY
     assert long.endswith("…")
 
 
@@ -192,7 +197,8 @@ def test_a_valid_artifact_is_collected_with_the_collector_fields(tmp_path: Path)
     )
     artifact(tmp_path, "audit-100-code-review", audit.dumps(gate_run()), audit.dumps(override))
 
-    ((info, lines),) = collect(tmp_path, workflow_modified=True)
+    trusted = audit.OverrideRequest(by="me", reason="r")
+    ((info, lines),) = collect(tmp_path, workflow_modified=True, override=trusted)
 
     assert info.path == "events/2026/10/16/100-1-code-review.jsonl"
     assert info.tamper is False
@@ -334,6 +340,8 @@ def test_cli_collect(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None
     artifact(tmp_path, "audit-100-code-review", audit.dumps(gate_run()))
     jobs = tmp_path / "jobs.jsonl"
     jobs.write_text('{"name": "llm / code-review", "conclusion": "failure"}\n')
+    empty = tmp_path / "empty.json"
+    empty.write_text("[]")
 
     code = main(
         [
@@ -348,6 +356,10 @@ def test_cli_collect(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None
             str(tmp_path / "out"),
             "--date",
             "2026-10-16",
+            "--events",
+            str(empty),
+            "--comments",
+            str(empty),
         ]
     )
 
@@ -381,3 +393,59 @@ def test_cli_reports_unreadable_inputs_as_errors(
 
     assert main(args) == 2
     assert "JSONDecodeError" in caplog.text
+
+
+def test_model_written_text_is_scrubbed_on_both_sides() -> None:
+    secret = "sk-ant-api03-" + "x" * 40
+    f = audit.AuditFinding(
+        id="cr-0000",
+        severity="high",
+        category="secrets",
+        file="appsettings.json",
+        line=3,
+        title=f"Hardcoded key {secret} in appsettings.json",
+    )
+    assert secret not in f.title and REDACTED in f.title
+
+    record = gate_run(findings=[f], error="x" * 10_000)
+    assert len(record.error or "") == 500
+    # An artifact written by anything else is scrubbed when the collector parses it.
+    raw = json.loads(audit.dumps(record))
+    raw["findings"][0]["title"] = f"again {secret}"
+    assert secret not in audit.dumps(audit.parse(json.dumps(raw)))
+
+
+def override_record(**overrides: Any) -> audit.Override:
+    fields: dict[str, Any] = {
+        "repo": "owner/repo",
+        "pr": 7,
+        "head_sha": "a" * 40,
+        "workflow_run_id": 100,
+        "run_attempt": 1,
+        "by": "alice",
+        "reason": "hotfix",
+        "checks": ["code-review"],
+    }
+    fields.update(overrides)
+    return audit.Override(**fields)
+
+
+@pytest.mark.parametrize(
+    ("lines", "trusted", "problem"),
+    [
+        ((override_record(),), NO_OVERRIDE, "the collector found none"),
+        ((override_record(by="mallory"),), "alice", "does not match"),
+        ((override_record(reason="other"),), "alice", "does not match"),
+        ((gate_run(override_honoured=True, exit_code=0),), NO_OVERRIDE, "override honoured"),
+    ],
+)
+def test_override_claims_must_match_what_the_collector_found(
+    tmp_path: Path, lines: tuple[Any, ...], trusted: str, problem: str
+) -> None:
+    artifact(tmp_path, "audit-100-code-review", *(audit.dumps(r) for r in lines))
+    found = audit.OverrideRequest(by="alice", reason="hotfix") if trusted == "alice" else trusted
+
+    ((info, out),) = collect(tmp_path, jobs={}, override=found)
+
+    assert info.tamper is True
+    assert any(problem in p for p in out[0]["problems"]), out[0]["problems"]

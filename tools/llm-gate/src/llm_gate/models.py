@@ -6,6 +6,8 @@ from enum import StrEnum
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
+from .redact import Summary
+
 
 class Severity(StrEnum):
     """Ordered from least to most severe; the prompts define what each level means."""
@@ -70,7 +72,7 @@ class ToolCall(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     tool: str
-    input: str
+    input: Summary
     ts: AwareDatetime
 
 

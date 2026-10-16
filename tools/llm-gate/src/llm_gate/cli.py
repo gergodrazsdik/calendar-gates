@@ -150,6 +150,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     collect.add_argument("--out", type=Path, required=True)
     collect.add_argument("--date", type=date.fromisoformat, help="default: today (UTC)")
+    collect.add_argument(
+        "--events", type=Path, required=True, help="the PR's issue events (JSON array)"
+    )
+    collect.add_argument(
+        "--comments", type=Path, required=True, help="the PR's issue comments (JSON array)"
+    )
 
     override = asub.add_parser("override", help="find the reason for the override label")
     override.add_argument("--events", type=Path, required=True, help="issue events (JSON array)")
@@ -284,6 +290,13 @@ def _expected(args: argparse.Namespace) -> audit.Expected:
     )
 
 
+def _find_override(args: argparse.Namespace) -> audit.OverrideRequest | str:
+    return audit.find_override(
+        json.loads(args.events.read_text(encoding="utf-8")),
+        json.loads(args.comments.read_text(encoding="utf-8")),
+    )
+
+
 def cmd_audit(args: argparse.Namespace) -> int:
     """The audit subcommands that need no repository (the trusted collector's side)."""
     try:
@@ -307,15 +320,13 @@ def _audit(args: argparse.Namespace) -> int:
             expected=_expected(args),
             jobs=audit.read_jobs(args.jobs),
             workflow_modified=args.workflow_modified,
+            override=_find_override(args),
             out=args.out,
             day=args.date or datetime.now(UTC).date(),
         )
         print(json.dumps([vars(c) for c in collected]))
         return 0
-    found = audit.find_override(
-        json.loads(args.events.read_text(encoding="utf-8")),
-        json.loads(args.comments.read_text(encoding="utf-8")),
-    )
+    found = _find_override(args)
     if isinstance(found, str):
         print(found, file=sys.stderr)
         return 1

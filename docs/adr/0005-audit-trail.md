@@ -21,8 +21,11 @@ output can't simply be trusted either.
   and config hashes, the diff's hash and size, model, usage and cost, cache hit, the agent's tool
   calls, finding titles with stable ids, verdict, exit code, override. **Not stored**: the diff
   (it's in git), the raw model output (a 90-day workflow artifact), anything else from the
-  environment. Tool-call inputs are summarised, truncated to 200 characters and redacted with
-  gitleaks-style patterns; the SDK's `StructuredOutput` call (the raw review) isn't logged.
+  environment. Every free-text field (tool-call summaries, finding titles and files, errors,
+  reasons) is redacted with gitleaks-style patterns and truncated by the schema itself
+  (`redact.py`), so it happens when a record is built and again when the collector parses an
+  artifact: the log is public and can't be rewritten. The SDK's `StructuredOutput` call (the raw
+  review) isn't logged.
 - **Untrusted side**: `llm-gate run` appends its records to `.llm-gate/audit.jsonl`, the `llm` job
   uploads it as `audit-<run_id>-<check>` with its read-only token. Checks that don't run record
   that too (`llm-gate audit skip`).
@@ -31,7 +34,9 @@ output can't simply be trusted either.
   strictly, enforces size limits, and compares every record with what the event says (run id,
   attempt, head SHA, PR, repository) and with the job's real conclusion. It sets
   `workflow_modified` when the PR changed the review workflow; such reviews never count as
-  verified. Anything that doesn't check out is written as one `tamper_suspected` event instead.
+  verified. It looks up the override itself (`find_override` on the PR's issue events and
+  comments), and an `override` record or `override_honoured` that doesn't match is a problem.
+  Anything that doesn't check out is written as one `tamper_suspected` event instead.
 - The log is the orphan branch **`audit-log`**: one file per run, check and attempt
   (`events/YYYY/MM/DD/<run_id>-<attempt>-<check>.jsonl`), written through the contents API
   (commits signed by GitHub), serialised by `concurrency: audit-log`. A ruleset blocks deletion and
