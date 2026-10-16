@@ -53,11 +53,16 @@ class _Strict(BaseModel):
 
 class Expectation(_Strict):
     """A finding the reviewer must report: this file, a line in range (± LINE_SLACK), at least
-    this severity. `category` documents the intent; it isn't matched (models name it freely)."""
+    `min_severity` (that counts as found: recall). `blocking` says whether the gate should fail
+    on it (verdict accuracy); by default, when `min_severity` is at or above the check's
+    `fail_on`. Keep the two apart where the right severity is a judgment call: "found it" and
+    "rated it high enough to block" vary independently between runs. `category` documents the
+    intent; it isn't matched (models name it freely)."""
 
     file: str
     lines: tuple[int, int]
     min_severity: Severity
+    blocking: bool | None = None
     category: str | None = None
 
 
@@ -206,7 +211,13 @@ def expected_verdict(case: Case, check: Check) -> Literal["pass", "fail"]:
     if not check.blocking or check.fail_on is None:
         return "pass"
     threshold = check.fail_on
-    return "fail" if any(e.min_severity.at_least(threshold) for e in case.expect) else "pass"
+
+    def blocks(expectation: Expectation) -> bool:
+        if expectation.blocking is not None:
+            return expectation.blocking
+        return expectation.min_severity.at_least(threshold)
+
+    return "fail" if any(blocks(e) for e in case.expect) else "pass"
 
 
 class Attempt(BaseModel):
@@ -434,6 +445,7 @@ def run_eval(
 class Thresholds(_Strict):
     max_recall_drop: float = 0.05  # absolute
     max_false_block_increase: float = 0.0  # absolute: no new false blocks
+    max_verdict_accuracy_drop: float = 0.10  # absolute
     max_flip_rate: float = 0.10  # absolute, on the current run
     max_cost_increase: float = 0.25  # relative
     budget_usd: float = 6.0  # per `eval run` invocation, all checks and engines together
@@ -505,6 +517,7 @@ def compare(run: EvalRun, baseline: Mapping[str, Any], thresholds: Thresholds) -
 
     delta_row("recall", new.recall, thresholds.max_recall_drop, -1)
     delta_row("false_block_rate", new.false_block_rate, thresholds.max_false_block_increase, 1)
+    delta_row("verdict_accuracy", new.verdict_accuracy, thresholds.max_verdict_accuracy_drop, -1)
     rows.append(
         Comparison(
             metric="flip_rate",

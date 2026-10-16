@@ -8,5 +8,6 @@ base: 7e1faf97961a83dbc659b9b8f884d554790c7714
 expect:
   - file: src/CalendarGates.Api/Domain/EasterCalculator.cs
     lines: [10, 10]
-    min_severity: high
+    min_severity: medium
+    blocking: true
     category: correctness

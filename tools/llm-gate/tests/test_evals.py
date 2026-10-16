@@ -446,3 +446,16 @@ def test_cached_reviews_keep_their_cost_but_cost_nothing_now(eval_repo: Repo) ->
     (report,) = last_runs(eval_repo)
     assert report["metrics"]["cost_usd"] == pytest.approx(0.02)  # comparable with the baseline
     assert report["metrics"]["spent_usd"] == 0.0
+
+
+def test_found_and_blocking_are_scored_separately(eval_repo: Repo) -> None:
+    # Found at medium (recall), but the gate should still fail on it (verdict).
+    expect = [{"file": "src/A.cs", "lines": [1, 1], "min_severity": "medium", "blocking": True}]
+    add_case(eval_repo, "bug-1", expect=expect)
+
+    run(eval_repo, reviewer(severity=Severity.MEDIUM), "--repeats", "1")
+
+    (report,) = last_runs(eval_repo)
+    assert report["metrics"]["recall"] == 1.0
+    assert report["metrics"]["verdict_accuracy"] == 0.0
+    assert report["results"][0]["expected_verdict"] == "fail"

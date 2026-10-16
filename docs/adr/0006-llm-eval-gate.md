@@ -36,6 +36,12 @@ missed bugs or annoyed authors later.
 - The PR's code runs with the API key. Only collaborators can open PRs here and fork PRs get no
   secrets; the key's exposure is the same as for v1's llm-review. A team repository would add
   CODEOWNERS review for `tools/llm-gate/`.
+- Scores vary between runs even with unchanged prompts: a model can agree with itself on every
+  repeat of one session and disagree in the next. With few expected findings per check, one case
+  moves recall by about 0.17, more than the 0.05 the gate allows. So cases whose right severity
+  is debatable expect "found at medium" plus `blocking: true`, and verdict accuracy carries the
+  severity question with its own threshold (a drop of at most 0.10). More cases make every
+  threshold less sensitive to one case.
 - The cases are only as good as their coverage: a reviewer can score well here and miss a new
   kind of bug. Confirmed false positives (Phase 16) and new drill bugs should become cases.
 - `eval_run` records go into the run's `.llm-gate/audit.jsonl` and the report artifact. They don't

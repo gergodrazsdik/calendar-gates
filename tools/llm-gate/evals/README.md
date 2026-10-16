@@ -24,14 +24,22 @@ base: 7e1faf97961a83dbc659b9b8f884d554790c7714   # diff.patch applies to this co
 expect:
   - file: src/CalendarGates.Api/Domain/WorkdaysCalculator.cs
     lines: [15, 15]                # new-file lines; a finding may be up to 3 lines off
-    min_severity: high
+    min_severity: high             # at least this severity counts as found (recall)
+    blocking: true                 # optional: the gate should fail on it (verdict accuracy);
+                                   # default: min_severity is at or above the check's fail_on
     category: correctness          # documents the intent; not matched
 forbid: []                         # fp-regression: findings that must not come back
 ```
 
 Each case is reviewed in a temporary export of `base` with the patch applied, so the agent engine
 reads a consistent tree. The repository isn't touched. The gate's verdict for the case is expected
-to be `fail` when an expected finding is at or above the check's `fail_on`, and `pass` otherwise.
+to be `fail` when an expected finding is blocking, and `pass` otherwise.
+
+Keep "found" and "blocking" apart when the right severity is a judgment call. The first CI run of
+`cr-002` (a wrong Easter date in about 1 year in 30) rated it medium in every repeat, where the
+local baseline rated it high in every repeat. As `min_severity: high` that one case alone moved
+recall by 0.17 and failed the gate on an unchanged prompt. As `min_severity: medium, blocking: true`
+the drift shows up in verdict accuracy, which allows a drop of 0.10.
 
 - **bug**: planted from the v1 gate drills, or written for the evals.
 - **clean**: a merged PR (`git show <sha>`); any blocking finding is a false block.
