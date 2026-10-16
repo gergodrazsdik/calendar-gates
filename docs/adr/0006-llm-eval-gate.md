@@ -31,8 +31,10 @@ missed bugs or annoyed authors later.
 
 ## Consequences
 
-- A PR that changes the gate pays about $2 for its eval (each check's configured engine, 3
-  repeats); a rerun of an unchanged PR is free (cache).
+- A PR that changes the gate pays only for the checks whose prompt or code it changes: `llm-eval`
+  also runs on pushes to `main` that touch the gate, and the cache it saves there is the one every
+  PR restores (GitHub lets a PR read only its own branch's caches and `main`'s). Without it, each
+  such PR re-reviewed every case cold, about $1.30. A rerun of an unchanged PR is free.
 - The PR's code runs with the API key. Only collaborators can open PRs here and fork PRs get no
   secrets; the key's exposure is the same as for v1's llm-review. A team repository would add
   CODEOWNERS review for `tools/llm-gate/`.

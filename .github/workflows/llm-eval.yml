@@ -6,18 +6,26 @@
 # the base branch's script with the write token and none of the PR's code. Fork PRs get no secrets.
 #
 # Runs on every PR (no `paths:` filter) so it can become a required check; unrelated PRs pass as
-# "not applicable" in seconds.
+# "not applicable" in seconds. It also runs on pushes to main that touch the gate: a PR can restore
+# caches only from its own branch or from main, so main's run keeps a cache every PR starts from,
+# and a PR pays only for the checks it changes.
 name: llm-eval
 
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - ".claude/commands/llm-*"
+      - "tools/llm-gate/**"
+      - ".github/workflows/llm-eval.yml"
 
 permissions: {}
 
 concurrency:
-  group: llm-eval-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: llm-eval-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }} # every main run saves a cache
 
 jobs:
   llm-eval:
@@ -26,6 +34,9 @@ jobs:
     timeout-minutes: 40
     permissions:
       contents: read
+    env:
+      # prN on a PR, main on a push
+      CACHE_SCOPE: ${{ github.event_name == 'push' && 'main' || format('pr{0}', github.event.pull_request.number) }}
     outputs:
       relevant: ${{ steps.relevant.outputs.relevant }}
     steps:
@@ -70,10 +81,11 @@ jobs:
         if: steps.key.outputs.run == 'true'
         with:
           path: .llm-gate/cache
-          key: llm-eval-pr${{ github.event.pull_request.number }}-${{ github.sha }}
+          # The run's own scope first (a PR's reruns), then main's warm cache.
+          key: llm-eval-${{ env.CACHE_SCOPE }}-${{ github.sha }}
           restore-keys: |
-            llm-eval-pr${{ github.event.pull_request.number }}-
-            llm-eval-
+            llm-eval-${{ env.CACHE_SCOPE }}-
+            llm-eval-main-
 
       - name: Eval
         id: eval
@@ -106,7 +118,7 @@ jobs:
         if: steps.eval.outcome == 'success'
         with:
           path: .llm-gate/cache
-          key: llm-eval-pr${{ github.event.pull_request.number }}-${{ github.sha }}
+          key: llm-eval-${{ env.CACHE_SCOPE }}-${{ github.sha }}
 
       - name: Upload the report
         if: steps.eval.outcome == 'success'
@@ -135,7 +147,7 @@ jobs:
   comment:
     name: llm-eval comment
     needs: llm-eval
-    if: always() && needs.llm-eval.outputs.relevant == 'true'
+    if: always() && github.event_name == 'pull_request' && needs.llm-eval.outputs.relevant == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:

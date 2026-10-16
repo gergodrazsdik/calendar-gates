@@ -72,4 +72,6 @@ uv run --project tools/llm-gate llm-gate eval add-from-fp cr-3f2a
 ```
 
 A full baseline with both engines costs about $4 (about 30 cases × 3 repeats, $0.01–0.04 per review).
-`llm-eval` in CI uses each check's own engine, about $2 per PR that touches the gate.
+`llm-eval` in CI uses each check's own engine. It starts from the cache that its run on `main` keeps
+warm, so a PR pays only for the checks it changes: about $0.70 for a code-review prompt change, $0
+for the rest.
