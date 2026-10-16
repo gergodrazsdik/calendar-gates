@@ -437,14 +437,13 @@ def find_override(
     """The reason for the PR's override label, or why there is none.
 
     `events` are the PR's issue events, `comments` its issue comments (GitHub REST shapes). The
-    override counts only if whoever added the label most recently also wrote a
-    `/llm-override <reason>` comment with a non-empty reason.
+    override counts only if whoever added the label most recently also wrote an unedited
+    `/llm-override <reason>` comment for this round: after the label was last removed (any time,
+    if it never was). Before or after adding it both work, so the comment can come first and the
+    labelled run sees it.
     """
-    labelled = [
-        e
-        for e in events
-        if e.get("event") == "labeled" and (e.get("label") or {}).get("name") == label
-    ]
+    mine = [e for e in events if (e.get("label") or {}).get("name") == label]
+    labelled = [e for e in mine if e.get("event") == "labeled"]
     if not labelled:
         return f"the {label} label was not added through the issue events API"
     by = (labelled[-1].get("actor") or {}).get("login")
@@ -453,13 +452,21 @@ def find_override(
     labelled_at = _when(labelled[-1].get("created_at"))
     if labelled_at is None:
         return f"cannot tell when the {label} label was added"
+    removals = [
+        when
+        for e in mine
+        if e.get("event") == "unlabeled"
+        and (when := _when(e.get("created_at"))) is not None
+        and when <= labelled_at
+    ]
+    round_start = max(removals, default=None)
     for comment in reversed(comments):
         if (comment.get("user") or {}).get("login") != by:
             continue
         created = _when(comment.get("created_at"))
-        # Only a comment written for this labelling counts, and only as written: an edit could
-        # change the reason after the override was honoured.
-        if created is None or created < labelled_at:
+        # Only a comment written for this round counts (a reason from an earlier override doesn't
+        # carry over), and only as written: an edit could change it after it was honoured.
+        if created is None or (round_start is not None and created <= round_start):
             continue
         if _when(comment.get("updated_at")) != created:
             continue
@@ -469,7 +476,8 @@ def find_override(
         if command == OVERRIDE_COMMAND and reason.strip():
             return OverrideRequest(by=by, reason=reason.strip())
     return (
-        f"{by} added {label} but wrote no unedited `{OVERRIDE_COMMAND} <reason>` comment after it"
+        f"{by} added {label} but wrote no unedited `{OVERRIDE_COMMAND} <reason>` comment "
+        "since it was last removed"
     )
 
 

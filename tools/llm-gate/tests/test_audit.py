@@ -431,16 +431,30 @@ def test_strict_types_reject_free_text_where_none_belongs(field: dict[str, Any])
         audit.parse(json.dumps(raw))
 
 
-def test_an_override_comment_must_follow_the_label_and_be_unedited() -> None:
-    events = [labeled("alice")]
-    stale = comment("alice", "/llm-override old reason", at="2026-10-15T09:00:00Z")
+def unlabeled(by: str, at: str) -> dict[str, Any]:
+    return {**labeled(by, at=at), "event": "unlabeled"}
+
+
+def test_an_override_comment_may_come_before_the_label() -> None:
+    before = comment("alice", "/llm-override hotfix", at="2026-10-16T09:59:00Z")
+    assert audit.find_override([labeled("alice")], [before]) == audit.OverrideRequest(
+        by="alice", reason="hotfix"
+    )
+
+
+def test_an_override_comment_from_an_earlier_round_or_edited_does_not_count() -> None:
+    old = comment("alice", "/llm-override old reason", at="2026-10-15T09:00:00Z")
+    events = [
+        labeled("alice", at="2026-10-15T08:00:00Z"),
+        unlabeled("alice", at="2026-10-15T12:00:00Z"),
+        labeled("alice"),
+    ]
     edited = comment("alice", "/llm-override new", edited="2026-10-16T11:00:00Z")
 
-    assert isinstance(audit.find_override(events, [stale]), str)
+    assert isinstance(audit.find_override(events, [old]), str)
     assert isinstance(audit.find_override(events, [edited]), str)
-    assert audit.find_override(events, [stale, comment("alice", "/llm-override ok")]) == (
-        audit.OverrideRequest(by="alice", reason="ok")
-    )
+    new = comment("alice", "/llm-override ok", at="2026-10-15T13:00:00Z")  # after the removal
+    assert audit.find_override(events, [old, new]) == audit.OverrideRequest(by="alice", reason="ok")
 
 
 # --- CLI ---
