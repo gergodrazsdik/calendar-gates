@@ -17,6 +17,7 @@ adding things from later phases.
 | `tools/llm-gate/` | Python (uv) LLM review gate on the Claude SDKs; policy in `checks.yaml` |
 | `.claude/commands/` | Review prompts, shared by interactive Claude Code and the CI LLM gate |
 | `.github/` | Workflows, composite action, rulesets (as JSON), Dependabot |
+| `audit-log` branch | Audit records of the LLM gate, written only by `audit-collect.yml` (ADR 0005) |
 | `docs/` | `PLAN.md`, `gates.md`, `adr/` |
 
 ## Commands
@@ -60,7 +61,9 @@ Details, fixes and overrides: `docs/gates.md`.
    from the PR's base commit, [ADR 0004](docs/adr/0004-gate-tooling-from-base-branch.md)); blocking
    checks fail on severity, advisory ones only comment ([ADR 0002](docs/adr/0002-llm-gate-policy.md)).
    Locally: `just llm <check>` (spends API credits). PR labels: `llm-override` (report blocking
-   findings without failing), `llm-compare` (both engines, comparison comment).
+   findings without failing; needs a `/llm-override <reason>` comment by whoever adds it),
+   `llm-compare` (both engines, comparison comment). Every decision is an audit record on the
+   `audit-log` branch ([ADR 0005](docs/adr/0005-audit-trail.md); `just audit-pull`).
 8. `k8s-smoke`: Helm install on a throwaway kind cluster + ijhttp. Locally on kind-local:
    `just k8s-load k8s-deploy k8s-http` (port-forward, [ADR 0003](docs/adr/0003-kind-access.md)).
 9. `gates`: aggregator over all of the above.

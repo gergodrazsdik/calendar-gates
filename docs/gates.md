@@ -23,7 +23,7 @@ is required too (see below).
 | `http-tests` | `just image http-docker` | An `http/calendar.http` handler assertion fails against the built container | The **http test results** check run names the request; container logs are printed on failure | none |
 | `grype` | `just image scan` | A **high** or **critical** vulnerability in the image | Update the package or base image (Dependabot `docker`/`nuget`) | `ignore:` entry in `.grype.yaml` with a reason and an expiry date, called out in the PR |
 | `k8s-smoke` | `just k8s-load k8s-deploy k8s-http` (kind-local) | The chart does not install on a fresh kind cluster, a pod never becomes ready, or a `.http` test fails through the port-forward | The job summary lists pods, recent events (probe failures, image errors) and pod logs | none |
-| `llm / <check>` (`llm-review.yml`) | `just llm <check>` | A **blocking** check (`code-review`: high, `security-review`: medium) has a finding at or above its threshold, or fails closed on an error | Fix the finding, or argue it in the PR | Label `llm-override` (findings still reported); thresholds in `tools/llm-gate/checks.yaml` |
+| `llm / <check>` (`llm-review.yml`) | `just llm <check>` | A **blocking** check (`code-review`: high, `security-review`: medium) has a finding at or above its threshold, or fails closed on an error | Fix the finding, or argue it in the PR | Label `llm-override` **plus** a `/llm-override <reason>` comment by whoever added it (findings still reported, the override is recorded); thresholds in `tools/llm-gate/checks.yaml` |
 | `gates` | n/a | Any gate it needs did not succeed (failed, cancelled or skipped) | Fix that gate | none |
 
 ## Notes per gate
@@ -75,6 +75,17 @@ is required too (see below).
   Phase 14) and raises their risk (Phase 17); a team repository would also require CODEOWNERS
   review for `tools/llm-gate/`, `.claude/` and `.github/`. Fork code never runs with the key: `pull_request`
   withholds secrets from forks, and `llm-compare` refuses PRs whose branch is not in this repository.
+- **Overrides need a reason** ([ADR 0005](adr/0005-audit-trail.md)): the `llm-override` label is
+  honoured only with an unedited `/llm-override <reason>` comment by whoever added the label last,
+  written after it. Without one, the job warns "override not honoured" and the findings fail as usual.
+- **Audit trail** ([ADR 0005](adr/0005-audit-trail.md)): every `llm / <check>` job uploads its
+  audit record (`audit-<run>-<attempt>-<check>`). `audit-collect.yml` runs on `workflow_run`
+  (default-branch code, never the PR's) and validates the artifacts against the run, its jobs, the
+  PR's label events and the compare API. It writes them to the `audit-log` branch
+  (`events/YYYY/MM/DD/`). Anything forged or unverifiable becomes a `tamper_suspected` event. Runs
+  whose PR changed `llm-review.yml` are kept as unverified, with their free text withheld. The
+  `audit-log` ruleset blocks deletion and force pushes. Locally: `just audit-pull`, then `jq` over
+  `.audit-log/events/`. Raw results (model output) stay a 90-day workflow artifact.
 
 ## Release gates (`release.yml`)
 

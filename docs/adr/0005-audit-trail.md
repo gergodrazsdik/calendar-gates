@@ -27,7 +27,7 @@ output can't simply be trusted either.
   and again when the collector parses an artifact: the log is public and can't be rewritten. The SDK's `StructuredOutput` call (the raw
   review) isn't logged.
 - **Untrusted side**: `llm-gate run` appends its records to `.llm-gate/audit.jsonl`, the `llm` job
-  uploads it as `audit-<run_id>-<check>` with its read-only token. Checks that don't run record
+  uploads it as `audit-<run_id>-<attempt>-<check>` with its read-only token. Checks that don't run record
   that too (`llm-gate audit skip`).
 - **Trusted side**: `audit-collect.yml` runs on `workflow_run` (code from the default branch),
   never checks out the PR, downloads the artifacts and runs `llm-gate audit collect`. That parses
@@ -61,8 +61,9 @@ output can't simply be trusted either.
   a record true; it checks what it can verify independently (the run, the job conclusion, whether
   the workflow was modified) and records the rest as claimed. A collector bug is the weakest link,
   so its validation has its own tests (gate drill 22 forges an artifact).
-- The file name includes the attempt, which the plan's `<run_id>-<check>` didn't: re-runs would
-  otherwise overwrite the first attempt's record.
+- Artifact and file names include the attempt, which the plan's `<run_id>-<check>` didn't: a
+  re-run of failed jobs keeps the first attempt's artifacts in the run, and its records would
+  otherwise overwrite (or be mistaken for) the new attempt's.
 - **Accepted risk: free text in a permanent log.** Even with an unmodified workflow, finding titles
   and tool-call paths can be steered by the PR (prompt injection into the review, oddly named
   files). They are bounded, redacted and only as permanent as the ruleset makes them: removing an

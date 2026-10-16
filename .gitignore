@@ -494,6 +494,7 @@ $RECYCLE.BIN/
 
 # calendar-gates
 .llm-gate/
+.audit-log/
 reports/
 http/*.private.env.json
 CLAUDE.local.md
