@@ -11,5 +11,10 @@
   `llm-` so they don't shadow the built-in `/code-review` and `/security-review`.
 - Subagent `gate-debugger`: give it a failed run (URL or id) and it finds the failing gate and the fix.
 - A PostToolUse hook runs CSharpier on every `.cs` file you edit, so don't format by hand.
+- Another hook (`.claude/hooks/session-audit.sh`) logs every tool call of the session to
+  `~/.local/state/calendar-gates/claude-audit/<session-id>.jsonl` (outside the repository; input
+  summaries redacted and cut short, never tool output). Commits you make get a
+  `Claude-Session: <session-id>` trailer (`scripts/claude-session-trailer.sh`, lefthook
+  `prepare-commit-msg`), which leads from a commit back to that log. Purely local.
 - Use plan mode for changes to workflows, rulesets or `checks.yaml`: they change what is enforced.
 - Personal notes go in `CLAUDE.local.md` (gitignored).

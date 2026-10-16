@@ -18,6 +18,13 @@ pre-commit:
     - name: secrets
       run: gitleaks git --pre-commit --staged --redact
 
+# Commits made from a Claude Code session get a Claude-Session trailer that names the
+# session's local tool-call log (.claude/hooks/session-audit.sh).
+prepare-commit-msg:
+  jobs:
+    - name: claude-session
+      run: scripts/claude-session-trailer.sh {1} {2}
+
 commit-msg:
   jobs:
     - name: conventional-commit
