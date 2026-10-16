@@ -6,13 +6,13 @@ import logging
 import os
 import sys
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from pathlib import Path
 
 from pydantic import ValidationError
 
-from . import audit
+from . import audit, evals
 from .cache import Cache
 from .compare import render_comparison
 from .config import ENGINES, Check, ConfigError, load_config
@@ -23,6 +23,11 @@ from .report import render_markdown, render_sarif
 from .runner import RunRecord, read_records, run_check, write_record
 
 log = logging.getLogger("llm_gate")
+
+
+def _lazy_engines(args: argparse.Namespace) -> dict[str, Engine]:
+    # `eval baseline` and `eval add-from-fp` call no model, so they don't need the SDKs.
+    return default_engines() if args.eval_command == "run" else {}
 
 
 def default_engines() -> dict[str, Engine]:
@@ -169,6 +174,31 @@ def build_parser() -> argparse.ArgumentParser:
     override.add_argument("--events", type=Path, required=True, help="issue events (JSON array)")
     override.add_argument(
         "--comments", type=Path, required=True, help="issue comments (JSON array)"
+    )
+
+    eval_ = sub.add_parser("eval", help="score the review prompts on known cases (evals/)")
+    esub = eval_.add_subparsers(dest="eval_command", required=True)
+    erun = esub.add_parser("run", help="run cases and print the scores")
+    erun.add_argument(
+        "--check", action="append", help="repeatable; default: every check the cases name"
+    )
+    erun.add_argument("--engine", choices=[*ENGINES, "both"], help="default: the check's engine")
+    erun.add_argument("--model", help="override the check's model")
+    erun.add_argument("--repeats", type=int, default=3)
+    erun.add_argument("--jobs", type=int, default=4, help="cases reviewed in parallel")
+    erun.add_argument("--cases", default="*", help="glob over case directory names")
+    erun.add_argument("--budget-usd", type=float, help="default: thresholds.yaml budget_usd")
+    erun.add_argument(
+        "--compare", action="store_true", help="fail (exit 1) when worse than baseline.json"
+    )
+    erun.add_argument("--out", type=Path, help="report directory (default: <repo>/reports/eval)")
+    erun.add_argument("--no-cache", action="store_true")
+    ebase = esub.add_parser("baseline", help="write evals/baseline.json from the last run")
+    ebase.add_argument("--in", dest="in_dir", type=Path, help="default: <repo>/reports/eval")
+    efp = esub.add_parser("add-from-fp", help="turn a false positive into an fp-regression case")
+    efp.add_argument("finding_id")
+    efp.add_argument(
+        "--audit-dir", type=Path, help="audit-log checkout (default: <repo>/.audit-log)"
     )
     return parser
 
@@ -355,6 +385,116 @@ def _audit(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_eval(
+    args: argparse.Namespace,
+    checks: Mapping[str, Check],
+    *,
+    root: Path,
+    config: Path,
+    engines: Mapping[str, Engine],
+) -> int:
+    evals_dir = config.parent / "evals"
+    cases_dir = evals_dir / "cases"
+    reports = (getattr(args, "out", None) or getattr(args, "in_dir", None)) or (
+        root / "reports" / "eval"
+    )
+    if args.eval_command == "baseline":
+        last = evals.read_last(reports)
+        evals.update_baseline(evals_dir / "baseline.json", last)
+        print(evals.render_runs(last), end="")
+        print(f"\nwrote {evals_dir / 'baseline.json'} ({len(last)} run(s))")
+        return 0
+    if args.eval_command == "add-from-fp":
+        directory = evals.case_from_false_positive(
+            args.finding_id,
+            audit_dir=args.audit_dir or root / ".audit-log",
+            repo_root=root,
+            cases_dir=cases_dir,
+        )
+        print(f"wrote {directory}; review it and commit it with the change that fixes the prompt")
+        return 0
+
+    cases = evals.load_cases(cases_dir, args.cases)
+    if not cases:
+        log.error("no cases match %r in %s", args.cases, cases_dir)
+        return EXIT_ERROR
+    names = args.check or sorted({c for loaded in cases for c in loaded.case.checks})
+    unknown = [n for n in names if n not in checks]
+    if unknown:
+        log.error("unknown check(s) %s (known: %s)", ", ".join(unknown), ", ".join(checks))
+        return EXIT_ERROR
+    thresholds = evals.load_thresholds(evals_dir / "thresholds.yaml")
+    budget = args.budget_usd if args.budget_usd is not None else thresholds.budget_usd
+    cache = None if args.no_cache else Cache(root / ".llm-gate" / "cache")
+
+    runs: list[evals.EvalRun] = []
+    for name in names:
+        check = checks[name]
+        if args.model:
+            check = replace(check, model=args.model)
+        engine_names = list(ENGINES) if args.engine == "both" else [args.engine or check.engine]
+        for engine_name in engine_names:
+            runs.append(
+                evals.run_eval(
+                    check,
+                    engines[engine_name],
+                    cases,
+                    repo_root=root,
+                    cache=cache,
+                    repeats=args.repeats,
+                    budget_usd=budget,
+                    spent=lambda: sum(r.metrics.spent_usd for r in runs),
+                    progress=log.info,
+                    jobs=args.jobs,
+                )
+            )
+
+    evals.write_report(reports, runs)
+    _record_eval_runs(runs, root=root)
+    print(evals.render_runs(runs), end="")
+    misses = evals.render_misses(runs)
+    if misses:
+        print("\n<details><summary>Misses, wrong verdicts, flips</summary>\n")
+        print(misses + "\n</details>")
+    failed = False
+    if args.compare:
+        baseline_path = evals_dir / "baseline.json"
+        baseline = (
+            json.loads(baseline_path.read_text(encoding="utf-8")) if baseline_path.exists() else {}
+        )
+        print("\n### Against the baseline\n")
+        for run in runs:
+            rows = evals.compare(run, baseline, thresholds)
+            failed |= not all(row.ok for row in rows)
+            print(evals.render_comparison(run, rows))
+    if not all(run.complete for run in runs):
+        log.error("the budget of $%.2f ran out before every case ran", budget)
+        return EXIT_ERROR
+    return 1 if failed else 0
+
+
+def _record_eval_runs(runs: Sequence[evals.EvalRun], *, root: Path) -> None:
+    try:
+        context = audit.context_from_env(os.environ, head_sha=_head(root), base_sha=None)
+        records = [
+            audit.EvalRun(
+                **context.model_dump(),
+                prompt_sha256=run.prompt_sha256,
+                model=run.model,
+                engine=run.engine,  # type: ignore[arg-type]  # an engine's name; pydantic checks
+                scores={
+                    f"{run.check}.{name}": float(value)
+                    for name, value in run.metrics.model_dump().items()
+                    if isinstance(value, int | float)
+                },
+            )
+            for run in runs
+        ]
+        audit.append(root / ".llm-gate" / audit.AUDIT_FILE, records)
+    except (ValidationError, OSError) as error:
+        log.error("eval audit record not written: %s", error)
+
+
 def cmd_compare(out: Path, check: str) -> int:
     records = {r.engine: r for r in read_records(out, check)}
     if not {"api", "agent"} <= records.keys():
@@ -400,6 +540,10 @@ def main(argv: Sequence[str] | None = None, engines: Mapping[str, Engine] | None
         gate = GateCheckout(root=gate_root, config=config, sha=_head(gate_root))
         if args.command == "list":
             return cmd_list(checks, as_json=args.json, blocking_only=args.blocking)
+        if args.command == "eval":
+            return cmd_eval(
+                args, checks, root=root, config=config, engines=engines or _lazy_engines(args)
+            )
 
         out = getattr(args, "in_dir", None) or getattr(args, "out", None) or root / ".llm-gate"
         if args.command == "compare":
@@ -423,7 +567,7 @@ def main(argv: Sequence[str] | None = None, engines: Mapping[str, Engine] | None
             override=override_request(args.override, args.override_reason, args.override_by),
             engines=engines or default_engines(),
         )
-    except (ConfigError, DiffError) as error:
+    except (ConfigError, DiffError, evals.EvalError) as error:
         log.error("%s", error)
         return EXIT_ERROR
 

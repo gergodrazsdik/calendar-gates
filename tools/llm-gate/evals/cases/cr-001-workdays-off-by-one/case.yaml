@@ -1,0 +1,12 @@
+---
+id: cr-001-workdays-off-by-one
+kind: bug
+checks: [code-review]
+source: drill-5
+description: Workdays drop the inclusive end day (`+ 1` removed).
+base: 7e1faf97961a83dbc659b9b8f884d554790c7714
+expect:
+  - file: src/CalendarGates.Api/Domain/WorkdaysCalculator.cs
+    lines: [15, 15]
+    min_severity: high
+    category: correctness

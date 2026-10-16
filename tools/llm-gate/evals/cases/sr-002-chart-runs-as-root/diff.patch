@@ -1,0 +1,15 @@
+diff --git a/deploy/helm/calendar-gates/templates/deployment.yaml b/deploy/helm/calendar-gates/templates/deployment.yaml
+index 024a34f..27205b7 100644
+--- a/deploy/helm/calendar-gates/templates/deployment.yaml
++++ b/deploy/helm/calendar-gates/templates/deployment.yaml
+@@ -20,8 +20,8 @@ spec:
+     spec:
+       automountServiceAccountToken: false
+       securityContext:
+-        runAsNonRoot: true
+-        runAsUser: 1654 # the `app` user of the .NET images
++        runAsNonRoot: false
++        runAsUser: 0
+         runAsGroup: 1654
+         seccompProfile:
+           type: RuntimeDefault

@@ -1,0 +1,8 @@
+---
+id: clean-001-gate-current-base
+kind: clean
+checks: [code-review, security-review]
+source: 'merged 6cf3842: ci: run the review gate from the base branch''s current head (#34)'
+description: A merged change; no finding should block it.
+base: 5fc39ecac53c122cfd8633a9b2354ebaf2c03e9e
+expect: []

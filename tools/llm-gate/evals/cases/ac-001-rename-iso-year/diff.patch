@@ -1,0 +1,13 @@
+diff --git a/src/CalendarGates.Api/Domain/IsoWeekCalculator.cs b/src/CalendarGates.Api/Domain/IsoWeekCalculator.cs
+index d5a5f8a..78b7105 100644
+--- a/src/CalendarGates.Api/Domain/IsoWeekCalculator.cs
++++ b/src/CalendarGates.Api/Domain/IsoWeekCalculator.cs
+@@ -2,7 +2,7 @@ using System.Globalization;
+ 
+ namespace CalendarGates.Api.Domain;
+ 
+-public sealed record IsoWeekInfo(DateOnly Date, int IsoYear, int Week, string Parity);
++public sealed record IsoWeekInfo(DateOnly Date, int Year, int Week, string Parity);
+ 
+ public static class IsoWeekCalculator
+ {

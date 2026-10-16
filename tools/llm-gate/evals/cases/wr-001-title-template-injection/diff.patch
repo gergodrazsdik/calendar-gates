@@ -1,0 +1,15 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 529729a..c322f4a 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -31,9 +31,7 @@ jobs:
+           sparse-checkout: scripts
+           persist-credentials: false
+       - name: Conventional Commit title (becomes the squash commit)
+-        env:
+-          TITLE: ${{ github.event.pull_request.title }}
+-        run: scripts/check-commit-msg.sh --title "$TITLE"
++        run: scripts/check-commit-msg.sh --title "${{ github.event.pull_request.title }}"
+ 
+   format:
+     name: format

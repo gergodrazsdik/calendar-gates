@@ -1,0 +1,12 @@
+---
+id: cr-003-leap-year-400
+kind: bug
+checks: [code-review]
+source: planted
+description: Leap years ignore the 400 rule, so 2000 is not a leap year.
+base: 7e1faf97961a83dbc659b9b8f884d554790c7714
+expect:
+  - file: src/CalendarGates.Api/Domain/LeapYearCalculator.cs
+    lines: [8, 8]
+    min_severity: high
+    category: correctness

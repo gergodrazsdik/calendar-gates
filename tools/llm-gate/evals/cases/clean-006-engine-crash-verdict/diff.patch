@@ -1,0 +1,114 @@
+diff --git a/.github/workflows/llm-review.yml b/.github/workflows/llm-review.yml
+index 49161da..5cd7c04 100644
+--- a/.github/workflows/llm-review.yml
++++ b/.github/workflows/llm-review.yml
+@@ -103,7 +103,8 @@ jobs:
+           status=$?
+           set -e
+           cat "$RUNNER_TEMP/review.md" >> "$GITHUB_STEP_SUMMARY"
+-          verdict=$(jq -r .verdict .llm-gate/results/"$CHECK".*.json | head -n 1)
++          # No result file means llm-gate itself failed; report that as an error with its exit code.
++          verdict=$(jq -r .verdict .llm-gate/results/"$CHECK".*.json 2> /dev/null | head -n 1 || true)
+           echo "status=$status" >> "$GITHUB_OUTPUT"
+           echo "verdict=${verdict:-error}" >> "$GITHUB_OUTPUT"
+ 
+diff --git a/tools/llm-gate/src/llm_gate/engines/api_engine.py b/tools/llm-gate/src/llm_gate/engines/api_engine.py
+index d30d86a..0d50d6c 100644
+--- a/tools/llm-gate/src/llm_gate/engines/api_engine.py
++++ b/tools/llm-gate/src/llm_gate/engines/api_engine.py
+@@ -40,11 +40,12 @@ class ApiEngine:
+         self._client = client
+ 
+     def review(self, request: ReviewRequest) -> EngineResult:
+-        client = self._client or anthropic.Anthropic()
+         model = request.check.model
+         fallback = model in FALLBACK_MODELS
+         started = time.monotonic()
+         try:
++            # Creating the client already fails without credentials (no ANTHROPIC_API_KEY).
++            client = self._client or anthropic.Anthropic()
+             response = client.beta.messages.parse(
+                 model=model,
+                 max_tokens=MAX_TOKENS,
+@@ -64,6 +65,8 @@ class ApiEngine:
+             raise EngineError(f"Claude API error {error.status_code}: {error.message}") from error
+         except anthropic.APIConnectionError as error:
+             raise EngineError(f"cannot reach the Claude API: {error}") from error
++        except anthropic.AnthropicError as error:  # e.g. no credentials configured
++            raise EngineError(f"Claude API client error: {error}") from error
+         duration_ms = int((time.monotonic() - started) * 1000)
+ 
+         if response.stop_reason == "refusal":
+diff --git a/tools/llm-gate/src/llm_gate/runner.py b/tools/llm-gate/src/llm_gate/runner.py
+index 8a835d9..a8e6a81 100644
+--- a/tools/llm-gate/src/llm_gate/runner.py
++++ b/tools/llm-gate/src/llm_gate/runner.py
+@@ -73,6 +73,13 @@ def run_check(
+                 result = engine.review(request)
+             except EngineError as failure:
+                 error = str(failure)
++            except Exception as failure:  # an engine bug or SDK surprise
++                # Still a verdict, not a crash: the policy decides (blocking fails closed,
++                # advisory stays advisory). The traceback goes to the log for debugging.
++                log.exception("%s: the %s engine raised", check.name, engine.name)
++                error = (
++                    f"unexpected {type(failure).__name__} in the {engine.name} engine: {failure}"
++                )
+             else:
+                 if cache:
+                     cache.put(key, result)
+diff --git a/tools/llm-gate/tests/test_engines.py b/tools/llm-gate/tests/test_engines.py
+index 0eb63fa..227ae39 100644
+--- a/tools/llm-gate/tests/test_engines.py
++++ b/tools/llm-gate/tests/test_engines.py
+@@ -117,6 +117,18 @@ def test_api_engine_wraps_sdk_errors(tmp_path: Path) -> None:
+         ApiEngine(stub_client(StubMessages(error=error))).review(request(tmp_path))
+ 
+ 
++def test_api_engine_without_credentials_is_an_engine_error(
++    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
++) -> None:
++    def no_credentials(*_: Any, **__: Any) -> Any:
++        raise anthropic.AnthropicError("The api_key client option must be set")
++
++    monkeypatch.setattr(anthropic, "Anthropic", no_credentials)
++
++    with pytest.raises(EngineError, match="client error: The api_key"):
++        ApiEngine().review(request(tmp_path))
++
++
+ # --- Agent engine -------------------------------------------------------------------------
+ 
+ 
+diff --git a/tools/llm-gate/tests/test_runner.py b/tools/llm-gate/tests/test_runner.py
+index 8681fbf..58f36ad 100644
+--- a/tools/llm-gate/tests/test_runner.py
++++ b/tools/llm-gate/tests/test_runner.py
+@@ -6,7 +6,7 @@ from conftest import FakeEngine, Repo, finding, git, result
+ 
+ from llm_gate.cli import main
+ from llm_gate.engines import EngineError
+-from llm_gate.models import Severity
++from llm_gate.models import EngineResult, Severity
+ 
+ CHECKS = """\
+ defaults: {model: test-model, max_diff_kb: 1}
+@@ -247,3 +247,18 @@ def test_base_can_come_from_the_environment(gate: Repo, monkeypatch: pytest.Monk
+ 
+     assert main(["run", "--check", "code-review"], engines={"api": api}) == 0
+     assert api.requests == []
++
++
++def test_unexpected_engine_exceptions_become_error_verdicts(gate: Repo) -> None:
++    change(gate)
++
++    def crash(_: object) -> EngineResult:
++        raise TypeError("Could not resolve authentication method")
++
++    api = FakeEngine("api", crash)
++
++    assert run({"api": api}, "--check", "code-review") == 2  # blocking: fails closed
++    assert run({"api": api}, "--check", "docs-drift") == 0  # advisory: never fails
++    stored = record(gate, "docs-drift", "api")
++    assert stored["verdict"] == "error"
++    assert "unexpected TypeError" in str(stored["reason"])

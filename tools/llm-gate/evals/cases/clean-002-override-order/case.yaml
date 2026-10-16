@@ -1,0 +1,8 @@
+---
+id: clean-002-override-order
+kind: clean
+checks: [code-review, security-review]
+source: 'merged 5fc39ec: fix(llm-gate): an override comment may come before the label (#32)'
+description: A merged change; no finding should block it.
+base: 504bbc53e782a0909568a47e6b46b42c7ee9f60c
+expect: []

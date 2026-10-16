@@ -1,0 +1,13 @@
+---
+id: cr-002-easter-century-term
+kind: bug
+checks: [code-review]
+source: drill-2
+description: 'Western Easter''s century term uses (year - 1) / 100: 2000 gives Saturday 22 April.'
+base: 7e1faf97961a83dbc659b9b8f884d554790c7714
+expect:
+  - file: src/CalendarGates.Api/Domain/EasterCalculator.cs
+    lines: [10, 10]
+    min_severity: medium
+    blocking: true
+    category: correctness

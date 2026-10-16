@@ -1,0 +1,8 @@
+---
+id: clean-007-helm-reset-values
+kind: clean
+checks: [code-review, security-review]
+source: 'merged 81e8218: fix(k8s): reset values on every kind-local deploy (#8)'
+description: A merged change; no finding should block it.
+base: 662c7692a630aefa6dc68de41d99ebea3df278ac
+expect: []

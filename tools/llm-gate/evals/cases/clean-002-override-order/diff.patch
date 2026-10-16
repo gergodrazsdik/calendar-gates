@@ -1,0 +1,144 @@
+diff --git a/.github/workflows/llm-review.yml b/.github/workflows/llm-review.yml
+index 9426532..1fa2ed7 100644
+--- a/.github/workflows/llm-review.yml
++++ b/.github/workflows/llm-review.yml
+@@ -110,7 +110,8 @@ jobs:
+           fi
+ 
+       # The llm-override label counts only with an unedited `/llm-override <reason>` comment by
+-      # whoever added it, written after the label (ADR 0005). Without one, the findings still fail.
++      # whoever added it, since the label was last removed (ADR 0005). Without one, the findings
++      # still fail. Comment first, then add the label: the labelled run sees the comment.
+       - name: Override reason
+         id: override
+         if: >-
+diff --git a/docs/adr/0005-audit-trail.md b/docs/adr/0005-audit-trail.md
+index ef6eff2..233fd52 100644
+--- a/docs/adr/0005-audit-trail.md
++++ b/docs/adr/0005-audit-trail.md
+@@ -49,8 +49,8 @@ output can't simply be trusted either.
+   (commits signed by GitHub). A ruleset blocks deletion and force pushes for everyone, so history
+   only grows.
+ - **Overrides need a reason.** `llm-override` is honoured only with an unedited
+-  `/llm-override <reason>` comment by whoever added the label last, written after the label
+-  (issue events API); `llm-gate run` ignores an override without a reason and records one with it
++  `/llm-override <reason>` comment by whoever added the label last, written since the label was
++  last removed, before or after adding it (issue events API); `llm-gate run` ignores an override without a reason and records one with it
+   as an `override` event.
+ 
+ ## Consequences
+diff --git a/docs/gates.md b/docs/gates.md
+index afcb349..e6eb1d3 100644
+--- a/docs/gates.md
++++ b/docs/gates.md
+@@ -77,7 +77,7 @@ is required too (see below).
+   withholds secrets from forks, and `llm-compare` refuses PRs whose branch is not in this repository.
+ - **Overrides need a reason** ([ADR 0005](adr/0005-audit-trail.md)): the `llm-override` label is
+   honoured only with an unedited `/llm-override <reason>` comment by whoever added the label last,
+-  written after it. Without one, the job warns "override not honoured" and the findings fail as usual.
++  written since the label was last removed. Comment first, then add the label. Without one, the job warns "override not honoured" and the findings fail as usual.
+ - **Audit trail** ([ADR 0005](adr/0005-audit-trail.md)): every `llm / <check>` job uploads its
+   audit record (`audit-<run>-<attempt>-<check>`). `audit-collect.yml` runs on `workflow_run`
+   (default-branch code, never the PR's) and validates the artifacts against the run, its jobs, the
+diff --git a/tools/llm-gate/src/llm_gate/audit.py b/tools/llm-gate/src/llm_gate/audit.py
+index fbf9221..1d631d2 100644
+--- a/tools/llm-gate/src/llm_gate/audit.py
++++ b/tools/llm-gate/src/llm_gate/audit.py
+@@ -437,14 +437,13 @@ def find_override(
+     """The reason for the PR's override label, or why there is none.
+ 
+     `events` are the PR's issue events, `comments` its issue comments (GitHub REST shapes). The
+-    override counts only if whoever added the label most recently also wrote a
+-    `/llm-override <reason>` comment with a non-empty reason.
++    override counts only if whoever added the label most recently also wrote an unedited
++    `/llm-override <reason>` comment for this round: after the label was last removed (any time,
++    if it never was). Before or after adding it both work, so the comment can come first and the
++    labelled run sees it.
+     """
+-    labelled = [
+-        e
+-        for e in events
+-        if e.get("event") == "labeled" and (e.get("label") or {}).get("name") == label
+-    ]
++    mine = [e for e in events if (e.get("label") or {}).get("name") == label]
++    labelled = [e for e in mine if e.get("event") == "labeled"]
+     if not labelled:
+         return f"the {label} label was not added through the issue events API"
+     by = (labelled[-1].get("actor") or {}).get("login")
+@@ -453,13 +452,21 @@ def find_override(
+     labelled_at = _when(labelled[-1].get("created_at"))
+     if labelled_at is None:
+         return f"cannot tell when the {label} label was added"
++    removals = [
++        when
++        for e in mine
++        if e.get("event") == "unlabeled"
++        and (when := _when(e.get("created_at"))) is not None
++        and when <= labelled_at
++    ]
++    round_start = max(removals, default=None)
+     for comment in reversed(comments):
+         if (comment.get("user") or {}).get("login") != by:
+             continue
+         created = _when(comment.get("created_at"))
+-        # Only a comment written for this labelling counts, and only as written: an edit could
+-        # change the reason after the override was honoured.
+-        if created is None or created < labelled_at:
++        # Only a comment written for this round counts (a reason from an earlier override doesn't
++        # carry over), and only as written: an edit could change it after it was honoured.
++        if created is None or (round_start is not None and created <= round_start):
+             continue
+         if _when(comment.get("updated_at")) != created:
+             continue
+@@ -469,7 +476,8 @@ def find_override(
+         if command == OVERRIDE_COMMAND and reason.strip():
+             return OverrideRequest(by=by, reason=reason.strip())
+     return (
+-        f"{by} added {label} but wrote no unedited `{OVERRIDE_COMMAND} <reason>` comment after it"
++        f"{by} added {label} but wrote no unedited `{OVERRIDE_COMMAND} <reason>` comment "
++        "since it was last removed"
+     )
+ 
+ 
+diff --git a/tools/llm-gate/tests/test_audit.py b/tools/llm-gate/tests/test_audit.py
+index e42b6b0..7188439 100644
+--- a/tools/llm-gate/tests/test_audit.py
++++ b/tools/llm-gate/tests/test_audit.py
+@@ -431,16 +431,30 @@ def test_strict_types_reject_free_text_where_none_belongs(field: dict[str, Any])
+         audit.parse(json.dumps(raw))
+ 
+ 
+-def test_an_override_comment_must_follow_the_label_and_be_unedited() -> None:
+-    events = [labeled("alice")]
+-    stale = comment("alice", "/llm-override old reason", at="2026-10-15T09:00:00Z")
++def unlabeled(by: str, at: str) -> dict[str, Any]:
++    return {**labeled(by, at=at), "event": "unlabeled"}
++
++
++def test_an_override_comment_may_come_before_the_label() -> None:
++    before = comment("alice", "/llm-override hotfix", at="2026-10-16T09:59:00Z")
++    assert audit.find_override([labeled("alice")], [before]) == audit.OverrideRequest(
++        by="alice", reason="hotfix"
++    )
++
++
++def test_an_override_comment_from_an_earlier_round_or_edited_does_not_count() -> None:
++    old = comment("alice", "/llm-override old reason", at="2026-10-15T09:00:00Z")
++    events = [
++        labeled("alice", at="2026-10-15T08:00:00Z"),
++        unlabeled("alice", at="2026-10-15T12:00:00Z"),
++        labeled("alice"),
++    ]
+     edited = comment("alice", "/llm-override new", edited="2026-10-16T11:00:00Z")
+ 
+-    assert isinstance(audit.find_override(events, [stale]), str)
++    assert isinstance(audit.find_override(events, [old]), str)
+     assert isinstance(audit.find_override(events, [edited]), str)
+-    assert audit.find_override(events, [stale, comment("alice", "/llm-override ok")]) == (
+-        audit.OverrideRequest(by="alice", reason="ok")
+-    )
++    new = comment("alice", "/llm-override ok", at="2026-10-15T13:00:00Z")  # after the removal
++    assert audit.find_override(events, [old, new]) == audit.OverrideRequest(by="alice", reason="ok")
+ 
+ 
+ # --- CLI ---

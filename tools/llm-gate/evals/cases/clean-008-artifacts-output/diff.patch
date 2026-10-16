@@ -1,0 +1,52 @@
+diff --git a/.dockerignore b/.dockerignore
+index 4d03016..9275ee3 100644
+--- a/.dockerignore
++++ b/.dockerignore
+@@ -5,6 +5,7 @@
+ .config
+ .vscode
+ .idea
++artifacts/
+ **/bin/
+ **/obj/
+ tests/
+diff --git a/.yamllint.yaml b/.yamllint.yaml
+index a114455..c9bfa43 100644
+--- a/.yamllint.yaml
++++ b/.yamllint.yaml
+@@ -12,7 +12,6 @@ rules:
+     min-spaces-from-content: 1
+ 
+ ignore: |
+-  bin/
+-  obj/
++  artifacts/
+   reports/
+   TestResults/
+diff --git a/AGENTS.md b/AGENTS.md
+index 0e856e6..9440c9f 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -39,6 +39,10 @@ that needs them, so the list is the truth, not this file.
+ - Time comes from the injected `TimeProvider`, never `DateTime.Now`/`UtcNow`. "Today" is the UTC date.
+ - Every endpoint gets a unit test (calculator), an integration test and a request in `http/calendar.http`.
+ - Package versions live in `Directory.Packages.props` (central package management); lock files are committed.
++- Build output goes to `artifacts/` (`UseArtifactsOutput` in `Directory.Build.props`):
++  `artifacts/bin/<Project>/<config>/`, `artifacts/obj/...`, `artifacts/publish/...`. There are no
++  per-project `bin/`/`obj/` folders; point scripts, Dockerfiles and CI at `artifacts/`, never at
++  `src/*/bin`.
+ - Conventional Commits for commit messages and PR titles (`feat:`, `fix:`, `ci:`, `chore:`, `docs:`, `test:`, `refactor:`).
+ - From Phase 6 on, every change goes through a PR (squash merge, the PR title becomes the commit).
+ 
+diff --git a/Directory.Build.props b/Directory.Build.props
+index d9f2094..426b8e9 100644
+--- a/Directory.Build.props
++++ b/Directory.Build.props
+@@ -1,5 +1,7 @@
+ <Project>
+   <PropertyGroup>
++    <!-- All build output under artifacts/{bin,obj,publish}/<Project>/<config>/, no per-project bin/obj -->
++    <UseArtifactsOutput>true</UseArtifactsOutput>
+     <TargetFramework>net10.0</TargetFramework>
+     <Nullable>enable</Nullable>
+     <ImplicitUsings>enable</ImplicitUsings>

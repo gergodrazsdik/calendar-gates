@@ -1,0 +1,208 @@
+diff --git a/.config/dotnet-tools.json b/.config/dotnet-tools.json
+index 6e2e244..3b0f116 100644
+--- a/.config/dotnet-tools.json
++++ b/.config/dotnet-tools.json
+@@ -8,6 +8,13 @@
+         "csharpier"
+       ],
+       "rollForward": false
++    },
++    "minver-cli": {
++      "version": "8.0.0",
++      "commands": [
++        "minver"
++      ],
++      "rollForward": false
+     }
+   }
+ }
+\ No newline at end of file
+diff --git a/.yamllint.yaml b/.yamllint.yaml
+new file mode 100644
+index 0000000..a114455
+--- /dev/null
++++ b/.yamllint.yaml
+@@ -0,0 +1,18 @@
++extends: default
++
++rules:
++  line-length:
++    max: 120
++  document-start: disable
++  # GitHub Actions' `on:` key
++  truthy:
++    allowed-values: ["true", "false", "on"]
++    check-keys: true
++  comments:
++    min-spaces-from-content: 1
++
++ignore: |
++  bin/
++  obj/
++  reports/
++  TestResults/
+diff --git a/docs/adr/0001-csharpier-owns-formatting.md b/docs/adr/0001-csharpier-owns-formatting.md
+new file mode 100644
+index 0000000..26d1319
+--- /dev/null
++++ b/docs/adr/0001-csharpier-owns-formatting.md
+@@ -0,0 +1,31 @@
++# 1. CSharpier owns C# formatting
++
++- Status: accepted
++- Date: 2026-10-15
++
++## Context
++
++Two tools can rewrite C# layout: CSharpier (opinionated, almost no options) and `dotnet format`
++(driven by `.editorconfig`). If both run, they disagree on details such as line breaks and wrapping,
++and the `format` gate flip-flops depending on which ran last. `dotnet format` also does more than
++layout: it applies code-style rules (`IDE*`) and analyzer fixes (`CA*`), which CSharpier doesn't.
++
++## Decision
++
++- **Layout** belongs to CSharpier alone: `dotnet csharpier format .` to fix, `dotnet csharpier check .`
++  to verify. It runs on save (VS Code), after every agent edit (`.claude/hooks/format-cs.sh`), in the
++  pre-commit hook and in the `format` CI gate. The version is pinned in `.config/dotnet-tools.json`.
++- **Rules** belong to `dotnet format style` and `dotnet format analyzers`, only ever with
++  `--verify-no-changes` in the gate. `dotnet format whitespace` (and plain `dotnet format`, which
++  includes it) is never run.
++- `.editorconfig` holds naming and style rules. Its layout settings (`indent_size = 4`,
++  `max_line_length = 100`, LF, final newline) only mirror CSharpier's defaults so editors agree with
++  it, and must not be changed to anything CSharpier would undo.
++
++## Consequences
++
++- No formatting debates: whatever CSharpier produces is correct.
++- A rule finding (`IDE1006` naming, `CA*`) fails `format` with a message that points at a rule, not
++  at whitespace.
++- Updating CSharpier can reformat files; do it in its own PR (Dependabot `nuget` covers the tool
++  manifest), with only the reformat in it.
+diff --git a/justfile b/justfile
+index 42b0554..e1e7fed 100644
+--- a/justfile
++++ b/justfile
+@@ -6,10 +6,27 @@ repo := "gergodrazsdik/calendar-gates"
+ default:
+     @just --list
+ 
+-# Restore local .NET tools (git hooks get installed here from Phase 4 on)
++# Restore local .NET tools and install the git hooks (lefthook.yml)
+ [group('dev')]
+ setup:
+     dotnet tool restore
++    lefthook install
++
++# Format C# (CSharpier owns layout, docs/adr/0001)
++[group('format')]
++fmt:
++    dotnet csharpier format .
++
++# The `format` gate: CSharpier layout check plus code-style and analyzer rules (never `whitespace`)
++[group('format')]
++fmt-check:
++    dotnet csharpier check .
++    dotnet format style --verify-no-changes
++    dotnet format analyzers --verify-no-changes
++
++# Local equivalent of the deterministic CI gates; run before calling a change done
++[group('test')]
++ci: fmt-check build test
+ 
+ # Build the solution (warnings are errors)
+ [group('dev')]
+diff --git a/lefthook.yml b/lefthook.yml
+new file mode 100644
+index 0000000..4338837
+--- /dev/null
++++ b/lefthook.yml
+@@ -0,0 +1,29 @@
++# Git hooks (installed by `just setup`). They are a convenience for fast feedback;
++# the CI gates are the enforcement (gate drill 1 proves it).
++pre-commit:
++  parallel: true
++  jobs:
++    - name: csharpier
++      glob: "*.cs"
++      run: dotnet csharpier format {staged_files}
++      stage_fixed: true
++    - name: ruff
++      root: tools/llm-gate/
++      glob: "*.py"
++      run: uv run ruff format {staged_files} && uv run ruff check --fix {staged_files}
++      stage_fixed: true
++    - name: workflows
++      glob: ".github/workflows/*.yml"
++      run: actionlint {staged_files}
++    - name: secrets
++      run: gitleaks git --pre-commit --staged --redact
++
++commit-msg:
++  jobs:
++    - name: conventional-commit
++      run: scripts/check-commit-msg.sh {1}
++
++pre-push:
++  jobs:
++    - name: tests
++      run: just test
+diff --git a/scripts/check-commit-msg.sh b/scripts/check-commit-msg.sh
+new file mode 100755
+index 0000000..0e90938
+--- /dev/null
++++ b/scripts/check-commit-msg.sh
+@@ -0,0 +1,36 @@
++#!/usr/bin/env bash
++# Conventional Commit check for a commit message file (lefthook commit-msg: {1}) or, with
++# --title, for a single line (the PR title check in CI uses the same rule).
++# Usage: check-commit-msg.sh <message-file> | check-commit-msg.sh --title "<title>"
++set -euo pipefail
++
++types='build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test'
++pattern="^($types)(\([a-z0-9._/-]+\))?!?: [^ ].*$"
++max_length=100
++
++if [[ ${1:-} == --title ]]; then
++    header=${2:?usage: check-commit-msg.sh --title "<title>"}
++else
++    header=$(head -n 1 "${1:?usage: check-commit-msg.sh <message-file>}")
++fi
++
++# Leave git's own messages alone: merges, reverts, and fixup!/squash! for later autosquash.
++if [[ $header =~ ^(Merge |Revert \"|fixup! |squash! |amend! ) ]]; then
++    exit 0
++fi
++
++if [[ ! $header =~ $pattern ]]; then
++    cat >&2 <<EOF
++Not a Conventional Commit: "$header"
++Expected: <type>[(scope)][!]: <description>
++  types: ${types//|/, }
++  e.g.   feat(api): add /api/leap endpoint
++         fix!: return 400 for reversed workday ranges
++EOF
++    exit 1
++fi
++
++if ((${#header} > max_length)); then
++    echo "Header is ${#header} characters; keep it at most $max_length." >&2
++    exit 1
++fi
+diff --git a/src/CalendarGates.Api/Endpoints/VersionEndpoints.cs b/src/CalendarGates.Api/Endpoints/VersionEndpoints.cs
+index c4179ee..336ed44 100644
+--- a/src/CalendarGates.Api/Endpoints/VersionEndpoints.cs
++++ b/src/CalendarGates.Api/Endpoints/VersionEndpoints.cs
+@@ -6,11 +6,11 @@ public sealed record VersionResponse(string Version, string Commit);
+ 
+ public static class VersionEndpoints
+ {
+-    private static readonly VersionResponse s_version = Read(typeof(Program).Assembly);
++    private static readonly VersionResponse _version = Read(typeof(Program).Assembly);
+ 
+     public static IEndpointRouteBuilder MapVersionEndpoints(this IEndpointRouteBuilder app)
+     {
+-        app.MapGet("/version", () => TypedResults.Ok(s_version))
++        app.MapGet("/version", () => TypedResults.Ok(_version))
+             .WithTags("Meta")
+             .WithName("GetVersion")
+             .WithSummary("Build version (MinVer) and commit");
