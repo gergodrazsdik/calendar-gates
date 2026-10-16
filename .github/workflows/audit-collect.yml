@@ -1,0 +1,156 @@
+# Audit collector (ADR 0005). When an llm-review run finishes, its `audit-<run>-<attempt>-<check>`
+# artifacts become records on the `audit-log` branch.
+#
+# Trust: `workflow_run` runs this file and the llm-gate tooling from the default branch, so a PR
+# can't change what collects its own records. The artifacts were written by a workflow the PR may
+# have modified: they are only parsed (`llm-gate audit collect`, strict schema, size limits,
+# cross-checked against the run's jobs, the PR's issue events and the compare API), never executed,
+# and the PR's code is never checked out. Nothing from the artifacts reaches a shell: paths and
+# commit messages come from the collector's own output or the event.
+name: audit-collect
+
+on: # zizmor: ignore[dangerous-triggers] -- no PR code is checked out or run; see above
+  workflow_run:
+    workflows: [llm-review]
+    types: [completed]
+
+permissions: {}
+
+# No concurrency group: GitHub keeps only one *pending* run per group and cancels the others,
+# which would drop records. Concurrent writes instead retry when the branch head moved (409).
+
+jobs:
+  collect:
+    name: collect
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write # commits to the audit-log branch
+      actions: read # the run's artifacts and job conclusions
+      issues: read # the PR's label events and comments (override check)
+      pull-requests: read # the PR of a fork run (the event lists none)
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
+      RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      WORKFLOW_PATH: ${{ github.event.workflow_run.path }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      PR_FROM_EVENT: ${{ github.event.workflow_run.pull_requests[0].number }}
+    steps:
+      - name: Collector code from the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          cache-dependency-glob: tools/llm-gate/uv.lock
+
+      - name: Find the PR
+        id: pr
+        run: |
+          pr="$PR_FROM_EVENT"
+          if [ -z "$pr" ]; then # fork PRs: the event lists no pull_requests
+            pr=$(gh api "repos/$REPO/commits/$HEAD_SHA/pulls" \
+              --jq '[.[] | select(.state == "open")][0].number // empty')
+          fi
+          if ! [[ "$pr" =~ ^[0-9]+$ ]]; then
+            echo "::notice title=audit-collect::No open PR for $HEAD_SHA; nothing to collect."
+            echo "pr=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "pr=$pr" >> "$GITHUB_OUTPUT"
+
+      - name: Download the audit artifacts (untrusted)
+        id: download
+        if: steps.pr.outputs.pr != ''
+        run: |
+          WORK="$RUNNER_TEMP/audit"
+          mkdir -p "$WORK/artifacts"
+          prefix="audit-$RUN_ID-$RUN_ATTEMPT-"
+          count=$(gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/artifacts" \
+            --jq "[.artifacts[] | select(.name | startswith(\"$prefix\"))] | length" \
+            | jq -s add)
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          if [ "${count:-0}" -gt 0 ]; then
+            # gh extracts each artifact into its own directory and refuses zip paths that escape it.
+            gh run download "$RUN_ID" -R "$REPO" -p "$prefix*" -D "$WORK/artifacts"
+          fi
+
+      - name: Gather what the collector checks against
+        id: gather
+        if: steps.download.outputs.count > 0
+        env:
+          PR: ${{ steps.pr.outputs.pr }}
+        run: |
+          WORK="$RUNNER_TEMP/audit"
+          gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs" \
+            --jq '.jobs[] | {name, conclusion}' > "$WORK/jobs.jsonl"
+          gh api --paginate "repos/$REPO/issues/$PR/events" --jq '.[]' | jq -s . > "$WORK/events.json"
+          gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[]' | jq -s . > "$WORK/comments.json"
+          # Did the PR change the review workflow? Then nothing in the artifacts can be trusted.
+          # The compare API lists at most 300 files; a longer list counts as modified.
+          # shellcheck disable=SC2016  # $f is a jq variable
+          gh api "repos/$REPO/compare/$DEFAULT_BRANCH...$HEAD_SHA" \
+            --jq '[.files[].filename] as $f | if ($f | length) >= 300 then "truncated" else $f[] end' \
+            > "$WORK/changed.txt"
+          workflow="${WORKFLOW_PATH%%@*}" # the path, without an @ref suffix if there is one
+          if grep -qx -e "$workflow" -e truncated "$WORK/changed.txt"; then
+            echo "flag=--workflow-modified" >> "$GITHUB_OUTPUT"
+            echo "::warning title=audit-collect::The PR changed $workflow: its reviews are recorded as unverified."
+          fi
+          uv run --project tools/llm-gate --locked llm-gate list --json > "$WORK/checks.json"
+
+      - name: Validate and collect
+        if: steps.download.outputs.count > 0
+        env:
+          PR: ${{ steps.pr.outputs.pr }}
+          WORKFLOW_MODIFIED: ${{ steps.gather.outputs.flag }}
+        run: |
+          WORK="$RUNNER_TEMP/audit"
+          # shellcheck disable=SC2086  # WORKFLOW_MODIFIED is empty or one flag
+          uv run --project tools/llm-gate --locked llm-gate audit collect \
+            --repo-name "$REPO" --run-id "$RUN_ID" --run-attempt "$RUN_ATTEMPT" \
+            --head-sha "$HEAD_SHA" --pr "$PR" \
+            --artifacts "$WORK/artifacts" --jobs "$WORK/jobs.jsonl" \
+            --events "$WORK/events.json" --comments "$WORK/comments.json" \
+            --checks "$(cat "$WORK/checks.json")" ${WORKFLOW_MODIFIED:-} \
+            --out "$WORK/out" > "$WORK/collected.json"
+          {
+            echo "### Audit records for run $RUN_ID (attempt $RUN_ATTEMPT), PR #$PR"
+            # shellcheck disable=SC2016  # the backticks are Markdown, inside a jq program
+            jq -r '.[] | "- `\(.path)`: \(.records) record(s)"
+              + (if .tamper then " **(tamper suspected)**" else "" end)' "$WORK/collected.json"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if jq -e 'any(.[]; .tamper)' "$WORK/collected.json" > /dev/null; then
+            echo "::warning title=audit-collect::Some artifacts did not check out; see the job summary."
+          fi
+
+      - name: Write to the audit-log branch
+        if: steps.download.outputs.count > 0
+        run: |
+          WORK="$RUNNER_TEMP/audit"
+          # Append-only: an existing file is never overwritten (a re-run of this job skips it).
+          # Commits made through the contents API are signed by GitHub.
+          jq -r '.[].path' "$WORK/collected.json" | while read -r path; do
+            [[ "$path" =~ ^events/[0-9]{4}/[0-9]{2}/[0-9]{2}/[a-z0-9-]+\.jsonl$ ]] || {
+              echo "::error::unexpected path from the collector: $path"; exit 1; }
+            if gh api "repos/$REPO/contents/$path?ref=audit-log" --silent 2> /dev/null; then
+              echo "$path exists already, skipped"
+              continue
+            fi
+            body=$(jq -n --arg message "audit: run $RUN_ID attempt $RUN_ATTEMPT, ${path##*/}" \
+              --rawfile content <(base64 -w0 "$WORK/out/$path") \
+              '{message: $message, content: $content, branch: "audit-log"}')
+            # Another collector run may move the branch head between our read and write (409).
+            for try in 1 2 3 4 5; do
+              if gh api -X PUT "repos/$REPO/contents/$path" --input - --silent <<< "$body"; then
+                echo "wrote $path"
+                break
+              fi
+              [ "$try" = 5 ] && exit 1
+              sleep $((try * 3 + RANDOM % 5))
+            done
+          done

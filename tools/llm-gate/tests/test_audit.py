@@ -207,7 +207,7 @@ def test_a_valid_artifact_is_collected_with_the_collector_fields(tmp_path: Path)
         reason="r",
         checks=["code-review"],
     )
-    artifact(tmp_path, "audit-100-code-review", audit.dumps(gate_run()), audit.dumps(override))
+    artifact(tmp_path, "audit-100-1-code-review", audit.dumps(gate_run()), audit.dumps(override))
 
     trusted = audit.OverrideRequest(by="me", reason="r")
     ((info, lines),) = collect(tmp_path, workflow_modified=True, override=trusted)
@@ -229,7 +229,7 @@ def test_free_text_is_kept_when_the_workflow_is_unchanged_and_withheld_otherwise
     )
     call = {"tool": "Read", "input": "file_path=a.cs", "ts": T}
     artifact(
-        tmp_path, "audit-100-code-review", audit.dumps(gate_run(findings=[f], tool_calls=[call]))
+        tmp_path, "audit-100-1-code-review", audit.dumps(gate_run(findings=[f], tool_calls=[call]))
     )
 
     ((_, kept),) = collect(tmp_path)
@@ -246,7 +246,7 @@ def test_free_text_is_kept_when_the_workflow_is_unchanged_and_withheld_otherwise
 def test_a_run_has_a_byte_budget(tmp_path: Path) -> None:
     # The budget is checked before anything is parsed, so raw bytes are enough.
     for n in range(3):
-        artifact(tmp_path, f"audit-100-check-{n}", "x" * (audit.MAX_RUN_BYTES // 3 + 1))
+        artifact(tmp_path, f"audit-100-1-check-{n}", "x" * (audit.MAX_RUN_BYTES // 3 + 1))
 
     ((info, lines),) = collect(tmp_path)
 
@@ -272,7 +272,7 @@ def test_a_run_has_a_byte_budget(tmp_path: Path) -> None:
 def test_forged_records_become_a_tamper_event(
     tmp_path: Path, record: audit.GateRun, problem: str
 ) -> None:
-    artifact(tmp_path, "audit-100-code-review", audit.dumps(record))
+    artifact(tmp_path, "audit-100-1-code-review", audit.dumps(record))
 
     ((info, lines),) = collect(tmp_path)
 
@@ -294,7 +294,7 @@ def test_trusted_only_types_may_not_come_from_an_artifact(tmp_path: Path) -> Non
         kind="fp",
         by="me",
     )
-    artifact(tmp_path, "audit-100-code-review", audit.dumps(feedback))
+    artifact(tmp_path, "audit-100-1-code-review", audit.dumps(feedback))
 
     ((info, lines),) = collect(tmp_path)
     assert info.tamper is True
@@ -312,14 +312,14 @@ def test_trusted_only_types_may_not_come_from_an_artifact(tmp_path: Path) -> Non
 def test_unparseable_or_empty_artifacts_are_tamper_events(
     tmp_path: Path, lines: tuple[str, ...]
 ) -> None:
-    artifact(tmp_path, "audit-100-code-review", *lines)
+    artifact(tmp_path, "audit-100-1-code-review", *lines)
     ((info, _),) = collect(tmp_path)
     assert info.tamper is True
 
 
 def test_size_and_count_limits(tmp_path: Path) -> None:
     line = audit.dumps(gate_run())
-    artifact(tmp_path, "audit-100-code-review", *[line] * (audit.MAX_RECORDS + 1))
+    artifact(tmp_path, "audit-100-1-code-review", *[line] * (audit.MAX_RECORDS + 1))
     ((info, lines),) = collect(tmp_path)
     assert info.tamper is True
     assert "over the" in lines[0]["problems"][0]
@@ -327,21 +327,22 @@ def test_size_and_count_limits(tmp_path: Path) -> None:
 
 def test_duplicate_ids_are_rejected(tmp_path: Path) -> None:
     line = audit.dumps(gate_run())
-    artifact(tmp_path, "audit-100-code-review", line, line)
+    artifact(tmp_path, "audit-100-1-code-review", line, line)
     ((info, lines),) = collect(tmp_path)
     assert info.tamper is True
     assert "duplicate" in lines[0]["problems"][0]
 
 
 def test_artifact_names_and_contents_are_checked(tmp_path: Path) -> None:
-    artifact(tmp_path, "audit-99-code-review", audit.dumps(gate_run()))
-    artifact(tmp_path, "audit-100-Code Review; rm -rf", audit.dumps(gate_run()))
-    extra = artifact(tmp_path, "audit-100-code-review", audit.dumps(gate_run()))
+    artifact(tmp_path, "audit-99-1-code-review", audit.dumps(gate_run()))
+    artifact(tmp_path, "audit-100-2-code-review", audit.dumps(gate_run()))  # another attempt
+    artifact(tmp_path, "audit-100-1-Code Review; rm -rf", audit.dumps(gate_run()))
+    extra = artifact(tmp_path, "audit-100-1-code-review", audit.dumps(gate_run()))
     (extra / "other.txt").write_text("x")
 
     results = collect(tmp_path)
 
-    assert len(results) == 3
+    assert len(results) == 4
     assert all(info.tamper for info, _ in results)
     paths = sorted(info.path for info, _ in results)
     assert all(p.startswith("events/2026/10/16/100-1-") for p in paths)
@@ -359,14 +360,14 @@ def test_artifact_names_and_contents_are_checked(tmp_path: Path) -> None:
 def test_a_record_needs_a_finished_job_to_confirm_it(
     tmp_path: Path, jobs: dict[str, str | None], problem: str
 ) -> None:
-    artifact(tmp_path, "audit-100-code-review", audit.dumps(gate_run()))
+    artifact(tmp_path, "audit-100-1-code-review", audit.dumps(gate_run()))
     ((info, lines),) = collect(tmp_path, jobs=jobs)
     assert info.tamper is True
     assert any(problem in p for p in lines[0]["problems"]), lines[0]["problems"]
 
 
 def test_only_checks_from_the_default_branch_are_collected(tmp_path: Path) -> None:
-    artifact(tmp_path, "audit-100-made-up", audit.dumps(gate_run(check="made-up")))
+    artifact(tmp_path, "audit-100-1-made-up", audit.dumps(gate_run(check="made-up")))
     ((info, lines),) = collect(tmp_path)
     assert info.tamper is True
     assert info.path.endswith("-invalid-0.jsonl")
@@ -384,7 +385,7 @@ def test_only_checks_from_the_default_branch_are_collected(tmp_path: Path) -> No
 def test_verdict_and_exit_code_must_agree(
     tmp_path: Path, fields: dict[str, Any], problem: str
 ) -> None:
-    artifact(tmp_path, "audit-100-code-review", audit.dumps(gate_run(**fields)))
+    artifact(tmp_path, "audit-100-1-code-review", audit.dumps(gate_run(**fields)))
     conclusion = "success" if fields["exit_code"] == 0 else "failure"
     ((info, lines),) = collect(tmp_path, jobs={"llm / code-review": conclusion})
     assert info.tamper is True
@@ -393,7 +394,7 @@ def test_verdict_and_exit_code_must_agree(
 
 def test_too_many_artifacts_are_one_tamper_event(tmp_path: Path) -> None:
     for n in range(audit.MAX_ARTIFACTS + 1):
-        artifact(tmp_path, f"audit-100-check-{n}", "{}")
+        artifact(tmp_path, f"audit-100-1-check-{n}", "{}")
 
     ((info, lines),) = collect(tmp_path)
 
@@ -472,7 +473,7 @@ def test_cli_validate(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Non
 
 
 def test_cli_collect(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    artifact(tmp_path, "audit-100-code-review", audit.dumps(gate_run()))
+    artifact(tmp_path, "audit-100-1-code-review", audit.dumps(gate_run()))
     jobs = tmp_path / "jobs.jsonl"
     jobs.write_text('{"name": "llm / code-review", "conclusion": "failure"}\n')
     empty = tmp_path / "empty.json"
@@ -580,7 +581,7 @@ def override_record(**overrides: Any) -> audit.Override:
 def test_override_claims_must_match_what_the_collector_found(
     tmp_path: Path, lines: tuple[Any, ...], trusted: str, problem: str
 ) -> None:
-    artifact(tmp_path, "audit-100-code-review", *(audit.dumps(r) for r in lines))
+    artifact(tmp_path, "audit-100-1-code-review", *(audit.dumps(r) for r in lines))
     found = audit.OverrideRequest(by="alice", reason="hotfix") if trusted == "alice" else trusted
 
     ((info, out),) = collect(tmp_path, jobs={}, override=found)
@@ -626,12 +627,12 @@ def test_a_finished_review_is_recorded_within_the_schema_limits(tmp_path: Path) 
 def test_tamper_events_never_quote_the_artifact(tmp_path: Path) -> None:
     text = "SHOUTING ABUSE or personal data"
     raw = json.loads(audit.dumps(gate_run()))
-    artifact(tmp_path, "audit-100-code-review", json.dumps({**raw, "model": text}))
-    artifact(tmp_path, "audit-100-docs-drift", json.dumps({**raw, text.lower(): 1}))
-    artifact(tmp_path, f"audit-100-{text}", "{}")
-    weird = artifact(tmp_path, "audit-100-docs-drift-x", "{}")
+    artifact(tmp_path, "audit-100-1-code-review", json.dumps({**raw, "model": text}))
+    artifact(tmp_path, "audit-100-1-docs-drift", json.dumps({**raw, text.lower(): 1}))
+    artifact(tmp_path, f"audit-100-1-{text}", "{}")
+    weird = artifact(tmp_path, "audit-100-1-docs-drift-x", "{}")
     (weird / text).write_text("x")
-    artifact(tmp_path, "audit-99-code-review", json.dumps({**raw, "run_url": text}))
+    artifact(tmp_path, "audit-99-1-code-review", json.dumps({**raw, "run_url": text}))
 
     results = collect(tmp_path, checks={"code-review", "docs-drift", "docs-drift-x"})
 
@@ -647,8 +648,8 @@ def test_tamper_events_never_quote_the_artifact(tmp_path: Path) -> None:
 def test_an_audit_file_that_is_not_a_regular_file_is_a_tamper_event(
     tmp_path: Path, shape: str
 ) -> None:
-    good = artifact(tmp_path, "audit-100-code-review", audit.dumps(gate_run()))
-    bad = tmp_path / "artifacts" / "audit-100-docs-drift"
+    good = artifact(tmp_path, "audit-100-1-code-review", audit.dumps(gate_run()))
+    bad = tmp_path / "artifacts" / "audit-100-1-docs-drift"
     bad.mkdir()
     if shape == "directory":
         (bad / audit.AUDIT_FILE).mkdir()
@@ -693,7 +694,7 @@ def test_unknown_tool_names_are_logged_as_other() -> None:
 def test_finding_ids_must_carry_their_checks_prefix(
     tmp_path: Path, record: audit.GateRun, problem: str
 ) -> None:
-    artifact(tmp_path, "audit-100-code-review", audit.dumps(record))
+    artifact(tmp_path, "audit-100-1-code-review", audit.dumps(record))
     ((info, lines),) = collect(tmp_path)
     assert info.tamper is True
     assert any(problem in p for p in lines[0]["problems"])
@@ -701,7 +702,7 @@ def test_finding_ids_must_carry_their_checks_prefix(
 
 def test_an_override_names_only_its_artifacts_check(tmp_path: Path) -> None:
     claim = override_record(checks=["code-review", "everything-is-fine"])
-    artifact(tmp_path, "audit-100-code-review", audit.dumps(claim))
+    artifact(tmp_path, "audit-100-1-code-review", audit.dumps(claim))
     trusted = audit.OverrideRequest(by="alice", reason="hotfix")
     ((info, lines),) = collect(tmp_path, jobs={}, override=trusted)
     assert info.tamper is True

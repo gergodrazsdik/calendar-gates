@@ -6,6 +6,9 @@
 # PR's **base commit**, checked out into gate/. The PR head is checked out into src/ and is only
 # data: the diff, and read-only context for the agent engine. A PR can't weaken or instruct the
 # gate that reviews it. Remaining hole: this workflow file itself comes from the PR.
+#
+# ADR 0005: every check appends an audit record (.llm-gate/audit.jsonl) and uploads it as
+# audit-<run>-<attempt>-<check>; audit-collect.yml (default branch) validates it into audit-log.
 name: llm-review
 
 on:
@@ -52,6 +55,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write # sticky review comment
+      issues: read # who added llm-override, and their /llm-override reason
     strategy:
       fail-fast: false
       matrix:
@@ -59,6 +63,9 @@ jobs:
     env:
       CHECK: ${{ matrix.check }}
       PR: ${{ github.event.pull_request.number }}
+      # Audit context (llm-gate reads these by name; ADR 0005).
+      LLM_GATE_PR: ${{ github.event.pull_request.number }}
+      LLM_GATE_PR_EVENT_AT: ${{ github.event.pull_request.updated_at }}
     steps:
       - name: Gate tooling from the base commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -97,6 +104,36 @@ jobs:
             reason="No ANTHROPIC_API_KEY for this PR (fork or Dependabot); the LLM review did not run."
             echo "::notice title=llm / $CHECK skipped::$reason"
             echo "llm / $CHECK: skipped, no ANTHROPIC_API_KEY for this PR." >> "$GITHUB_STEP_SUMMARY"
+            uv run --project gate/tools/llm-gate --locked llm-gate \
+              --repo src --config gate/tools/llm-gate/checks.yaml \
+              audit skip --check "$CHECK" --reason skipped_no_key --out "$GITHUB_WORKSPACE/.llm-gate"
+          fi
+
+      # The llm-override label counts only with an unedited `/llm-override <reason>` comment by
+      # whoever added it, written after the label (ADR 0005). Without one, the findings still fail.
+      - name: Override reason
+        id: override
+        if: >-
+          steps.key.outputs.run == 'true'
+          && contains(github.event.pull_request.labels.*.name, 'llm-override')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh api --paginate "repos/$REPO/issues/$PR/events" --jq '.[]' | jq -s . > "$RUNNER_TEMP/events.json"
+          gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[]' | jq -s . > "$RUNNER_TEMP/comments.json"
+          if found=$(uv run --project gate/tools/llm-gate --locked llm-gate audit override \
+              --events "$RUNNER_TEMP/events.json" --comments "$RUNNER_TEMP/comments.json" \
+              2> "$RUNNER_TEMP/override-why.txt"); then
+            {
+              echo "honoured=true"
+              echo "by=$(jq -r .by <<< "$found")"
+              echo "reason=$(jq -r .reason <<< "$found" | tr -d '\r\n')"
+            } >> "$GITHUB_OUTPUT"
+          else
+            why=$(tail -n 1 "$RUNNER_TEMP/override-why.txt")
+            echo "::warning title=llm / $CHECK override not honoured::$why"
+            echo "**llm-override not honoured:** $why" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       # Results are cached by check, engine, model, prompt and diff; re-runs of an unchanged PR
@@ -116,7 +153,9 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
           LLM_MODEL_CHEAP: ${{ vars.LLM_MODEL_CHEAP }}
-          LLM_GATE_OVERRIDE: ${{ contains(github.event.pull_request.labels.*.name, 'llm-override') }}
+          LLM_GATE_OVERRIDE: ${{ steps.override.outputs.honoured == 'true' }}
+          LLM_GATE_OVERRIDE_BY: ${{ steps.override.outputs.by }}
+          LLM_GATE_OVERRIDE_REASON: ${{ steps.override.outputs.reason }}
           BASE_REF: ${{ github.base_ref }}
         run: |
           set +e
@@ -151,13 +190,25 @@ jobs:
           [ "$VERDICT" = not-applicable ] && mode=--update-only
           gate/scripts/upsert-pr-comment.sh $mode "$PR" "<!-- llm-gate:$CHECK -->" "$RUNNER_TEMP/review.md"
 
+      # The raw results (model output included) stay here for 90 days; the audit log keeps only
+      # their summary (ADR 0005).
       - name: Upload results
         if: steps.review.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: llm-gate-${{ matrix.check }}
           path: .llm-gate/results/
+          retention-days: 90
+          overwrite: true # a re-run attempt replaces it
+
+      - name: Upload the audit record
+        if: always() && hashFiles('.llm-gate/audit.jsonl') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: audit-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.check }}
+          path: .llm-gate/audit.jsonl
           retention-days: 7
+          if-no-files-found: ignore
 
       - name: Verdict
         if: steps.review.outcome == 'success'

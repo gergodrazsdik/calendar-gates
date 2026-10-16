@@ -281,7 +281,8 @@ def override_request(
         log.warning("override requested without a reason: not honoured (ADR 0005)")
         return None
     return audit.OverrideRequest(
-        by=by or os.environ.get("GITHUB_ACTOR") or None, reason=reason.strip()
+        by=by or None,
+        reason=reason.strip(),  # never guessed: the collector compares it
     )
 
 

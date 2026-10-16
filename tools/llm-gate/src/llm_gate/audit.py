@@ -482,7 +482,11 @@ def _when(value: object) -> datetime | None:
 
 # --- validating and collecting (trusted side) ---------------------------------------------------
 
-_ARTIFACT_NAME = re.compile(r"audit-(?P<run_id>[0-9]+)-(?P<check>[a-z0-9][a-z0-9-]{0,40})")
+# audit-<run_id>-<attempt>-<check>: with the attempt, a re-run of failed jobs doesn't hand the
+# collector the earlier attempt's artifacts as if they were its own.
+_ARTIFACT_NAME = re.compile(
+    r"audit-(?P<run_id>[0-9]+)-(?P<attempt>[0-9]+)-(?P<check>[a-z0-9][a-z0-9-]{0,40})"
+)
 
 
 @dataclass(frozen=True)
@@ -637,11 +641,11 @@ def collect(
     out: Path,
     day: date,
 ) -> list[Collected]:
-    """Validate every `audit-<run_id>-<check>` artifact directory under `artifacts` and write one
-    file per artifact under `out/events/YYYY/MM/DD/`. `jobs` maps job names of the triggering run
-    to their conclusions (Actions API); `checks` are the checks in the default branch's
-    checks.yaml; `override` is `find_override` on the PR's issue events and comments as the
-    collector fetched them (or why there is none)."""
+    """Validate every `audit-<run_id>-<attempt>-<check>` artifact directory under `artifacts`
+    and write one file per artifact under `out/events/YYYY/MM/DD/`. `jobs` maps job names of the
+    triggering run to their conclusions (Actions API); `checks` are the checks in the default
+    branch's checks.yaml; `override` is `find_override` on the PR's issue events and comments as
+    the collector fetched them (or why there is none)."""
     folder = Path("events", f"{day:%Y}", f"{day:%m}", f"{day:%d}")
     prefix = f"{expected.workflow_run_id}-{expected.run_attempt}"
     directories = sorted(p for p in artifacts.iterdir() if p.is_dir())
@@ -662,9 +666,13 @@ def collect(
         safe_name = name if match else "(invalid name)"  # never echo an arbitrary name
         problems: list[str] = []
         records: list[AuditRecord] = []
-        if match is None or int(match["run_id"]) != expected.workflow_run_id:
+        if (
+            match is None
+            or int(match["run_id"]) != expected.workflow_run_id
+            or int(match["attempt"]) != expected.run_attempt
+        ):
             check = f"invalid-{index}"
-            want = f"audit-{expected.workflow_run_id}-<check>"
+            want = f"audit-{expected.workflow_run_id}-{expected.run_attempt}-<check>"
             problems.append(f"artifact name is not {want}")
         elif match["check"] not in checks:
             check = f"invalid-{index}"
