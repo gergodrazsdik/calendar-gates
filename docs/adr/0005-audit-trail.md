@@ -46,8 +46,9 @@ output can't simply be trusted either.
   from the artifact, so a deliberately invalid artifact can't smuggle text past the withholding.
 - The log is the orphan branch **`audit-log`**: one file per run, check and attempt
   (`events/YYYY/MM/DD/<run_id>-<attempt>-<check>.jsonl`), written through the contents API
-  (commits signed by GitHub), serialised by `concurrency: audit-log`. A ruleset blocks deletion and
-  force pushes, so history only grows.
+  (commits signed by GitHub). A ruleset blocks deletion and force pushes for everyone, so history
+  only grows, and blocks updates for everyone but the GitHub Actions app (bypass for app 15368), so
+  people can't push to it.
 - **Overrides need a reason.** `llm-override` is honoured only with an unedited
   `/llm-override <reason>` comment by whoever added the label last, written after the label
   (issue events API); `llm-gate run` ignores an override without a reason and records one with it
@@ -61,6 +62,12 @@ output can't simply be trusted either.
   a record true; it checks what it can verify independently (the run, the job conclusion, whether
   the workflow was modified) and records the rest as claimed. A collector bug is the weakest link,
   so its validation has its own tests (gate drill 22 forges an artifact).
+- No `concurrency` group, unlike the plan: GitHub keeps only one *pending* run per group and
+  cancels the rest, which would silently drop records when several reviews finish together.
+  Concurrent writes go to different files and retry with backoff when the branch head moved.
+- Any workflow in this repository with `contents: write` could still write to `audit-log`; the
+  ruleset can only tell apps apart, not workflows. CODEOWNERS on `.github/` would close that in a
+  team repository.
 - Artifact and file names include the attempt, which the plan's `<run_id>-<check>` didn't: a
   re-run of failed jobs keeps the first attempt's artifacts in the run, and its records would
   otherwise overwrite (or be mistaken for) the new attempt's.
