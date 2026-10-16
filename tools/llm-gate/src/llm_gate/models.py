@@ -44,7 +44,7 @@ class Finding(BaseModel):
 def finding_id(check: str, finding: Finding) -> str:
     """Short, stable id people can refer to (`cr-3f2a`): check initials plus a hash of check, file
     and the title's words, so a re-run that rewords nothing but punctuation keeps the id."""
-    prefix = "".join(part[0] for part in check.split("-") if part) or "x"
+    prefix = "".join(part[0] for part in check.split("-") if part[:1].isalpha())[:8] or "x"
     words = " ".join(re.findall(r"[a-z0-9]+", finding.title.lower()))
     digest = hashlib.sha256(f"{check}\n{finding.file}\n{words}".encode()).hexdigest()
     return f"{prefix}-{digest[:4]}"

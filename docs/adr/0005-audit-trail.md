@@ -31,13 +31,15 @@ output can't simply be trusted either.
   that too (`llm-gate audit skip`).
 - **Trusted side**: `audit-collect.yml` runs on `workflow_run` (code from the default branch),
   never checks out the PR, downloads the artifacts and runs `llm-gate audit collect`. That parses
-  strictly, enforces size and count limits, accepts only `gate_run` and `override` records for
+  strictly, enforces size and count limits (128 KB per artifact, 256 KB and 20 artifacts per
+  run), accepts only `gate_run` and `override` records for
   checks in the default branch's `checks.yaml`, and compares every record with what the event says
   (run id, attempt, head SHA, PR, repository) and with its job: the job must exist and have
   finished with the conclusion the record's exit code implies, and verdict and exit code must
   agree. It sets
   `workflow_modified` when the PR changed the review workflow; such reviews never count as
-  verified. It looks up the override itself (`find_override` on the PR's issue events and
+  verified, and their free text (finding titles and files, tool-call inputs, errors, override
+  reasons) is withheld: only ids, severities, verdicts, hashes and counts reach the log. It looks up the override itself (`find_override` on the PR's issue events and
   comments), and an `override` record or `override_honoured` that doesn't match is a problem.
   Anything that doesn't check out is written as one `tamper_suspected` event instead.
 - The log is the orphan branch **`audit-log`**: one file per run, check and attempt
@@ -59,6 +61,13 @@ output can't simply be trusted either.
   so its validation has its own tests (gate drill 22 forges an artifact).
 - The file name includes the attempt, which the plan's `<run_id>-<check>` didn't: re-runs would
   otherwise overwrite the first attempt's record.
+- **Accepted risk: free text in a permanent log.** Even with an unmodified workflow, finding titles
+  and tool-call paths can be steered by the PR (prompt injection into the review, oddly named
+  files). They are bounded, redacted and only as permanent as the ruleset makes them: removing an
+  entry takes an admin bypassing the `audit-log` ruleset, which is itself visible in the ruleset's
+  history. That is the price of a log that answers "what did the reviewer look at" with more than
+  hashes. Only collaborators can open PRs here, and there is no budget per PR across runs; a
+  public repository taking outside PRs should add one, or keep titles in a prunable store.
 - A record whose job was cancelled or never finished is written as `tamper_suspected` too: the
   name means "couldn't be confirmed", not proof of an attack, and its `problems` say which.
 - The collector compares the record with the job's conclusion from the Actions jobs API (the

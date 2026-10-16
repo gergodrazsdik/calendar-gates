@@ -42,7 +42,8 @@ SCHEMA: Final = "audit/v1"
 AUDIT_FILE = "audit.jsonl"
 
 # Limits for artifacts the collector reads: they come from a workflow the PR controls.
-MAX_FILE_BYTES = 1024 * 1024
+MAX_FILE_BYTES = 128 * 1024
+MAX_RUN_BYTES = 256 * 1024  # all artifacts of one run together
 MAX_LINE_BYTES = 256 * 1024
 MAX_RECORDS = 20
 MAX_ARTIFACTS = 20  # one per check; checks.yaml has six
@@ -601,9 +602,13 @@ def collect(
     folder = Path("events", f"{day:%Y}", f"{day:%m}", f"{day:%d}")
     prefix = f"{expected.workflow_run_id}-{expected.run_attempt}"
     directories = sorted(p for p in artifacts.iterdir() if p.is_dir())
+    problem = None
     if len(directories) > MAX_ARTIFACTS:
         problem = f"{len(directories)} artifacts, over the {MAX_ARTIFACTS} limit; none collected"
-        target = folder / f"{prefix}-too-many.jsonl"
+    elif (size := _total_bytes(directories)) > MAX_RUN_BYTES:
+        problem = f"{size} bytes of artifacts, over the {MAX_RUN_BYTES} limit; none collected"
+    if problem:
+        target = folder / f"{prefix}-too-much.jsonl"
         _write(out / target, [_tamper(expected, "(all)", [problem])])
         return [Collected(target.as_posix(), "(all)", 1, tamper=True)]
 
@@ -655,7 +660,7 @@ def collect(
                             "check_run_conclusion": conclusion,
                         }
                     )
-                finished.append(record)
+                finished.append(_withhold(record) if workflow_modified else record)
 
         target = folder / f"{prefix}-{check}.jsonl"
         if problems:
@@ -665,6 +670,32 @@ def collect(
             Collected(target.as_posix(), name[:120], len(finished), tamper=bool(problems))
         )
     return collected
+
+
+WITHHELD = "[withheld: the PR modified the review workflow]"
+
+
+def _withhold(record: AuditRecord) -> AuditRecord:
+    """Keep only the structure of a record from a run whose workflow the PR changed: its free
+    text could say anything, and the log is permanent."""
+    if isinstance(record, GateRun):
+        return record.model_copy(
+            update={
+                "findings": [
+                    f.model_copy(update={"category": WITHHELD, "file": WITHHELD, "title": WITHHELD})
+                    for f in record.findings
+                ],
+                "tool_calls": [c.model_copy(update={"input": ""}) for c in record.tool_calls],
+                "error": WITHHELD if record.error else None,
+            }
+        )
+    if isinstance(record, Override):
+        return record.model_copy(update={"reason": WITHHELD})
+    return record
+
+
+def _total_bytes(directories: Iterable[Path]) -> int:
+    return sum(f.stat().st_size for d in directories for f in d.iterdir() if f.is_file())
 
 
 def _tamper(expected: Expected, artifact: str, problems: Sequence[str]) -> TamperSuspected:

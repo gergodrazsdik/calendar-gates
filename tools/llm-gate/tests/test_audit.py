@@ -115,6 +115,10 @@ def test_finding_ids_are_short_stable_and_ignore_punctuation() -> None:
     assert finding_id("code-review", a).startswith("cr-")
     assert finding_id("security-review", a).startswith("sr-")
     assert len(finding_id("code-review", a)) == len("cr-0000")
+    for odd in ("2fa-check", "a-b-c-d-e-f-g-h-i-j", "x"):  # every id fits the log's pattern
+        assert audit.AuditFinding(
+            id=finding_id(odd, a), severity=a.severity, category="c", file="f", line=1, title="t"
+        )
 
 
 @pytest.mark.parametrize(
@@ -214,6 +218,40 @@ def test_a_valid_artifact_is_collected_with_the_collector_fields(tmp_path: Path)
     assert lines[0]["workflow_modified"] is True
     assert lines[0]["check_run_conclusion"] == "failure"
     assert lines[1]["type"] == "override"
+    assert lines[1]["reason"] == audit.WITHHELD  # the PR changed the workflow: no free text
+
+
+def test_free_text_is_kept_when_the_workflow_is_unchanged_and_withheld_otherwise(
+    tmp_path: Path,
+) -> None:
+    f = audit.AuditFinding(
+        id="cr-0000", severity=Severity.HIGH, category="off-by-one", file="a.cs", line=1, title="t"
+    )
+    call = {"tool": "Read", "input": "file_path=a.cs", "ts": T}
+    artifact(
+        tmp_path, "audit-100-code-review", audit.dumps(gate_run(findings=[f], tool_calls=[call]))
+    )
+
+    ((_, kept),) = collect(tmp_path)
+    ((_, withheld),) = collect(tmp_path, workflow_modified=True)
+
+    assert kept[0]["findings"][0]["title"] == "t"
+    assert kept[0]["tool_calls"][0]["input"] == "file_path=a.cs"
+    assert withheld[0]["findings"][0]["title"] == audit.WITHHELD
+    assert withheld[0]["findings"][0]["id"] == "cr-0000"  # the structure stays
+    assert withheld[0]["findings"][0]["severity"] == "high"
+    assert withheld[0]["tool_calls"][0] == {**kept[0]["tool_calls"][0], "input": ""}
+
+
+def test_a_run_has_a_byte_budget(tmp_path: Path) -> None:
+    # The budget is checked before anything is parsed, so raw bytes are enough.
+    for n in range(3):
+        artifact(tmp_path, f"audit-100-check-{n}", "x" * (audit.MAX_RUN_BYTES // 3 + 1))
+
+    ((info, lines),) = collect(tmp_path)
+
+    assert info.tamper is True
+    assert "bytes of artifacts" in lines[0]["problems"][0]
 
 
 @pytest.mark.parametrize(
@@ -359,7 +397,7 @@ def test_too_many_artifacts_are_one_tamper_event(tmp_path: Path) -> None:
 
     ((info, lines),) = collect(tmp_path)
 
-    assert info.path == "events/2026/10/16/100-1-too-many.jsonl"
+    assert info.path == "events/2026/10/16/100-1-too-much.jsonl"
     assert "over the 20 limit" in lines[0]["problems"][0]
 
 
