@@ -47,8 +47,7 @@ output can't simply be trusted either.
 - The log is the orphan branch **`audit-log`**: one file per run, check and attempt
   (`events/YYYY/MM/DD/<run_id>-<attempt>-<check>.jsonl`), written through the contents API
   (commits signed by GitHub). A ruleset blocks deletion and force pushes for everyone, so history
-  only grows, and blocks updates for everyone but the GitHub Actions app (bypass for app 15368), so
-  people can't push to it.
+  only grows.
 - **Overrides need a reason.** `llm-override` is honoured only with an unedited
   `/llm-override <reason>` comment by whoever added the label last, written after the label
   (issue events API); `llm-gate run` ignores an override without a reason and records one with it
@@ -65,9 +64,11 @@ output can't simply be trusted either.
 - No `concurrency` group, unlike the plan: GitHub keeps only one *pending* run per group and
   cancels the rest, which would silently drop records when several reviews finish together.
   Concurrent writes go to different files and retry with backoff when the branch head moved.
-- Any workflow in this repository with `contents: write` could still write to `audit-log`; the
-  ruleset can only tell apps apart, not workflows. CODEOWNERS on `.github/` would close that in a
-  team repository.
+- Anyone with write access, and any workflow with `contents: write`, can still *add* commits to
+  `audit-log`; they just can't rewrite or delete it. Restricting updates to the GitHub Actions app
+  needs an organization: a personal repository's ruleset rejects the app as a bypass actor
+  ("must be part of the ruleset source or owner organization"). Added commits stay visible, and
+  the collector's own are signed by GitHub and made by `github-actions[bot]`.
 - Artifact and file names include the attempt, which the plan's `<run_id>-<check>` didn't: a
   re-run of failed jobs keeps the first attempt's artifacts in the run, and its records would
   otherwise overwrite (or be mistaken for) the new attempt's.
