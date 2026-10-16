@@ -5,10 +5,11 @@
 #   /llm-risk <low|medium|high> <reason>   manual triage risk (acted on from Phase 17)
 #
 # Trust: issue_comment always runs this file and the llm-gate code from the default branch, and the
-# PR is never checked out. The comment is untrusted: llm-gate reads it from the event file and only
-# collaborators (OWNER, MEMBER, COLLABORATOR) are heard; anything else is one fixed-field
-# `feedback_rejected` record per PR, person and day. What reaches a shell below is llm-gate's own
-# validated output (paths, ids, logins), passed through env.
+# PR is never checked out. Outsiders don't start the job at all (author_association below), and
+# within it only people with a write, maintain or admin role are heard (the permission API:
+# MEMBER and COLLABORATOR don't imply write access). The comment is untrusted: llm-gate reads it
+# from the event file, and what reaches a shell is llm-gate's validated output (paths, ids,
+# logins) through env. GH_TOKEN is set only for the steps that call the API.
 name: llm-feedback
 
 on:
@@ -17,14 +18,16 @@ on:
 
 permissions: {}
 
-concurrency:
-  group: llm-feedback-${{ github.event.issue.number }}
-  cancel-in-progress: false # every command is recorded
+# No concurrency group: GitHub keeps only one pending run per group and cancels the rest, which
+# would drop commands. Every command writes its own file; labels and reactions are idempotent.
 
 jobs:
   feedback:
     name: llm-feedback
-    if: github.event.issue.pull_request && startsWith(github.event.comment.body, '/llm-')
+    if: >-
+      github.event.issue.pull_request
+      && startsWith(github.event.comment.body, '/llm-')
+      && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -33,7 +36,6 @@ jobs:
       actions: write # re-run llm-review after /llm-override
       pull-requests: read # the PR's head commit
     env:
-      GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
       PR: ${{ github.event.issue.number }}
       COMMENT_ID: ${{ github.event.comment.id }}
@@ -52,12 +54,24 @@ jobs:
           mkdir -p "$RUNNER_TEMP/audit-log"
           git archive FETCH_HEAD | tar -x -C "$RUNNER_TEMP/audit-log"
 
+      - name: The commenter's repository role
+        id: role
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LOGIN: ${{ github.event.comment.user.login }}
+        run: |
+          role=$(gh api "repos/$REPO/collaborators/$LOGIN/permission" --jq .role_name 2> /dev/null \
+            || echo none)
+          echo "role=$role" >> "$GITHUB_OUTPUT"
+
       - name: Validate the command
         id: handle
+        env:
+          ROLE: ${{ steps.role.outputs.role }}
         run: |
           uv run --project tools/llm-gate --locked llm-gate feedback handle \
             --event "$GITHUB_EVENT_PATH" --audit-dir "$RUNNER_TEMP/audit-log" \
-            --out "$RUNNER_TEMP/out" > "$RUNNER_TEMP/actions.json"
+            --permission "$ROLE" --out "$RUNNER_TEMP/out" > "$RUNNER_TEMP/actions.json"
           jq -r '"path=\(.path)", "reaction=\(.reaction // "")", "label=\(.label // "")",
             "rerun=\(.rerun)", "mark_check=\(.mark.check // "")",
             "mark_finding=\(.mark.finding_id // "")", "mark_by=\(.mark.by // "")"' \
@@ -68,6 +82,7 @@ jobs:
       - name: Write the record to audit-log
         if: steps.handle.outputs.path != ''
         env:
+          GH_TOKEN: ${{ github.token }}
           RECORD: ${{ steps.handle.outputs.path }}
         run: |
           [[ "$RECORD" =~ ^events/[0-9]{4}/[0-9]{2}/[0-9]{2}/feedback-[a-z0-9-]+\.jsonl$ ]] || {
@@ -92,25 +107,29 @@ jobs:
       - name: React
         if: steps.handle.outputs.reaction != ''
         env:
+          GH_TOKEN: ${{ github.token }}
           REACTION: ${{ steps.handle.outputs.reaction }}
         run: gh api -X POST "repos/$REPO/issues/comments/$COMMENT_ID/reactions" -f content="$REACTION" --silent
 
       - name: Add the override label
         if: steps.handle.outputs.label != ''
         env:
+          GH_TOKEN: ${{ github.token }}
           LABEL: ${{ steps.handle.outputs.label }}
         run: gh api -X POST "repos/$REPO/issues/$PR/labels" -f "labels[]=$LABEL" --silent
 
       - name: Mark the false positive in the sticky comment
         if: steps.handle.outputs.mark_finding != ''
         env:
+          GH_TOKEN: ${{ github.token }}
           CHECK: ${{ steps.handle.outputs.mark_check }}
           FINDING: ${{ steps.handle.outputs.mark_finding }}
           BY: ${{ steps.handle.outputs.mark_by }}
         run: |
           marker="<!-- llm-gate:$CHECK -->"
-          id=$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
-            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" \
+          id=$(gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[]' \
+            | jq -r --arg marker "$marker" \
+              'select(.user.login == "github-actions[bot]" and (.body | startswith($marker))) | .id' \
             | tail -n 1)
           [ -n "$id" ] || { echo "no sticky comment for $CHECK"; exit 0; }
           gh api "repos/$REPO/issues/comments/$id" --jq .body > "$RUNNER_TEMP/body.md"
@@ -124,6 +143,8 @@ jobs:
       # override step reads the labels from the API; the results come from its cache.
       - name: Re-run llm-review
         if: steps.handle.outputs.rerun == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           head=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)
           read -r run status < <(gh api \

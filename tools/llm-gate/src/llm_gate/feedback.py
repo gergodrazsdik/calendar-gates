@@ -9,8 +9,9 @@ comment that starts with `/llm-`; the comment is untrusted input and is only par
 | /llm-override <reason>           | override                  | adds llm-override, re-runs review |
 | /llm-risk <level> <reason>       | risk_override             | (Phase 17 acts on it)             |
 
-Only collaborators (OWNER, MEMBER, COLLABORATOR) are heard. Anything else, and any command that
-doesn't parse or names an unknown finding, becomes one `feedback_rejected` record.
+Only people with a write, maintain or admin role are heard (the workflow looks the role up;
+outsiders never start it). A collaborator without that role, and any command that doesn't parse or
+names an unknown finding, becomes one `feedback_rejected` record.
 """
 
 import json
@@ -112,9 +113,12 @@ def handle(
     blocking_checks: Collection[str],
     context: audit.RunContext,
     now: datetime,
+    permission: str | None = None,
 ) -> Actions:
     """Validate a comment event and build its record and actions. Never raises on bad input: every
-    outcome is a record (or, for an unparseable author, nothing at all)."""
+    outcome is a record (or, for an unparseable author, nothing at all). `permission` is the
+    commenter's repository role (role_name from collaborators/<login>/permission): only write,
+    maintain and admin are heard; author_association alone isn't enough."""
     issue = event.get("issue") or {}
     comment = event.get("comment") or {}
     pr = issue.get("number")
@@ -149,6 +153,10 @@ def handle(
         parsed = parse_command(str(comment.get("body") or ""))
         command = parsed.name if isinstance(parsed, Command) else parsed.command
         return reject(command, "not_a_collaborator", outsider=True)
+    if permission not in audit.WRITE_ROLES:
+        parsed = parse_command(str(comment.get("body") or ""))
+        command = parsed.name if isinstance(parsed, Command) else parsed.command
+        return reject(command, "not_a_collaborator", outsider=False)
 
     parsed = parse_command(str(comment.get("body") or ""))
     if isinstance(parsed, Rejection):

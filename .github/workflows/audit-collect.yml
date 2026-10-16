@@ -90,6 +90,7 @@ jobs:
             --jq '.jobs[] | {name, conclusion}' > "$WORK/jobs.jsonl"
           gh api --paginate "repos/$REPO/issues/$PR/events" --jq '.[]' | jq -s . > "$WORK/events.json"
           gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[]' | jq -s . > "$WORK/comments.json"
+          GITHUB_REPOSITORY="$REPO" scripts/override-writers.sh "$WORK/comments.json" > "$WORK/writers.json"
           # Did the PR change the review workflow? Then nothing in the artifacts can be trusted.
           # The compare API lists at most 300 files; a longer list counts as modified.
           # shellcheck disable=SC2016  # $f is a jq variable
@@ -116,6 +117,7 @@ jobs:
             --head-sha "$HEAD_SHA" --pr "$PR" \
             --artifacts "$WORK/artifacts" --jobs "$WORK/jobs.jsonl" \
             --events "$WORK/events.json" --comments "$WORK/comments.json" \
+            --writers "$WORK/writers.json" \
             --checks "$(cat "$WORK/checks.json")" ${WORKFLOW_MODIFIED:-} \
             --out "$WORK/out" > "$WORK/collected.json"
           {

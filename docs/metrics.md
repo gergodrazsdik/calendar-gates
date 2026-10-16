@@ -26,7 +26,7 @@ Phase 17 writes `triage` records.
 
 ## Feedback commands
 
-Collaborators feed the false-positive rate with PR comments (`llm-feedback.yml`,
+People with write access feed the false-positive rate with PR comments (`llm-feedback.yml`,
 [ADR 0007](adr/0007-feedback-commands.md)):
 
 - `/llm-fp <finding-id> <reason>`: a false positive. The finding's row in the sticky comment gets

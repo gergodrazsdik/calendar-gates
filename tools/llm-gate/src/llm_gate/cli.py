@@ -66,6 +66,12 @@ def _head(root: Path) -> str | None:
         return None
 
 
+WRITERS_HELP = (
+    "logins with write access (JSON array; scripts/override-writers.sh): needed to honour a "
+    "llm-override label added by the feedback workflow"
+)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="llm-gate", description=__doc__)
     parser.add_argument(
@@ -169,12 +175,14 @@ def build_parser() -> argparse.ArgumentParser:
     collect.add_argument(
         "--comments", type=Path, required=True, help="the PR's issue comments (JSON array)"
     )
+    collect.add_argument("--writers", type=Path, help=WRITERS_HELP)
 
     override = asub.add_parser("override", help="find the reason for the override label")
     override.add_argument("--events", type=Path, required=True, help="issue events (JSON array)")
     override.add_argument(
         "--comments", type=Path, required=True, help="issue comments (JSON array)"
     )
+    override.add_argument("--writers", type=Path, help=WRITERS_HELP)
 
     eval_ = sub.add_parser("eval", help="score the review prompts on known cases (evals/)")
     esub = eval_.add_subparsers(dest="eval_command", required=True)
@@ -201,6 +209,9 @@ def build_parser() -> argparse.ArgumentParser:
     fbh.add_argument("--event", type=Path, required=True, help="the issue_comment event payload")
     fbh.add_argument("--audit-dir", type=Path, required=True, help="audit-log checkout")
     fbh.add_argument("--out", type=Path, required=True, help="where the record file is written")
+    fbh.add_argument(
+        "--permission", help="the commenter's repository role (collaborators/<login>/permission)"
+    )
     fbm = fbsub.add_parser("mark", help="mark a finding as a false positive in a sticky comment")
     fbm.add_argument("--body-file", type=Path, required=True)
     fbm.add_argument("--finding", required=True)
@@ -358,9 +369,15 @@ def _expected(args: argparse.Namespace) -> audit.Expected:
 
 
 def _find_override(args: argparse.Namespace) -> audit.OverrideRequest | str:
+    writers = (
+        {str(login) for login in json.loads(args.writers.read_text(encoding="utf-8"))}
+        if args.writers
+        else None
+    )
     return audit.find_override(
         json.loads(args.events.read_text(encoding="utf-8")),
         json.loads(args.comments.read_text(encoding="utf-8")),
+        writers=writers,
     )
 
 
@@ -507,6 +524,7 @@ def cmd_feedback(args: argparse.Namespace, checks: Mapping[str, Check]) -> int:
         blocking_checks=[c.name for c in checks.values() if c.blocking],
         context=context,
         now=datetime.now(UTC),
+        permission=args.permission,
     )
     if actions.path and actions.records:
         target = args.out / actions.path

@@ -39,13 +39,16 @@ def audit_dir(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def handle(body: str, audit_dir: Path, **kwargs: Any) -> feedback.Actions:
+def handle(
+    body: str, audit_dir: Path, permission: str | None = "write", **kwargs: Any
+) -> feedback.Actions:
     return feedback.handle(
         event(body, **kwargs),
         audit_dir=audit_dir,
         blocking_checks=["security-review", "code-review"],
         context=CONTEXT,
         now=NOW,
+        permission=permission,
     )
 
 
@@ -209,10 +212,14 @@ def test_a_bot_label_needs_a_collaborators_command() -> None:
             "updated_at": at,
         }
 
-    found = audit.find_override(events, [comment("alice", "COLLABORATOR")])
+    writers = {"alice"}
+    found = audit.find_override(events, [comment("alice", "COLLABORATOR")], writers=writers)
     assert found == audit.OverrideRequest(by="alice", reason="hotfix")
-    outsider = audit.find_override(events, [comment("mallory", "NONE")])
-    assert isinstance(outsider, str) and "no collaborator" in outsider
+    # COLLABORATOR without write access (a read or triage role) is not enough.
+    reader = audit.find_override(events, [comment("bob", "COLLABORATOR")], writers=writers)
+    assert isinstance(reader, str) and "write access" in reader
+    # Without the writers list, a bot-added label is never honoured.
+    assert isinstance(audit.find_override(events, [comment("alice", "OWNER")]), str)
 
 
 # --- CLI ---
@@ -239,7 +246,7 @@ def test_cli_handle_writes_the_record_and_prints_actions(
     out = tmp_path / "out"
 
     args = ["feedback", "handle", "--event", str(payload), "--audit-dir", str(audit_dir)]
-    assert main([*args, "--out", str(out)]) == 0
+    assert main([*args, "--out", str(out), "--permission", "admin"]) == 0
 
     actions = json.loads(capsys.readouterr().out)
     assert actions["recorded"] is True
@@ -269,3 +276,12 @@ def test_cli_mark(
 def test_bot_logins_make_safe_file_names(audit_dir: Path) -> None:
     actions = handle("/llm-ack cr-1705", audit_dir, association="NONE", login="dependabot[bot]")
     assert actions.path == "events/2026/10/16/feedback-rejected-7-dependabot-bot-.jsonl"
+
+
+@pytest.mark.parametrize("permission", ["read", "triage", None])
+def test_collaborators_without_write_access_are_not_heard(
+    audit_dir: Path, permission: str | None
+) -> None:
+    actions = handle("/llm-override trust me", audit_dir, permission=permission)
+    assert not actions.recorded and actions.label is None and not actions.rerun
+    assert record(actions)["code"] == "not_a_collaborator"

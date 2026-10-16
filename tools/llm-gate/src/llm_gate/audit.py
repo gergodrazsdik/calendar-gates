@@ -448,6 +448,9 @@ OVERRIDE_COMMAND = "/llm-override"
 # added by this bot; the person is then whoever wrote the command (a collaborator).
 WORKFLOW_BOT = "github-actions[bot]"
 TRUSTED_ASSOCIATIONS = frozenset({"OWNER", "MEMBER", "COLLABORATOR"})
+# Repository roles that may override a gate (collaborators/<login>/permission, role_name).
+# author_association is only a hint: MEMBER and COLLABORATOR don't imply write access.
+WRITE_ROLES = frozenset({"admin", "maintain", "write"})
 
 
 @dataclass(frozen=True)
@@ -461,6 +464,7 @@ def find_override(
     comments: Sequence[Mapping[str, Any]],
     *,
     label: str = OVERRIDE_LABEL,
+    writers: Collection[str] | None = None,
 ) -> OverrideRequest | str:
     """The reason for the PR's override label, or why there is none.
 
@@ -469,7 +473,9 @@ def find_override(
     `/llm-override <reason>` comment for this round: after the label was last removed (any time,
     if it never was). Before or after adding it both work, so the comment can come first and the
     labelled run sees it. When the feedback workflow added the label (`/llm-override` as a
-    command), the comment's author must be a collaborator instead, and is the one recorded.
+    command), the comment's author must instead be in `writers` (logins with a write, maintain or
+    admin role, looked up by the caller), and is the one recorded. Without `writers`, such a
+    label is never honoured.
     """
     mine = [e for e in events if (e.get("label") or {}).get("name") == label]
     labelled = [e for e in mine if e.get("event") == "labeled"]
@@ -493,7 +499,7 @@ def find_override(
     for comment in reversed(comments):
         author = (comment.get("user") or {}).get("login")
         if via_command:
-            if comment.get("author_association") not in TRUSTED_ASSOCIATIONS:
+            if writers is None or author not in writers:
                 continue
         elif author != labeller:
             continue
@@ -511,8 +517,8 @@ def find_override(
             return OverrideRequest(by=author, reason=reason.strip())
     if via_command:
         return (
-            f"{label} came from `{OVERRIDE_COMMAND}`, but no collaborator wrote an unedited "
-            f"`{OVERRIDE_COMMAND} <reason>` since it was last removed"
+            f"{label} came from `{OVERRIDE_COMMAND}`, but no one with write access wrote an "
+            f"unedited `{OVERRIDE_COMMAND} <reason>` since it was last removed"
         )
     return (
         f"{labeller} added {label} but wrote no unedited `{OVERRIDE_COMMAND} <reason>` comment "

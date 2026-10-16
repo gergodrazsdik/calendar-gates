@@ -19,6 +19,7 @@ jobs:
     permissions:
       contents: read
       actions: read # the latest llm-eval artifact
+      pull-requests: read # the merged PRs
       issues: write # the Gate health issue
     env:
       GH_TOKEN: ${{ github.token }}
