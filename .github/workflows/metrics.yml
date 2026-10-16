@@ -1,0 +1,62 @@
+# Gate health (docs/metrics.md): every Monday, and by hand, `llm-gate metrics` over the audit-log
+# branch, the merged PRs and the latest eval run on main, written into the body of the pinned issue
+# whose number is the repository variable GATE_HEALTH_ISSUE. Default-branch code only; the inputs
+# are the gate's own records and GitHub's API.
+name: metrics
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  report:
+    name: gate health
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read # the latest llm-eval artifact
+      issues: write # the Gate health issue
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      ISSUE: ${{ vars.GATE_HEALTH_ISSUE }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          cache-dependency-glob: tools/llm-gate/uv.lock
+
+      - name: Inputs
+        run: |
+          git fetch --quiet --no-tags --depth 1 origin audit-log
+          mkdir -p .audit-log && git archive FETCH_HEAD | tar -x -C .audit-log
+          gh api --paginate "repos/$REPO/pulls?state=closed&per_page=100" \
+            --jq '.[] | select(.merged_at) | {number, merged_at}' | jq -s . > "$RUNNER_TEMP/prs.json"
+          run=$(gh run list -R "$REPO" --workflow llm-eval.yml --branch main --event push \
+            --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          if [ -n "$run" ]; then
+            gh run download "$run" -R "$REPO" -n llm-eval -D "$RUNNER_TEMP/eval" || true
+          fi
+
+      - name: Report
+        run: |
+          eval_reports=()
+          [ -f "$RUNNER_TEMP/eval/reports/eval/last.json" ] \
+            && eval_reports=(--eval-reports "$RUNNER_TEMP/eval/reports/eval")
+          uv run --project tools/llm-gate --locked llm-gate metrics --audit-dir .audit-log \
+            --prs "$RUNNER_TEMP/prs.json" "${eval_reports[@]}" > "$RUNNER_TEMP/report.md"
+          cat "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Update the Gate health issue
+        if: env.ISSUE != ''
+        run: |
+          [[ "$ISSUE" =~ ^[0-9]+$ ]] || { echo "::error::GATE_HEALTH_ISSUE is not a number"; exit 1; }
+          jq -n --rawfile body "$RUNNER_TEMP/report.md" '{body: $body}' \
+            | gh api -X PATCH "repos/$REPO/issues/$ISSUE" --input - --silent
+          echo "updated issue #$ISSUE"

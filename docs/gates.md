@@ -83,7 +83,13 @@ is required too (see below).
   withholds secrets from forks, and `llm-compare` refuses PRs whose branch is not in this repository.
 - **Overrides need a reason** ([ADR 0005](adr/0005-audit-trail.md)): the `llm-override` label is
   honoured only with an unedited `/llm-override <reason>` comment by whoever added the label last,
-  written since the label was last removed. Comment first, then add the label. Without one, the job warns "override not honoured" and the findings fail as usual.
+  written since the label was last removed. Comment first, then add the label, or just comment
+  `/llm-override <reason>`: the feedback workflow adds the label and re-runs the review. Without one, the job warns "override not honoured" and the findings fail as usual.
+- **Feedback commands** ([ADR 0007](adr/0007-feedback-commands.md)): collaborators comment
+  `/llm-fp <finding-id> <reason>`, `/llm-ack <finding-id>`, `/llm-override <reason>` (adds the label
+  and re-runs llm-review) or `/llm-risk <level> <reason>`; `llm-feedback.yml` records them on
+  `audit-log` and reacts 👍. Metrics over all of it: `docs/metrics.md`, `just metrics`, and the
+  weekly "Gate health" issue (`metrics.yml`).
 - **Audit trail** ([ADR 0005](adr/0005-audit-trail.md)): every `llm / <check>` job uploads its
   audit record (`audit-<run>-<attempt>-<check>`). `audit-collect.yml` runs on `workflow_run`
   (default-branch code, never the PR's) and validates the artifacts against the run, its jobs, the

@@ -14,6 +14,8 @@ llm-gate audit   skip | validate | collect | override   (see "Audit records")
 llm-gate eval    run [--check <c>]... [--engine api|agent|both] [--model <m>] [--repeats 3]
                  [--jobs 4] [--cases <glob>] [--budget-usd <x>] [--compare]
                  | baseline | add-from-fp <finding-id>   (see evals/README.md)
+llm-gate feedback handle --event <file> --audit-dir <dir> --out <dir> | mark ...   (llm-feedback.yml)
+llm-gate metrics [--audit-dir .audit-log] [--prs <json>] [--eval-reports <dir>] [--since-days 30]
 ```
 
 Exit codes: `0` pass (or advisory, not applicable, overridden), `1` blocking findings, `2`
@@ -73,6 +75,8 @@ title) are shown in the sticky comment, so people can refer to a finding.
 | `report.py`, `compare.py` | Markdown (job summary, sticky comment), SARIF, engine comparison |
 | `audit.py` | `audit/v1` records, validation and collection of untrusted artifacts, override reasons |
 | `evals.py` | eval cases, scoring, baseline and thresholds, fp-regression cases from the audit log (`evals/`) |
+| `feedback.py` | `/llm-*` PR comment commands: parsing, validation, records and actions ([ADR 0007](../../docs/adr/0007-feedback-commands.md)) |
+| `metrics.py` | gate health report over the audit log ([docs/metrics.md](../../docs/metrics.md)) |
 | `redact.py` | secret patterns and length limits that the record schema applies to every free-text field |
 
 Tests use fake engines and stubbed SDKs (`uv run pytest`); `uv run pytest -m live` calls the real

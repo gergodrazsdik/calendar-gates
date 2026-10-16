@@ -63,7 +63,9 @@ Details, fixes and overrides: `docs/gates.md`.
    Locally: `just llm <check>` (spends API credits). PR labels: `llm-override` (report blocking
    findings without failing; needs a `/llm-override <reason>` comment by whoever adds it),
    `llm-compare` (both engines, comparison comment). Every decision is an audit record on the
-   `audit-log` branch ([ADR 0005](docs/adr/0005-audit-trail.md); `just audit-pull`).
+   `audit-log` branch ([ADR 0005](docs/adr/0005-audit-trail.md); `just audit-pull`). PR comment
+   commands `/llm-fp`, `/llm-ack`, `/llm-override`, `/llm-risk` feed the metrics
+   ([ADR 0007](docs/adr/0007-feedback-commands.md), `docs/metrics.md`, `just metrics`).
 8. `llm-eval`: on PRs that change the review prompts or `tools/llm-gate/`, scores **the PR's** prompts on
    `tools/llm-gate/evals/cases` against `evals/baseline.json` ([ADR 0006](docs/adr/0006-llm-eval-gate.md)).
    Locally: `just eval` (spends API credits; a PR pays only for the checks it changes),
