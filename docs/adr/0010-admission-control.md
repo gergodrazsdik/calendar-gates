@@ -50,6 +50,10 @@ Kyverno 1.19 already serves `policies.kyverno.io/v1`, so the policies use it, an
 **The policies** live in `deploy/policies/`. `base/` is the Deny set for `calendar-gates`, and
 `dev/` is a kustomize overlay that audits in `calendar-gates-dev`. They are cluster-scoped
 policies that select their namespace, so a tenant of the namespace can't edit or delete them.
+They check every container kind (init and ephemeral containers too), on `pods` and on
+`pods/ephemeralcontainers`, the subresource `kubectl debug` writes to. Kyverno's controllers get
+read access to that subresource in `deploy/kyverno/values.yaml`, or they report the policies as
+not ready.
 
 1. **`calendar-gates-images`** (`ValidatingPolicy`): every container image is
    `ghcr.io/gergodrazsdik/calendar-gates…@sha256:…`.

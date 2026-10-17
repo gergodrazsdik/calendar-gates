@@ -15,7 +15,8 @@ spec:
       - apiGroups: [""]
         apiVersions: [v1]
         operations: [CREATE, UPDATE]
-        resources: [pods]
+        # The subresource is how `kubectl debug` adds an ephemeral container to a running pod.
+        resources: [pods, pods/ephemeralcontainers]
   # A cold check fetches every attestation and the Sigstore trust root; 10 s (the default) isn't
   # always enough. Results are cached for an hour.
   webhookConfiguration:
