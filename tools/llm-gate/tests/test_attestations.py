@@ -273,7 +273,8 @@ def test_override_reasons_are_quoted_in_the_notes_and_the_log_start_is_a_time(
         tmp_path,
         gate_run(1, "code-review", "fail", override_honoured=True),
         {"type": "override", "pr": 1, "head_sha": HEAD, "by": "alice", "checks": ["code-review"],
-         "reason": "see [this](https://example.com) `x`", "ts": "2026-10-17T10:00:00.5+00:00"},
+         "reason": "see [this](https://example.com)\n`x`", "ts": "2026-10-17T10:00:00.5+00:00"},
+        {"type": "triage", "pr": 9, "ts": "not a time"},  # unusable: ignored for the log's start
     )  # fmt: skip
     notes = attestations.render_notes(
         attestations.llm_review([commit(1)], log, range_from=None, range_to="v1.0.0")

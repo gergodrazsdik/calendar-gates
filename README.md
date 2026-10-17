@@ -41,8 +41,8 @@ kind/helm and an Anthropic API key in `pass` (`api/anthropic-calendar-gates`).
    requires `pr-title`, `format`, `lint`, `build-test / dotnet`, `http-tests`, `grype`,
    `k8s-smoke`, `gates`, `llm / code-review`, `llm / security-review` and `llm-eval`. Triage
    decides how much LLM review a PR gets ([ADR 0008](docs/adr/0008-risk-triage.md)). Advisory
-   LLM checks comment without blocking. `/llm-override <reason>` passes blocking LLM findings
-   (still reported and recorded), and the `llm-compare` label runs both LLM engines on a PR.
+   LLM checks comment without blocking. A `/llm-override <reason>` comment (it adds the `llm-override`
+   label) passes blocking LLM findings (still reported and recorded), and the `llm-compare` label runs both LLM engines on a PR.
 2. A push to `main` publishes `ghcr.io/gergodrazsdik/calendar-gates:edge`.
 3. `just release X.Y.Z` pushes a signed tag. `release.yml` verifies it and re-runs the tests, then
    builds the multi-arch image once, by digest. It scans that digest and attests provenance, SBOM,
