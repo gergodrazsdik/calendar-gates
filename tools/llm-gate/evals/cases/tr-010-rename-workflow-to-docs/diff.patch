@@ -1,0 +1,4 @@
+diff --git a/.github/workflows/llm-feedback.yml b/docs/llm-feedback.yml.md
+similarity index 100%
+rename from .github/workflows/llm-feedback.yml
+rename to docs/llm-feedback.yml.md

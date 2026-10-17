@@ -16,13 +16,12 @@ PRs merged before the log existed can't be covered.
 | False-positive rate | per check and severity: findings marked `/llm-fp` / distinct findings (a finding counts once per PR, however often it was re-reported); also fp / (fp + ack), over the findings people looked at | `gate_run` findings, `feedback` |
 | Override rate | PRs with an honoured override / PRs where a blocking check failed | `gate_run` (`override_honoured`, `verdict`) |
 | Cost | paid reviews only (cache hits record none): total, per check, per engine/model, p50/p90 per reviewed PR | `gate_run.cost_usd` |
-| Triage mix | share of PRs per final risk; manual `/llm-risk` changes | `triage`, `risk_override` (Phase 17) |
-| AI-assisted share | triaged PRs flagged as AI-assisted / triaged PRs | `triage` (Phase 17) |
+| Triage mix | share of PRs per final risk; manual `/llm-risk` changes | `triage`, `risk_override` ([ADR 0008](adr/0008-risk-triage.md)) |
+| AI-assisted share | triaged PRs flagged as AI-assisted / triaged PRs | `triage` |
 | Eval trend | the latest eval run's recall, false blocks, verdict accuracy and flips per check, engine and prompt | `llm-eval` artifact (`reports/eval/`) |
 | Integrity | `tamper_suspected` events, reviews from PRs that changed the review workflow, rejected `/llm-*` commands | `tamper_suspected`, `gate_run.workflow_modified`, `feedback_rejected` |
 
-A metric without data says "no data yet"; triage and the AI-assisted share stay that way until
-Phase 17 writes `triage` records.
+A metric without data says "no data yet".
 
 ## Feedback commands
 
@@ -33,6 +32,7 @@ People with write access feed the false-positive rate with PR comments (`llm-fee
   marked, and `llm-gate eval add-from-fp <finding-id>` turns it into an eval case.
 - `/llm-ack <finding-id>`: a true positive.
 - `/llm-override <reason>`: overrides the blocking checks (the label is added and the review re-run).
-- `/llm-risk <low|medium|high> <reason>`: a manual risk change (acted on from Phase 17).
+- `/llm-risk <low|medium|high> <reason>`: a manual risk change; triage re-runs with it
+  ([ADR 0008](adr/0008-risk-triage.md)).
 
 Finding ids (`cr-1705`) are in each check's sticky comment.

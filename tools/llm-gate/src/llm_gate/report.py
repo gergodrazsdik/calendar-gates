@@ -12,6 +12,7 @@ ICONS = {
     Verdict.FAIL: "❌",
     Verdict.OVERRIDDEN: "⚠️",
     Verdict.NOT_APPLICABLE: "➖",  # noqa: RUF001  # an icon, not a minus sign
+    Verdict.NOT_NEEDED: "➖",  # noqa: RUF001  # an icon, not a minus sign
     Verdict.ERROR: "💥",
 }
 SEVERITY_ICONS = {
@@ -50,6 +51,8 @@ def _stats(record: RunRecord) -> str:
         else "advisory (never fails)"
     )
     parts = [mode, f"engine `{record.engine}`", f"model `{record.model}`"]
+    if record.risk:
+        parts.insert(0, f"risk **{record.risk}**")
     if record.result:
         usage = record.result.usage
         parts.append(f"{record.result.duration_ms / 1000:.1f} s")

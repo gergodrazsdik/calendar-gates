@@ -1,16 +1,18 @@
 # LLM review gates (docs/gates.md, ADR 0002). One job per check in tools/llm-gate/checks.yaml,
-# each reported as `llm / <check>`. The verdict comes from llm-gate, never from the model.
+# each reported as `llm / <check>`. The verdict comes from llm-gate, never from the model. The
+# `triage` job's risk level decides which of them review, block, and with what (ADR 0008).
 # Separate from ci.yml so that adding or removing a label re-runs only these checks.
 #
 # ADR 0004: the gate (tools/llm-gate, checks.yaml, the prompts, the comment script) runs from the
 # **base branch as it is now**, checked out into gate/. Not the PR's base.sha: GitHub doesn't move
-# that when the base branch moves on, so a long-open PR would keep an old gate. llm-plan resolves
+# that when the base branch moves on, so a long-open PR would keep an old gate. triage resolves
 # the commit once and every check of the run uses it. The PR head is checked out into src/ and is only
 # data: the diff, and read-only context for the agent engine. A PR can't weaken or instruct the
 # gate that reviews it. Remaining hole: this workflow file itself comes from the PR.
 #
 # ADR 0005: every check appends an audit record (.llm-gate/audit.jsonl) and uploads it as
-# audit-<run>-<attempt>-<check>; audit-collect.yml (default branch) validates it into audit-log.
+# audit-<run>-<attempt>-<check> (triage: -triage); audit-collect.yml (default branch) validates
+# it into audit-log.
 name: llm-review
 
 on:
@@ -25,15 +27,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  llm-plan:
-    name: llm-plan
+  # Triage (ADR 0008): the PR's risk from deterministic rules (paths, size, AI-assisted), raised
+  # by a cheap model if it disagrees, or a recorded `/llm-risk` (from audit-log, never labels).
+  # The risk decides which checks run, which block, and their engine and model; every check
+  # still reports below, so no required check goes missing.
+  triage:
+    name: triage
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
+      pull-requests: write # the risk:<level> and ai-assisted labels
     outputs:
       checks: ${{ steps.list.outputs.checks }}
       gate_sha: ${{ steps.gate.outputs.sha }}
+      risk: ${{ steps.triage.outputs.risk }}
+    env:
+      PR: ${{ github.event.pull_request.number }}
+      REPO: ${{ github.repository }}
+      LLM_GATE_PR: ${{ github.event.pull_request.number }}
     steps:
       - name: Gate tooling from the base branch's current head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -44,6 +56,13 @@ jobs:
       - name: Pin the gate commit for this run
         id: gate
         run: echo "sha=$(git -C gate rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: The PR head (data only)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: src
+          fetch-depth: 0 # the diff is taken from the merge base with origin/<base>
+          persist-credentials: false
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           cache-dependency-glob: gate/tools/llm-gate/uv.lock
@@ -53,9 +72,106 @@ jobs:
           echo "checks=$(uv run --project gate/tools/llm-gate --locked llm-gate --repo gate
           --config gate/tools/llm-gate/checks.yaml list --json)" >> "$GITHUB_OUTPUT"
 
+      # The description from the API, not the event: a re-run (after /llm-risk) keeps the
+      # original payload. The commits from the checkout, as the collector gets them from the
+      # compare API for this head: a later push can't change what this run is checked against.
+      - name: The PR's commits and description, and manual risk changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          gh api "repos/$REPO/pulls/$PR" --jq '{body, head_ref: .head.ref}' > "$RUNNER_TEMP/pr.json"
+          git -C src log -z --format=%B "origin/$BASE_REF..HEAD" \
+            | jq -Rs 'split("\u0000") | map(select(length > 0))' > "$RUNNER_TEMP/commits.json"
+          jq --slurpfile commits "$RUNNER_TEMP/commits.json" '. + {commits: $commits[0]}' \
+            "$RUNNER_TEMP/pr.json" > "$RUNNER_TEMP/pr-data.json"
+          mkdir -p "$RUNNER_TEMP/audit-log"
+          if git -C gate fetch --quiet --no-tags --depth 1 origin audit-log; then
+            git -C gate archive FETCH_HEAD | tar -x -C "$RUNNER_TEMP/audit-log"
+          fi
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .llm-gate/cache
+          key: llm-gate-triage-pr${{ github.event.pull_request.number }}-${{ github.sha }}
+          restore-keys: llm-gate-triage-pr${{ github.event.pull_request.number }}-
+
+      # Without a key (forks, Dependabot) the rules alone decide; the model can only raise.
+      # A base branch whose gate has no triage yet (the PR that introduces it, an old base)
+      # gives no risk: every check then runs as checks.yaml configures it, as before triage.
+      - name: Triage
+        id: triage
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LLM_MODEL_CHEAP: ${{ vars.LLM_MODEL_CHEAP }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          gate=(uv run --project gate/tools/llm-gate --locked llm-gate
+            --repo src --config gate/tools/llm-gate/checks.yaml)
+          if ! "${gate[@]}" triage --help > /dev/null 2>&1; then
+            echo "::notice title=triage::The base branch's llm-gate has no triage; every check runs as configured."
+            echo "risk=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          no_model=()
+          [ -n "$ANTHROPIC_API_KEY" ] || no_model=(--no-model)
+          "${gate[@]}" triage --base "origin/$BASE_REF" --pr-data "$RUNNER_TEMP/pr-data.json" \
+            --audit-dir "$RUNNER_TEMP/audit-log" --out "$GITHUB_WORKSPACE/.llm-gate" "${no_model[@]}" \
+            > "$RUNNER_TEMP/triage.json"
+          risk=$(jq -r '.risk // empty' "$RUNNER_TEMP/triage.json")
+          if [ -z "$risk" ]; then
+            echo "::notice title=triage::checks.yaml has no triage section; every check runs as configured."
+            echo "risk=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          cat .llm-gate/triage.md >> "$GITHUB_STEP_SUMMARY"
+          [[ "$risk" =~ ^(low|medium|high)$ ]] || { echo "::error::triage returned no risk"; exit 1; }
+          echo "risk=$risk" >> "$GITHUB_OUTPUT"
+          echo "ai=$(jq -r .ai_assisted "$RUNNER_TEMP/triage.json")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: steps.triage.outcome == 'success'
+        with:
+          path: .llm-gate/cache
+          key: llm-gate-triage-pr${{ github.event.pull_request.number }}-${{ github.sha }}
+
+      - name: Upload the audit record
+        if: always() && hashFiles('.llm-gate/audit.jsonl') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: audit-${{ github.run_id }}-${{ github.run_attempt }}-triage
+          path: .llm-gate/audit.jsonl
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # Labels set with GITHUB_TOKEN start no workflow runs (no loop). A person's risk:* label
+      # does start one, and triage puts its own back: only /llm-risk changes the risk.
+      - name: Labels
+        if: steps.triage.outputs.risk != ''
+        continue-on-error: true # a fork PR's token is read-only; the risk is in the outputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RISK: ${{ steps.triage.outputs.risk }}
+          AI: ${{ steps.triage.outputs.ai }}
+        run: |
+          labels=$(gh api "repos/$REPO/issues/$PR/labels" --jq '.[].name')
+          for label in risk:low risk:medium risk:high; do
+            if [ "$label" != "risk:$RISK" ] && grep -qx "$label" <<< "$labels"; then
+              gh api -X DELETE "repos/$REPO/issues/$PR/labels/$label" --silent
+            fi
+          done
+          grep -qx "risk:$RISK" <<< "$labels" \
+            || gh api -X POST "repos/$REPO/issues/$PR/labels" -f "labels[]=risk:$RISK" --silent
+          if [ "$AI" = true ]; then
+            grep -qx ai-assisted <<< "$labels" \
+              || gh api -X POST "repos/$REPO/issues/$PR/labels" -f "labels[]=ai-assisted" --silent
+          elif grep -qx ai-assisted <<< "$labels"; then
+            gh api -X DELETE "repos/$REPO/issues/$PR/labels/ai-assisted" --silent
+          fi
+
   llm:
     name: llm / ${{ matrix.check }}
-    needs: llm-plan
+    needs: triage
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -65,18 +181,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: ${{ fromJSON(needs.llm-plan.outputs.checks) }}
+        check: ${{ fromJSON(needs.triage.outputs.checks) }}
     env:
       CHECK: ${{ matrix.check }}
       PR: ${{ github.event.pull_request.number }}
       # Audit context (llm-gate reads these by name; ADR 0005).
       LLM_GATE_PR: ${{ github.event.pull_request.number }}
       LLM_GATE_PR_EVENT_AT: ${{ github.event.pull_request.updated_at }}
+      # The PR's triage risk (ADR 0008): llm-gate decides from it whether this check is needed,
+      # blocks, and with which engine and model (checks.yaml triage.levels).
+      LLM_GATE_RISK: ${{ needs.triage.outputs.risk }}
     steps:
-      - name: Gate tooling, the commit llm-plan pinned
+      - name: Gate tooling, the commit triage pinned
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.llm-plan.outputs.gate_sha }}
+          ref: ${{ needs.triage.outputs.gate_sha }}
           path: gate
           persist-credentials: false
       - name: The PR head (data and read-only context only)
@@ -199,7 +318,7 @@ jobs:
           VERDICT: ${{ steps.review.outputs.verdict }}
         run: |
           mode=""
-          [ "$VERDICT" = not-applicable ] && mode=--update-only
+          case "$VERDICT" in not-applicable | not-needed) mode=--update-only ;; esac
           gate/scripts/upsert-pr-comment.sh $mode "$PR" "<!-- llm-gate:$CHECK -->" "$RUNNER_TEMP/review.md"
 
       # The raw results (model output included) stay here for 90 days; the audit log keeps only

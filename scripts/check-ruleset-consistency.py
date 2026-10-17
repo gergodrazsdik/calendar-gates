@@ -8,8 +8,8 @@
 """Fail when .github/rulesets/main.json and the workflows or checks.yaml disagree.
 
 A required check that no job produces never reports, so it blocks every PR; a renamed job silently
-stops being required; a blocking LLM check that is not required can be ignored. This catches all
-three before the ruleset is applied. Usage: scripts/check-ruleset-consistency.py [repo root]
+stops being required; a blocking LLM check (at any triage risk level) that is not required can be
+ignored. This catches all three before the ruleset is applied. Usage: scripts/check-ruleset-consistency.py [repo root]
 """
 
 import json
@@ -47,6 +47,21 @@ def job_check_names(
     return names
 
 
+def blocking_checks(config: dict[str, Any]) -> set[str]:
+    """Checks that can fail a PR. With triage (ADR 0008), those that block at *any* risk level:
+    a check that blocks only at high risk must still be required, or a high-risk PR could merge
+    past it."""
+    checks = config["checks"]
+    triage = config.get("triage")
+    if not triage:
+        return {name for name, spec in checks.items() if spec.get("mode") == "blocking"}
+    return {
+        name
+        for level in triage["levels"].values()
+        for name in level.get("blocking", [])
+    }
+
+
 def main(root: Path) -> int:
     ruleset = json.loads(
         (root / ".github" / "rulesets" / "main.json").read_text(encoding="utf-8")
@@ -57,8 +72,9 @@ def main(root: Path) -> int:
         if rule["type"] == "required_status_checks"
         for check in rule["parameters"]["required_status_checks"]
     ]
-    checks = load_yaml(root / "tools" / "llm-gate" / "checks.yaml")["checks"]
-    blocking = {name for name, spec in checks.items() if spec.get("mode") == "blocking"}
+    config = load_yaml(root / "tools" / "llm-gate" / "checks.yaml")
+    checks = config["checks"]
+    blocking = blocking_checks(config)
     produced: set[str] = set()
     for workflow in WORKFLOWS:
         produced |= job_check_names(

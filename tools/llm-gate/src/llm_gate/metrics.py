@@ -168,8 +168,13 @@ def compute(
         percentile(list(per_pr.values()), 0.9),
     )
 
-    # Triage and AI-assisted share (Phase 17 writes the triage records).
-    triage = [r for r in recent if r.get("type") == "triage"]
+    # Triage and AI-assisted share (ADR 0008): each PR once, as its latest triage left it.
+    latest: dict[Any, Mapping[str, Any]] = {}
+    for record in sorted(
+        (r for r in recent if r.get("type") == "triage"), key=lambda r: str(r.get("ts"))
+    ):
+        latest[record.get("pr")] = record
+    triage = list(latest.values())
     report.triage = dict(Counter(str(r.get("final_risk")) for r in triage))
     report.ai_assisted = (sum(1 for r in triage if r.get("ai_assisted")), len(triage))
     report.risk_overrides = sum(1 for r in recent if r.get("type") == "risk_override")
@@ -285,9 +290,7 @@ def render(report: Report, *, generated: datetime) -> str:
             + f"{_pct(_ratio(*report.ai_assisted))}."
         )
     else:
-        lines.append(
-            f"{NO_DATA} (triage arrives in Phase 17). Manual risk changes: {report.risk_overrides}."
-        )
+        lines.append(f"{NO_DATA}. Manual risk changes: {report.risk_overrides}.")
     lines += ["", "### Eval trend (latest run)", ""]
     if report.evals:
         lines += [

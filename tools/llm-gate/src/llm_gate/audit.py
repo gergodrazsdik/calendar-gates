@@ -32,11 +32,12 @@ from pydantic import (
     ValidationError,
 )
 
-from .config import Check, EngineName
+from .config import Check, EngineName, Risk
 from .models import Severity, ToolCall, finding_id, finding_prefix
 from .policy import Verdict
 from .redact import MAX_SUMMARY, Short, Text, clip, redact
 from .runner import RunRecord
+from .triage import highest
 
 SCHEMA: Final = "audit/v1"
 AUDIT_FILE = "audit.jsonl"
@@ -138,7 +139,7 @@ class GateRun(_Record):
     gate_sha: Sha | None  # the commit the gate tooling ran from (the PR's base in CI)
     diff_sha256: Digest | None
     diff_bytes: Count
-    risk: Literal["low", "medium", "high"] | None = None  # Phase 17 (triage)
+    risk: Risk | None = None  # the PR's triage risk (ADR 0008); None without triage
     blocking: bool
     cache_hit: bool
     pr_event_at: AwareDatetime | None = None
@@ -158,12 +159,25 @@ class GateRun(_Record):
 
 
 class Triage(_Record):
+    """The triage job's decision (ADR 0008). The collector recomputes `rules_risk` and
+    `ai_assisted` from the GitHub API and checks every gate_run of the run against
+    `final_risk`."""
+
     type: Literal["triage"] = "triage"
-    rules_risk: Short
-    model_risk: Short | None
-    final_risk: Short
-    reasons: list[Text] = Field(max_length=20)
+    rules_risk: Risk
+    rules_reasons: list[Text] = Field(default_factory=list, max_length=20)
+    model: ModelName | None = None
+    model_risk: Risk | None
+    reasons: list[Text] = Field(max_length=20)  # the model's (scrubbed, withheld if modified)
+    final_risk: Risk
+    source: Literal["rules", "model", "manual"] = "rules"
     ai_assisted: bool
+    ai_commits: Count = 0
+    total_commits: Count = 0
+    changed_lines: Count = 0
+    cost_usd: Annotated[float, Field(ge=0)] | None = None
+    cache_hit: bool = False
+    error: Text | None = None
     checks_plan: list[CheckName] = Field(max_length=20)
 
 
@@ -236,9 +250,10 @@ AuditRecord = Annotated[
 ]
 _ADAPTER: TypeAdapter[AuditRecord] = TypeAdapter(AuditRecord)
 
-# What the untrusted side may write. Triage joins once Phase 17 produces it; feedback, risk
-# overrides, evals and tamper events come from trusted workflows only.
-ARTIFACT_TYPES = frozenset({"gate_run", "override"})
+# What the untrusted side may write (each checked by the collector); feedback, risk overrides,
+# evals and tamper events come from trusted workflows only.
+ARTIFACT_TYPES = frozenset({"gate_run", "override", "triage"})
+TRIAGE_ARTIFACT = "triage"  # audit-<run>-<attempt>-triage, from the `triage` job
 
 
 def dumps(record: BaseModel) -> str:
@@ -347,6 +362,7 @@ _VERDICTS: dict[Verdict, GateVerdict] = {
     Verdict.FAIL: "fail",
     Verdict.OVERRIDDEN: "fail",  # with override_honoured: the findings stay on record
     Verdict.NOT_APPLICABLE: "not_applicable",
+    Verdict.NOT_NEEDED: "not_needed",
     Verdict.ERROR: "error",
 }
 
@@ -361,6 +377,7 @@ def gate_run(
     started_at: datetime,
     finished_at: datetime,
     pr_event_at: datetime | None = None,
+    risk: Risk | None = None,
 ) -> GateRun:
     result = record.result
     verdict = Verdict(record.verdict)
@@ -375,6 +392,7 @@ def gate_run(
         gate_sha=gate.gate_sha,
         diff_sha256=sha256_text(diff_text) if diff_text is not None else None,
         diff_bytes=record.diff_bytes,
+        risk=risk,
         blocking=check.blocking,
         cache_hit=record.cached,
         pr_event_at=pr_event_at,
@@ -418,6 +436,7 @@ def skipped_run(
     gate: GateInfo,
     reason: GateVerdict,
     at: datetime,
+    risk: Risk | None = None,
 ) -> GateRun:
     """A check that did not run at all (no API key for this PR, or not needed after triage)."""
     return GateRun(
@@ -431,6 +450,7 @@ def skipped_run(
         gate_sha=gate.gate_sha,
         diff_sha256=None,
         diff_bytes=0,
+        risk=risk,
         blocking=check.blocking,
         cache_hit=False,
         started_at=at,
@@ -669,11 +689,87 @@ def _record_problems(record: AuditRecord, expected: Expected, check: str | None)
             problems.append(f"finding ids not of the form {prefix}xxxx")
     if isinstance(record, Override) and check is not None and record.checks != [check]:
         problems.append(f"an override in the artifact for {check!r} must name only that check")
+    if isinstance(record, Triage) and check is not None and check != TRIAGE_ARTIFACT:
+        problems.append(f"a triage record in the artifact for {check!r}")
     return problems
 
 
 def expected_conclusion(record: GateRun) -> str:
     return "success" if record.exit_code == 0 else "failure"
+
+
+@dataclass(frozen=True)
+class TriageExpected:
+    """What the collector computed itself for the run's triage (ADR 0008): the floor from the
+    compare API and the PR's commits, the manual risk from audit-log, and the checks plan of every
+    level from the default branch's checks.yaml."""
+
+    rules_risk: Risk
+    ai_assisted: bool
+    manual_required: Risk | None  # the latest /llm-risk written before the run started
+    manual_allowed: frozenset[Risk]  # that one, and the latest at collection time
+    plans: Mapping[Risk, Mapping[str, bool | None]]  # check -> blocking, None: not needed
+
+
+type _RunTriage = Triage | Literal["absent", "invalid"]
+
+
+def _triage_problems(
+    records: Sequence[AuditRecord],
+    expected: TriageExpected | None,
+    jobs: Mapping[str, str | None],
+) -> list[str]:
+    triages = [r for r in records if isinstance(r, Triage)]
+    if len(triages) != 1 or len(records) != 1:
+        return ["the triage artifact must hold exactly one triage record"]
+    if jobs.get(TRIAGE_ARTIFACT) != "success":
+        return [f"the triage job concluded {jobs.get(TRIAGE_ARTIFACT)}, so it can't be checked"]
+    t = triages[0]
+    if expected is None:
+        return []
+    problems: list[str] = []
+    if t.rules_risk != expected.rules_risk:
+        problems.append(f"rules_risk {t.rules_risk}, but the rules give {expected.rules_risk}")
+    if t.ai_assisted != expected.ai_assisted:
+        problems.append(f"ai_assisted {t.ai_assisted}, but the markers say {expected.ai_assisted}")
+    if t.source == "manual":
+        if t.final_risk not in expected.manual_allowed:
+            problems.append(f"final_risk {t.final_risk}: no such /llm-risk in the log")
+    elif expected.manual_required is not None:
+        problems.append(f"ignores the /llm-risk {expected.manual_required} in the log")
+    elif t.final_risk != highest([t.rules_risk, t.model_risk or "low"]):
+        problems.append(f"final_risk {t.final_risk} is not the higher of rules and model risk")
+    plan = sorted(n for n, b in expected.plans[t.final_risk].items() if b is not None)
+    if t.checks_plan != plan:
+        problems.append(f"checks_plan does not match risk {t.final_risk}")
+    return problems
+
+
+def _risk_problems(
+    record: GateRun, run_triage: _RunTriage, expected: TriageExpected | None
+) -> list[str]:
+    """A gate_run must have run as the run's triage decided."""
+    if run_triage == "invalid":
+        return ["the run's triage record did not check out, so its risk can't be verified"]
+    if run_triage == "absent":
+        # A workflow from before triage (a PR branched earlier). Dropping the triage job on
+        # purpose means changing the workflow, which the collector flags anyway.
+        return ["risk is set, but the run has no triage record"] if record.risk else []
+    if record.risk != run_triage.final_risk:
+        return [f"risk {record.risk}, but the run's triage says {run_triage.final_risk}"]
+    if record.verdict == "skipped_no_key":
+        return []
+    if expected is not None:
+        blocking = expected.plans[run_triage.final_risk].get(record.check)
+        needed = blocking is not None
+    else:
+        blocking, needed = None, record.check in run_triage.checks_plan
+    if needed == (record.verdict == "not_needed"):
+        wanted = "runs" if needed else "is not needed"
+        return [f"{record.check} {wanted} at risk {run_triage.final_risk}, but: {record.verdict}"]
+    if needed and blocking is not None and record.blocking != blocking:
+        return [f"blocking {record.blocking}, but at risk {run_triage.final_risk} it is {blocking}"]
+    return []
 
 
 @dataclass(frozen=True)
@@ -694,6 +790,7 @@ def collect(
     override: OverrideRequest | str,
     out: Path,
     day: date,
+    triage: TriageExpected | None = None,
 ) -> list[Collected]:
     """Validate every `audit-<run_id>-<attempt>-<check>` artifact directory under `artifacts`
     and write one file per artifact under `out/events/YYYY/MM/DD/`. `jobs` maps job names of the
@@ -713,6 +810,9 @@ def collect(
         _write(out / target, [_tamper(expected, "(all)", [problem])])
         return [Collected(target.as_posix(), "(all)", 1, tamper=True)]
 
+    # The triage artifact first: every gate_run of the run is checked against it.
+    directories.sort(key=lambda p: (not p.name.endswith(f"-{TRIAGE_ARTIFACT}"), p.name))
+    run_triage: _RunTriage = "absent"
     collected: list[Collected] = []
     for index, directory in enumerate(directories):
         name = directory.name
@@ -728,7 +828,7 @@ def collect(
             check = f"invalid-{index}"
             want = f"audit-{expected.workflow_run_id}-{expected.run_attempt}-<check>"
             problems.append(f"artifact name is not {want}")
-        elif match["check"] not in checks:
+        elif match["check"] not in checks and match["check"] != TRIAGE_ARTIFACT:
             check = f"invalid-{index}"
             problems.append(
                 f"{match['check']!r} is not a check in the default branch's checks.yaml"
@@ -745,6 +845,12 @@ def collect(
                 problems.append(f"the collector could not process it ({type(error).__name__})")
 
         finished: list[AuditRecord] = []
+        if check == TRIAGE_ARTIFACT:
+            if not problems:
+                problems += _triage_problems(records, triage, jobs)
+            run_triage = (
+                records[0] if not problems and isinstance(records[0], Triage) else "invalid"
+            )
         if not problems:
             problems += _override_problems(records, override)
             for record in records:
@@ -763,6 +869,7 @@ def collect(
                             f"{job} concluded {conclusion}, but the record says "
                             f"{record.verdict} (exit {record.exit_code})"
                         )
+                    problems += _risk_problems(record, run_triage, triage)
                     record = record.model_copy(
                         update={
                             "workflow_modified": workflow_modified,
@@ -800,6 +907,13 @@ def _withhold(record: AuditRecord) -> AuditRecord:
         )
     if isinstance(record, Override):
         return record.model_copy(update={"reason": WITHHELD})
+    if isinstance(record, Triage):
+        return record.model_copy(
+            update={
+                "reasons": [WITHHELD] if record.reasons else [],
+                "error": WITHHELD if record.error else None,
+            }
+        )
     return record
 
 

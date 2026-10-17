@@ -24,10 +24,11 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
+from . import triage
 from .cache import Cache
-from .config import Check
+from .config import TRIAGE, Check, Risk, TriageConfig
 from .diff import EXCLUDES, Diff, git
 from .engines import Engine
 from .models import Finding, Severity
@@ -84,7 +85,17 @@ class Case(_Strict):
     base: str
     expect: list[Expectation] = Field(default_factory=list)
     forbid: list[Forbidden] = Field(default_factory=list)
-    expect_risk: Literal["low", "medium", "high"] | None = None  # Phase 17 (triage)
+    # Triage cases (ADR 0008): the risk triage should reach, and the AI markers the PR would carry.
+    expect_risk: Risk | None = None
+    ai_assisted: bool = False
+
+    @model_validator(mode="after")
+    def _triage(self) -> Case:
+        if (self.kind == "triage") != (self.checks == [TRIAGE]):
+            raise ValueError(f"triage cases, and only they, have checks: [{TRIAGE}]")
+        if (self.kind == "triage") != (self.expect_risk is not None):
+            raise ValueError("triage cases, and only they, have expect_risk")
+        return self
 
     @field_validator("base")
     @classmethod
@@ -105,7 +116,9 @@ class LoadedCase(BaseModel):
 
 def load_cases(directory: Path, pattern: str = "*") -> list[LoadedCase]:
     cases: list[LoadedCase] = []
-    for case_dir in sorted(p for p in directory.glob(pattern) if p.is_dir()):
+    for case_dir in sorted(
+        p for p in directory.glob(pattern) if p.is_dir() and not p.name.startswith(".")
+    ):
         try:
             data = yaml.safe_load((case_dir / "case.yaml").read_text(encoding="utf-8"))
             case = Case.model_validate(data)
@@ -250,6 +263,8 @@ class CaseResult(BaseModel):
 
     @property
     def flipped(self) -> bool:
+        if self.kind == "triage":  # a different risk, right or wrong
+            return len({a.verdict for a in self.attempts}) > 1
         return len({a.outcome for a in self.attempts}) > 1
 
 
@@ -311,6 +326,10 @@ class Metrics(BaseModel):
     cost_p90: float | None
     latency_p50_ms: float | None
     latency_p90_ms: float | None
+    # Triage runs only (check "triage"): final risk == expect_risk, and results below the rules'
+    # floor (a hard failure: the model may only raise).
+    risk_accuracy: float | None = None
+    floor_violations: int = 0
 
 
 def metrics(results: Sequence[CaseResult], repeats: int) -> Metrics:
@@ -439,6 +458,100 @@ def run_eval(
     )
 
 
+def run_triage_eval(
+    config: TriageConfig,
+    cases: Sequence[LoadedCase],
+    *,
+    cache_dir: Path | None,
+    repeats: int,
+    budget_usd: float,
+    spent: Callable[[], float] = lambda: 0.0,
+    progress: Callable[[str], None] = lambda _: None,
+    jobs: int = 1,
+    client: Any | None = None,
+) -> EvalRun:
+    """Triage every `kind: triage` case: the rules' floor from the patch, then the model, as the
+    triage job does (without a manual risk). An attempt passes when the final risk is the case's
+    `expect_risk`; one below the floor counts as a floor violation (`forbidden_hits`)."""
+    selected = [c for c in cases if c.case.kind == "triage"]
+    lock = threading.Lock()
+    total = 0.0
+
+    def run_case(loaded: LoadedCase) -> CaseResult | None:
+        nonlocal total
+        case = loaded.case
+        with lock:
+            if spent() + total >= budget_usd:
+                return None
+        changes = triage.changes_from_patch(loaded.patch)
+        floor = triage.floor(changes, ai_assisted=case.ai_assisted, config=config)
+        attempts: list[Attempt] = []
+        for repeat in range(1, repeats + 1):
+            model = triage.assess(
+                config,
+                changes,
+                loaded.patch,
+                base=f"case:{case.base[:12]}",
+                cache_dir=cache_dir,
+                client=client,
+                cache_salt=f"#eval:{case.id}#r{repeat}",
+            )
+            final = triage.final_risk(floor.risk, model.risk, None).final
+            paid = 0.0 if model.cached else model.cost_usd or 0.0
+            with lock:
+                total += paid
+            attempts.append(
+                Attempt(
+                    repeat=repeat,
+                    verdict=final,
+                    exit_code=0 if final == case.expect_risk else 1,
+                    found=[],
+                    forbidden_hits=int(triage.rank(final) < triage.rank(floor.risk)),
+                    below_threshold=0,
+                    findings=0,
+                    cost_usd=model.cost_usd,
+                    spent_usd=paid,
+                    duration_ms=None,
+                    cached=model.cached,
+                    error=model.error,
+                    locations=[f"rules {floor.risk}", f"model {model.risk}"],
+                )
+            )
+            progress(
+                f"triage {case.id} r{repeat}: {final} (rules {floor.risk}, model {model.risk})"
+            )
+        return CaseResult(
+            case=case.id,
+            kind=case.kind,
+            expected_verdict=case.expect_risk or "",
+            attempts=attempts,
+        )
+
+    with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
+        outcomes = list(pool.map(run_case, selected))
+    results = [r for r in outcomes if r is not None]
+    base = metrics(results, repeats)
+    attempts = [a for r in results for a in r.attempts]
+    m = base.model_copy(
+        update={
+            "recall": None,
+            "verdict_accuracy": None,
+            "fp_regressions": 0,
+            "risk_accuracy": _ratio(sum(1 for a in attempts if a.exit_code == 0), len(attempts)),
+            "floor_violations": sum(a.forbidden_hits for a in attempts),
+        }
+    )
+    return EvalRun(
+        check=TRIAGE,
+        engine="api",
+        model=config.model,
+        prompt_sha256=hashlib.sha256(config.prompt_path.read_bytes()).hexdigest(),
+        metrics=m,
+        results=results,
+        complete=len(results) == len(selected),
+    )
+
+
 # --- baseline and thresholds -------------------------------------------------------------------
 
 
@@ -448,6 +561,7 @@ class Thresholds(_Strict):
     max_verdict_accuracy_drop: float = 0.10  # absolute
     max_flip_rate: float = 0.10  # absolute, on the current run
     max_cost_increase: float = 0.25  # relative
+    max_risk_accuracy_drop: float = 0.15  # absolute, triage
     budget_usd: float = 6.0  # per `eval run` invocation, all checks and engines together
 
 
@@ -515,9 +629,23 @@ def compare(run: EvalRun, baseline: Mapping[str, Any], thresholds: Thresholds) -
             )
         )
 
-    delta_row("recall", new.recall, thresholds.max_recall_drop, -1)
-    delta_row("false_block_rate", new.false_block_rate, thresholds.max_false_block_increase, 1)
-    delta_row("verdict_accuracy", new.verdict_accuracy, thresholds.max_verdict_accuracy_drop, -1)
+    if run.check == TRIAGE:
+        delta_row("risk_accuracy", new.risk_accuracy, thresholds.max_risk_accuracy_drop, -1)
+        rows.append(
+            Comparison(
+                metric="floor_violations",
+                baseline=old.get("floor_violations"),
+                current=float(new.floor_violations),
+                limit="0",
+                ok=new.floor_violations == 0,
+            )
+        )
+    else:
+        delta_row("recall", new.recall, thresholds.max_recall_drop, -1)
+        delta_row("false_block_rate", new.false_block_rate, thresholds.max_false_block_increase, 1)
+        delta_row(
+            "verdict_accuracy", new.verdict_accuracy, thresholds.max_verdict_accuracy_drop, -1
+        )
     rows.append(
         Comparison(
             metric="flip_rate",
@@ -537,15 +665,16 @@ def compare(run: EvalRun, baseline: Mapping[str, Any], thresholds: Thresholds) -
             ok=not before_cost or new.cost_usd <= before_cost * (1 + thresholds.max_cost_increase),
         )
     )
-    rows.append(
-        Comparison(
-            metric="fp_regressions",
-            baseline=old.get("fp_regressions"),
-            current=float(new.fp_regressions),
-            limit="0",
-            ok=new.fp_regressions == 0,
+    if run.check != TRIAGE:
+        rows.append(
+            Comparison(
+                metric="fp_regressions",
+                baseline=old.get("fp_regressions"),
+                current=float(new.fp_regressions),
+                limit="0",
+                ok=new.fp_regressions == 0,
+            )
         )
-    )
     return rows
 
 
@@ -576,7 +705,8 @@ def render_runs(runs: Sequence[EvalRun]) -> str:
         lines.append(
             f"| {run.check} | `{run.engine}` / `{run.model}`{incomplete} | {m.cases} x {m.repeats} "
             f"| {_fmt(m.recall)} | {_fmt(m.false_block_rate)} | {_fmt(m.noise)} "
-            f"| {_fmt(m.verdict_accuracy)} | {_fmt(m.flip_rate)} | {_fmt(m.injection_resistance)} "
+            f"| {_fmt(m.risk_accuracy if run.check == TRIAGE else m.verdict_accuracy)} "
+            f"| {_fmt(m.flip_rate)} | {_fmt(m.injection_resistance)} "
             f"| {m.errors} | {_fmt(m.cost_usd, 'usd')} ({_fmt(m.spent_usd, 'usd')} now) "
             f"| {_fmt(m.latency_p50_ms, 'ms')} / {_fmt(m.latency_p90_ms, 'ms')} |"
         )
@@ -589,6 +719,15 @@ def render_misses(runs: Sequence[EvalRun]) -> str:
     for run in runs:
         for result in run.results:
             problems = []
+            if result.kind == "triage":
+                got = ", ".join(a.verdict for a in result.attempts)
+                if any(a.outcome == "fail" for a in result.attempts):
+                    problems.append(f"expected {result.expected_verdict}, got {got}")
+                if any(a.forbidden_hits for a in result.attempts):
+                    problems.append("**below the rules' floor**")
+                if problems:
+                    lines.append(f"- `triage` **{result.case}**: " + ", ".join(problems))
+                continue
             missed = sum(1 for a in result.attempts for f in a.found if not f)
             if missed:
                 problems.append(f"missed {missed}x")
@@ -624,7 +763,7 @@ def render_comparison(run: EvalRun, rows: Sequence[Comparison]) -> str:
             "usd"
             if row.metric == "cost_usd"
             else "int"
-            if row.metric == "fp_regressions"
+            if row.metric in ("fp_regressions", "floor_violations")
             else "ratio"
         )
         lines.append(

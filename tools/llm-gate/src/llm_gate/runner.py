@@ -33,6 +33,7 @@ class RunRecord(BaseModel):
     blocking: list[Finding] = []
     diff_files: int = 0
     diff_bytes: int = 0
+    risk: str | None = None  # the PR's triage risk, when the run had one
 
     @staticmethod
     def path(out: Path, check: str, engine: str) -> Path:
@@ -49,14 +50,18 @@ def run_check(
     cache: Cache | None,
     override: bool = False,
     cache_salt: str = "",
+    not_needed: str | None = None,
 ) -> RunRecord:
-    """`cache_salt` separates otherwise identical runs in the cache (eval repeats)."""
+    """`cache_salt` separates otherwise identical runs in the cache (eval repeats). `not_needed`
+    (triage) decides without a review."""
     result: EngineResult | None = None
     cached = False
     error: str | None = None
     not_applicable: str | None = None
 
-    if not diff.files:
+    if not_needed is not None:
+        pass
+    elif not diff.files:
         not_applicable = f"no changes against {diff.base}"
     elif check.paths and not touches(diff.files, check.paths):
         not_applicable = f"the change touches none of {', '.join(check.paths)}"
@@ -89,7 +94,12 @@ def run_check(
             log.info("%s: cache hit for the %s engine", check.name, engine.name)
 
     decision: Decision = decide(
-        check, result=result, error=error, not_applicable=not_applicable, override=override
+        check,
+        result=result,
+        error=error,
+        not_applicable=not_applicable,
+        not_needed=not_needed,
+        override=override,
     )
     return RunRecord(
         check=check.name,

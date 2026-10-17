@@ -12,13 +12,24 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from . import audit, evals, feedback, metrics
+from . import aidetect, audit, evals, feedback, metrics, triage
 from .cache import Cache
 from .compare import render_comparison
-from .config import ENGINES, Check, ConfigError, load_config
+from .config import (
+    ENGINES,
+    RISKS,
+    TRIAGE,
+    Check,
+    ConfigError,
+    GateConfig,
+    Risk,
+    TriageConfig,
+    load_gate_config,
+)
 from .diff import DiffError, git, merge_base_diff, repo_root
 from .engines import Engine
 from .policy import EXIT_ERROR
+from .redact import clip, redact
 from .report import render_markdown, render_sarif
 from .runner import RunRecord, read_records, run_check, write_record
 
@@ -120,6 +131,29 @@ def build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("LLM_GATE_OVERRIDE_BY") or None,
         help="who overrode (also $LLM_GATE_OVERRIDE_BY)",
     )
+    run.add_argument(
+        "--risk",
+        choices=RISKS,
+        default=os.environ.get("LLM_GATE_RISK") or None,
+        help="the PR's triage risk (also $LLM_GATE_RISK): decides whether the check is needed, "
+        "blocks, and its engine and model (checks.yaml triage.levels)",
+    )
+
+    tri = sub.add_parser("triage", help="the PR's risk level and checks plan (ADR 0008)")
+    tri.add_argument(
+        "--base",
+        default=os.environ.get("LLM_GATE_BASE") or "origin/main",
+        help="branch point (default: $LLM_GATE_BASE or origin/main)",
+    )
+    tri.add_argument(
+        "--pr-data",
+        type=Path,
+        help="JSON {body, head_ref, commits: [GitHub commit objects or messages]} for AI detection",
+    )
+    tri.add_argument("--audit-dir", type=Path, help="audit-log checkout (manual /llm-risk changes)")
+    tri.add_argument("--no-model", action="store_true", help="rules only (no API key)")
+    tri.add_argument("--out", type=Path, help="output directory (default: <repo>/.llm-gate)")
+    tri.add_argument("--no-cache", action="store_true")
 
     compare = sub.add_parser("compare", help="compare the api and agent results of a check")
     compare.add_argument("--check", required=True)
@@ -136,6 +170,7 @@ def build_parser() -> argparse.ArgumentParser:
     skip = asub.add_parser("skip", help="record a check that did not run")
     skip.add_argument("--check", required=True)
     skip.add_argument("--reason", choices=["skipped_no_key", "not_needed"], required=True)
+    skip.add_argument("--risk", choices=RISKS, default=os.environ.get("LLM_GATE_RISK") or None)
     skip.add_argument("--out", type=Path, help="output directory (default: <repo>/.llm-gate)")
 
     expected = argparse.ArgumentParser(add_help=False)
@@ -176,6 +211,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--comments", type=Path, required=True, help="the PR's issue comments (JSON array)"
     )
     collect.add_argument("--writers", type=Path, help=WRITERS_HELP)
+    collect.add_argument(
+        "--triage-inputs",
+        type=Path,
+        help="JSON {compare_files (null if truncated), body, head_ref, commits, run_started_at}: "
+        "what the collector recomputes the run's triage floor from (ADR 0008)",
+    )
+    collect.add_argument(
+        "--audit-dir", type=Path, help="audit-log checkout (the PR's /llm-risk changes)"
+    )
 
     override = asub.add_parser("override", help="find the reason for the override label")
     override.add_argument("--events", type=Path, required=True, help="issue events (JSON array)")
@@ -231,6 +275,19 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _at_risk(config: GateConfig, name: str, risk: Risk | None) -> tuple[Check, str | None]:
+    """The check as it runs at the PR's risk level, and why it isn't needed (or None)."""
+    check = config.checks[name]
+    if risk is None:
+        return check, None
+    if config.triage is None:
+        raise ConfigError("--risk given, but checks.yaml has no triage section")
+    planned = triage.plan_for(risk, config.triage, config.checks)[name]
+    if planned is None:
+        return check, f"not needed at risk: {risk}"
+    return planned, None
+
+
 def cmd_list(checks: Mapping[str, Check], *, as_json: bool, blocking_only: bool) -> int:
     selected = [c for c in checks.values() if c.blocking or not blocking_only]
     if as_json:
@@ -254,6 +311,8 @@ def cmd_run(
     use_cache: bool,
     override: audit.OverrideRequest | None,
     engines: Mapping[str, Engine],
+    risk: Risk | None = None,
+    not_needed: str | None = None,
 ) -> int:
     names = list(ENGINES) if engine_choice == "both" else [engine_choice or check.engine]
     # With --engine both the check's configured engine decides the exit code.
@@ -276,7 +335,8 @@ def cmd_run(
             repo_root=root,
             cache=cache,
             override=override is not None,
-        )
+            not_needed=not_needed,
+        ).model_copy(update={"risk": risk})
         write_record(out, record)
         records[name] = record
 
@@ -296,10 +356,11 @@ def cmd_run(
                 started_at=started,
                 finished_at=finished,
                 pr_event_at=_timestamp(os.environ.get("LLM_GATE_PR_EVENT_AT")),
+                risk=risk,
             )
             for record in records.values()
         ]
-        if override is not None:
+        if override is not None and not_needed is None:
             entries.append(
                 audit.Override(
                     **context.model_dump(),
@@ -323,6 +384,96 @@ def cmd_run(
     return records[primary].exit_code
 
 
+def _inert(text: str, limit: int = 200) -> str:
+    """Model- or comment-written text for the job summary: redacted, capped, one line, and in a
+    code span, so it can't add links, images or markup."""
+    flat = " ".join(clip(redact(text), limit).split()).replace("`", "'")
+    return f"`{flat}`"
+
+
+def cmd_triage(args: argparse.Namespace, gate_config: GateConfig, *, root: Path, out: Path) -> int:
+    """Writes the triage record to <out>/audit.jsonl and <out>/triage.md; prints the decision as
+    JSON (`risk`, `ai_assisted`, `checks_plan`) for the workflow."""
+    config = gate_config.triage
+    if config is None:  # every check runs as configured
+        log.warning("checks.yaml has no triage section")
+        print(
+            json.dumps(
+                {"risk": None, "ai_assisted": False, "checks_plan": sorted(gate_config.checks)}
+            )
+        )
+        return 0
+    changes = triage.numstat(root, args.base)
+    pr_data = json.loads(args.pr_data.read_text(encoding="utf-8")) if args.pr_data else {}
+    detection = aidetect.detect(
+        aidetect.commit_messages(pr_data.get("commits") or []),
+        pr_data.get("body"),
+        pr_data.get("head_ref"),
+        gate_config.ai_markers,
+    )
+    floor = triage.floor(changes, ai_assisted=detection.assisted, config=config)
+    out.mkdir(parents=True, exist_ok=True)
+    model: triage.ModelRisk | None = None
+    if not args.no_model:
+        model = triage.assess(
+            config,
+            changes,
+            merge_base_diff(root, args.base).text,
+            base=args.base,
+            cache_dir=None if args.no_cache else out / "cache",
+        )
+    context = audit.context_from_env(
+        os.environ, head_sha=_head(root), base_sha=_merge_base(root, args.base)
+    )
+    manual = triage.latest_risk_override(args.audit_dir, context.pr)
+    decision = triage.final_risk(floor.risk, model.risk if model else None, manual)
+    plan = triage.checks_plan(decision.final, config, gate_config.checks)
+    try:
+        record = audit.Triage(
+            **context.model_dump(),
+            rules_risk=floor.risk,
+            rules_reasons=floor.reasons,
+            model=model.model if model else None,
+            model_risk=model.risk if model else None,
+            reasons=model.reasons if model else [],
+            final_risk=decision.final,
+            source=decision.source,
+            ai_assisted=detection.assisted,
+            ai_commits=detection.ai_commits,
+            total_commits=detection.total_commits,
+            changed_lines=floor.lines,
+            cost_usd=model.cost_usd if model else None,
+            cache_hit=model.cached if model else False,
+            error=model.error if model else None,
+            checks_plan=plan,
+        )
+        audit.append(out / audit.AUDIT_FILE, [record])
+    except (ValidationError, OSError) as error:
+        log.error("triage record not written: %s", error)  # a gap in the log, not a failed job
+
+    lines = [f"### Triage: risk **{decision.final}** ({decision.source})", ""]
+    lines += [f"- rules: **{floor.risk}**"] + [f"  - {reason}" for reason in floor.reasons]
+    if model is not None:
+        got = f"**{model.risk}**" if model.risk else f"none ({_inert(model.error or '')})"
+        lines += [f"- model `{model.model}`: {got}"] + [f"  - {_inert(r)}" for r in model.reasons]
+    if manual is not None:
+        lines.append(f"- manual: **{manual.to}** by @{manual.by}: {_inert(manual.reason)}")
+    lines.append(f"- AI-assisted: {', '.join(detection.matched) or 'no markers'}")
+    lines.append(f"- checks that run: {', '.join(plan)}")
+    (out / "triage.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(
+        json.dumps(
+            {
+                "risk": decision.final,
+                "source": decision.source,
+                "ai_assisted": detection.assisted,
+                "checks_plan": plan,
+            }
+        )
+    )
+    return 0
+
+
 def _merge_base(root: Path, base: str) -> str | None:
     try:
         return git(root, "merge-base", base, "HEAD").strip()
@@ -344,13 +495,15 @@ def override_request(
     )
 
 
-def cmd_skip(check: Check, *, root: Path, gate: GateCheckout, out: Path, reason: str) -> int:
+def cmd_skip(
+    check: Check, *, root: Path, gate: GateCheckout, out: Path, reason: str, risk: Risk | None
+) -> int:
     verdict: audit.GateVerdict = "not_needed" if reason == "not_needed" else "skipped_no_key"
     try:
         context = audit.context_from_env(os.environ, head_sha=_head(root), base_sha=None)
         info = audit.gate_info(check, config=gate.config, gate_root=gate.root, gate_sha=gate.sha)
         entry = audit.skipped_run(
-            check, context=context, gate=info, reason=verdict, at=datetime.now(UTC)
+            check, context=context, gate=info, reason=verdict, at=datetime.now(UTC), risk=risk
         )
         audit.append(out / audit.AUDIT_FILE, [entry])
     except (ValidationError, OSError) as error:
@@ -408,6 +561,7 @@ def _audit(args: argparse.Namespace) -> int:
             override=_find_override(args),
             out=args.out,
             day=args.date or datetime.now(UTC).date(),
+            triage=_triage_expected(args),
         )
         print(json.dumps([vars(c) for c in collected]))
         return 0
@@ -419,6 +573,46 @@ def _audit(args: argparse.Namespace) -> int:
     return 0
 
 
+def _triage_expected(args: argparse.Namespace) -> audit.TriageExpected | None:
+    """The triage the collector expects, computed from the default branch's checks.yaml and
+    inputs fetched by the trusted workflow, never from the artifact."""
+    if args.triage_inputs is None:
+        return None
+    root = repo_root(args.repo or Path.cwd())
+    config_path = args.config or root / "tools" / "llm-gate" / "checks.yaml"
+    config = load_gate_config(config_path, repo_root(config_path.resolve().parent))
+    data = json.loads(args.triage_inputs.read_text(encoding="utf-8"))
+    files = data.get("compare_files")
+    if config.triage is None or files is None:  # no triage, or too many files to recompute
+        return None
+    detection = aidetect.detect(
+        aidetect.commit_messages(data.get("commits") or []),
+        data.get("body"),
+        data.get("head_ref"),
+        config.ai_markers,
+    )
+    floor = triage.floor(
+        triage.changes_from_compare(files), ai_assisted=detection.assisted, config=config.triage
+    )
+    started = _timestamp(data.get("run_started_at"))
+    required = triage.latest_risk_override(args.audit_dir, args.pr, before=started)
+    latest = triage.latest_risk_override(args.audit_dir, args.pr)
+    plans: dict[Risk, dict[str, bool | None]] = {
+        risk: {
+            name: None if check is None else check.blocking
+            for name, check in triage.plan_for(risk, config.triage, config.checks).items()
+        }
+        for risk in RISKS
+    }
+    return audit.TriageExpected(
+        rules_risk=floor.risk,
+        ai_assisted=detection.assisted,
+        manual_required=required.to if required else None,
+        manual_allowed=frozenset(m.to for m in (required, latest) if m is not None),
+        plans=plans,
+    )
+
+
 def cmd_eval(
     args: argparse.Namespace,
     checks: Mapping[str, Check],
@@ -426,6 +620,7 @@ def cmd_eval(
     root: Path,
     config: Path,
     engines: Mapping[str, Engine],
+    triage_config: TriageConfig | None = None,
 ) -> int:
     evals_dir = config.parent / "evals"
     cases_dir = evals_dir / "cases"
@@ -453,6 +648,11 @@ def cmd_eval(
         log.error("no cases match %r in %s", args.cases, cases_dir)
         return EXIT_ERROR
     names = args.check or sorted({c for loaded in cases for c in loaded.case.checks})
+    with_triage = TRIAGE in names
+    names = [n for n in names if n != TRIAGE]
+    if with_triage and triage_config is None:
+        log.error("triage cases, but checks.yaml has no triage section")
+        return EXIT_ERROR
     unknown = [n for n in names if n not in checks]
     if unknown:
         log.error("unknown check(s) %s (known: %s)", ", ".join(unknown), ", ".join(checks))
@@ -462,6 +662,19 @@ def cmd_eval(
     cache = None if args.no_cache else Cache(root / ".llm-gate" / "cache")
 
     runs: list[evals.EvalRun] = []
+    if with_triage and triage_config is not None:
+        model = args.model or triage_config.model
+        runs.append(
+            evals.run_triage_eval(
+                replace(triage_config, model=model),
+                cases,
+                cache_dir=cache.directory if cache else None,
+                repeats=args.repeats,
+                budget_usd=budget,
+                progress=log.info,
+                jobs=args.jobs,
+            )
+        )
     for name in names:
         check = checks[name]
         if args.model:
@@ -616,8 +829,11 @@ def main(argv: Sequence[str] | None = None, engines: Mapping[str, Engine] | None
             raise ConfigError(
                 f"--config {config} must be inside a git checkout (the gate's own): {error}"
             ) from error
-        checks = load_config(config, gate_root)
+        gate_config = load_gate_config(config, gate_root)
+        checks = gate_config.checks
         gate = GateCheckout(root=gate_root, config=config, sha=_head(gate_root))
+        if args.command == "triage":
+            return cmd_triage(args, gate_config, root=root, out=args.out or root / ".llm-gate")
         if args.command == "list":
             return cmd_list(checks, as_json=args.json, blocking_only=args.blocking)
         if args.command == "feedback":
@@ -626,7 +842,12 @@ def main(argv: Sequence[str] | None = None, engines: Mapping[str, Engine] | None
             return cmd_metrics(args, checks, root=root)
         if args.command == "eval":
             return cmd_eval(
-                args, checks, root=root, config=config, engines=engines or _lazy_engines(args)
+                args,
+                checks,
+                root=root,
+                config=config,
+                engines=engines or _lazy_engines(args),
+                triage_config=gate_config.triage,
             )
 
         out = getattr(args, "in_dir", None) or getattr(args, "out", None) or root / ".llm-gate"
@@ -638,10 +859,13 @@ def main(argv: Sequence[str] | None = None, engines: Mapping[str, Engine] | None
         if args.check not in checks:
             log.error("unknown check %r (known: %s)", args.check, ", ".join(checks))
             return EXIT_ERROR
+        check, not_needed = _at_risk(gate_config, args.check, args.risk)
         if args.command == "audit":
-            return cmd_skip(checks[args.check], root=root, gate=gate, out=out, reason=args.reason)
+            return cmd_skip(
+                check, root=root, gate=gate, out=out, reason=args.reason, risk=args.risk
+            )
         return cmd_run(
-            checks[args.check],
+            check,
             root=root,
             gate=gate,
             out=out,
@@ -650,6 +874,8 @@ def main(argv: Sequence[str] | None = None, engines: Mapping[str, Engine] | None
             use_cache=not args.no_cache,
             override=override_request(args.override, args.override_reason, args.override_by),
             engines=engines or default_engines(),
+            risk=args.risk,
+            not_needed=not_needed,
         )
     except (ConfigError, DiffError, evals.EvalError) as error:
         log.error("%s", error)

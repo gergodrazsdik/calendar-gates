@@ -2,7 +2,7 @@
 #   /llm-fp <finding-id> <reason>    a false positive; marks the finding in the sticky comment
 #   /llm-ack <finding-id>            a true positive (the denominator for the false-positive rate)
 #   /llm-override <reason>           adds llm-override and re-runs llm-review
-#   /llm-risk <low|medium|high> <reason>   manual triage risk (acted on from Phase 17)
+#   /llm-risk <low|medium|high> <reason>   manual triage risk; re-runs llm-review (ADR 0008)
 #
 # Trust: issue_comment always runs this file and the llm-gate code from the default branch, and the
 # PR is never checked out. Outsiders don't start the job at all (author_association below), and
@@ -33,7 +33,7 @@ jobs:
     permissions:
       contents: write # the record on the audit-log branch
       issues: write # the label
-      actions: write # re-run llm-review after /llm-override
+      actions: write # re-run llm-review after /llm-override and /llm-risk
       pull-requests: write # reactions to and edits of PR comments, the label, the PR's head
     env:
       REPO: ${{ github.repository }}
@@ -142,7 +142,8 @@ jobs:
           fi
 
       # Labels added with GITHUB_TOKEN start no workflows, so the review is re-run explicitly. Its
-      # override step reads the labels from the API; the results come from its cache.
+      # override step reads the labels from the API, and triage reads /llm-risk from audit-log;
+      # the results come from its cache.
       - name: Re-run llm-review
         if: steps.handle.outputs.rerun == 'true'
         env:

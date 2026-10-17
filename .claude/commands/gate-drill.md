@@ -1,9 +1,10 @@
 ---
-description: Set up a gate drill (docs/PLAN.md Phase 12) on its own branch and PR
+description: Set up a gate drill (docs/PLAN.md Phase 12, docs/PLAN-v2.md) on its own branch and PR
 argument-hint: <drill number>
 ---
 
-Set up gate drill $ARGUMENTS from the "Gate drills" table in `docs/PLAN.md` (Phase 12).
+Set up gate drill $ARGUMENTS from the "Gate drills" table in `docs/PLAN.md` (Phase 12), or for
+drills 13 and up, the drill table in `docs/PLAN-v2.md`.
 
 1. Read the drill's row. If the gate it targets doesn't exist yet (its phase isn't done), say so
    and stop.
@@ -23,5 +24,9 @@ Set up gate drill $ARGUMENTS from the "Gate drills" table in `docs/PLAN.md` (Pha
    "Gate drill, do not merge" and which gate is expected to fail.
 6. Give me the PR URL and what to watch for. Once the run finishes, check it with
    `gh pr checks` and tell me whether the gate behaved as the table predicts.
+
+Triage drills (17, 18; ADR 0008): your commits and PR body carry AI markers, which raise the risk
+one level. Where a drill needs a PR *without* them (drill 17's `risk:low`, the first half of 18),
+prepare the change and let me commit, push and open the PR myself.
 
 Don't close the PR or delete the branch; I do that after looking at it.

@@ -45,6 +45,10 @@ that needs them, so the list is the truth, not this file.
   per-project `bin/`/`obj/` folders; point scripts, Dockerfiles and CI at `artifacts/`, never at
   `src/*/bin`.
 - Conventional Commits for commit messages and PR titles (`feat:`, `fix:`, `ci:`, `chore:`, `docs:`, `test:`, `refactor:`).
+- AI-assisted commits say so in a trailer: Claude Code adds `Co-Authored-By: Claude …` and
+  `Claude-Session:`; other agents add `Assisted-by: <tool>`. Triage reads these (and
+  "Generated with [Claude Code]" in a PR body) to raise the PR's risk by one level
+  ([ADR 0008](docs/adr/0008-risk-triage.md)). Never leave them out to get a lighter review.
 - From Phase 6 on, every change goes through a PR (squash merge, the PR title becomes the commit).
 
 ## Gates
@@ -65,7 +69,11 @@ Details, fixes and overrides: `docs/gates.md`.
    `llm-compare` (both engines, comparison comment). Every decision is an audit record on the
    `audit-log` branch ([ADR 0005](docs/adr/0005-audit-trail.md); `just audit-pull`). PR comment
    commands `/llm-fp`, `/llm-ack`, `/llm-override`, `/llm-risk` feed the metrics
-   ([ADR 0007](docs/adr/0007-feedback-commands.md), `docs/metrics.md`, `just metrics`).
+   ([ADR 0007](docs/adr/0007-feedback-commands.md), `docs/metrics.md`, `just metrics`). First the
+   `triage` job rates the PR low, medium or high ([ADR 0008](docs/adr/0008-risk-triage.md)). The
+   rating comes from path and size rules and AI markers; a cheap model may only raise it, and
+   `/llm-risk <level> <reason>` changes it. The level decides which checks review and block, and
+   triage sets the `risk:*` and `ai-assisted` labels.
 8. `llm-eval`: on PRs that change the review prompts or `tools/llm-gate/`, scores **the PR's** prompts on
    `tools/llm-gate/evals/cases` against `evals/baseline.json` ([ADR 0006](docs/adr/0006-llm-eval-gate.md)).
    Locally: `just eval` (spends API credits; a PR pays only for the checks it changes),
