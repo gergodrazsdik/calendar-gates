@@ -162,6 +162,17 @@ two disagree for Haiku, so treat the starred numbers as approximate.
   Sonnet on these cases, at three to four times the cost and with more noise. Haiku on the agent engine
   was the most expensive of all, because it explores more. The next change is to keep Sonnet for
   high risk and spend the difference on more eval cases.
+- **A false positive turned out to be a true one.** The only `/llm-fp` so far (drill 19) marked a
+  finding on a drill PR that had planted the bug, so the finding was correct and marking it only
+  tested the command. `eval add-from-fp` turned it into a case that would have forbidden the right
+  answer and contradicted eval case `cr-003`. Reading the generated case caught it, and it was
+  discarded. Feedback is input to a person's decision, not ground truth: the metrics still count
+  that marking.
+- **Digests, not tags (drill 23).** The attested v0.3.0 digest under another tag
+  (`candidate-v0.3.0`) is admitted. A local build tagged `0.3.1` and loaded straight onto the node
+  is *admitted too*, but Kyverno resolves the tag on the registry and pins the pod to the attested
+  digest. The node ran the release, and `/api/version` reported `0.3.1` at the release commit. The
+  local bytes never ran. A local build under a tag the registry doesn't know is denied outright.
 - **Platform limits shaped the design:**
   - a personal repository can't exempt GitHub Actions from a ruleset, so the audit branch is
     append-only through the contents API, with no update rule;
