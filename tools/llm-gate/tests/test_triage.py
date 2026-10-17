@@ -663,3 +663,19 @@ def test_triage_cases_name_only_the_triage_check() -> None:
         evals.Case(
             id="x", kind="triage", checks=["triage"], source="s", description="d", base="0" * 40
         )
+
+
+def test_cli_triage_without_a_triage_section_gives_no_risk(
+    repo: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (repo.root / "tools" / "llm-gate").mkdir(parents=True)
+    text = CONFIG.read_text()
+    (repo.root / "tools" / "llm-gate" / "checks.yaml").write_text(
+        text[: text.index("\nai_markers:")]
+    )
+    for name in ("test-review", "workflow-review"):
+        repo.write(f".claude/commands/llm-{name}.md", "x")
+    repo.commit("gate")
+
+    assert main(["--repo", str(repo.root), "triage", "--base", "main", "--no-model"]) == 0
+    assert json.loads(capsys.readouterr().out)["risk"] is None

@@ -97,6 +97,8 @@ jobs:
           restore-keys: llm-gate-triage-pr${{ github.event.pull_request.number }}-
 
       # Without a key (forks, Dependabot) the rules alone decide; the model can only raise.
+      # A base branch whose gate has no triage yet (the PR that introduces it, an old base)
+      # gives no risk: every check then runs as checks.yaml configures it, as before triage.
       - name: Triage
         id: triage
         env:
@@ -104,15 +106,25 @@ jobs:
           LLM_MODEL_CHEAP: ${{ vars.LLM_MODEL_CHEAP }}
           BASE_REF: ${{ github.base_ref }}
         run: |
+          gate=(uv run --project gate/tools/llm-gate --locked llm-gate
+            --repo src --config gate/tools/llm-gate/checks.yaml)
+          if ! "${gate[@]}" triage --help > /dev/null 2>&1; then
+            echo "::notice title=triage::The base branch's llm-gate has no triage; every check runs as configured."
+            echo "risk=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           no_model=()
           [ -n "$ANTHROPIC_API_KEY" ] || no_model=(--no-model)
-          uv run --project gate/tools/llm-gate --locked llm-gate \
-            --repo src --config gate/tools/llm-gate/checks.yaml \
-            triage --base "origin/$BASE_REF" --pr-data "$RUNNER_TEMP/pr-data.json" \
+          "${gate[@]}" triage --base "origin/$BASE_REF" --pr-data "$RUNNER_TEMP/pr-data.json" \
             --audit-dir "$RUNNER_TEMP/audit-log" --out "$GITHUB_WORKSPACE/.llm-gate" "${no_model[@]}" \
             > "$RUNNER_TEMP/triage.json"
+          risk=$(jq -r '.risk // empty' "$RUNNER_TEMP/triage.json")
+          if [ -z "$risk" ]; then
+            echo "::notice title=triage::checks.yaml has no triage section; every check runs as configured."
+            echo "risk=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           cat .llm-gate/triage.md >> "$GITHUB_STEP_SUMMARY"
-          risk=$(jq -r .risk "$RUNNER_TEMP/triage.json")
           [[ "$risk" =~ ^(low|medium|high)$ ]] || { echo "::error::triage returned no risk"; exit 1; }
           echo "risk=$risk" >> "$GITHUB_OUTPUT"
           echo "ai=$(jq -r .ai_assisted "$RUNNER_TEMP/triage.json")" >> "$GITHUB_OUTPUT"
@@ -135,6 +147,7 @@ jobs:
       # Labels set with GITHUB_TOKEN start no workflow runs (no loop). A person's risk:* label
       # does start one, and triage puts its own back: only /llm-risk changes the risk.
       - name: Labels
+        if: steps.triage.outputs.risk != ''
         continue-on-error: true # a fork PR's token is read-only; the risk is in the outputs
         env:
           GH_TOKEN: ${{ github.token }}

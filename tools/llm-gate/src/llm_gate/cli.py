@@ -387,9 +387,14 @@ def cmd_triage(args: argparse.Namespace, gate_config: GateConfig, *, root: Path,
     """Writes the triage record to <out>/audit.jsonl and <out>/triage.md; prints the decision as
     JSON (`risk`, `ai_assisted`, `checks_plan`) for the workflow."""
     config = gate_config.triage
-    if config is None:
-        log.error("checks.yaml has no triage section")
-        return EXIT_ERROR
+    if config is None:  # every check runs as configured
+        log.warning("checks.yaml has no triage section")
+        print(
+            json.dumps(
+                {"risk": None, "ai_assisted": False, "checks_plan": sorted(gate_config.checks)}
+            )
+        )
+        return 0
     changes = triage.numstat(root, args.base)
     pr_data = json.loads(args.pr_data.read_text(encoding="utf-8")) if args.pr_data else {}
     detection = aidetect.detect(
