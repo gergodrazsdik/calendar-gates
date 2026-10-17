@@ -95,7 +95,7 @@ jobs:
           # Did the PR change the review workflow? Then nothing in the artifacts can be trusted.
           # The compare API lists at most 300 files; a longer list counts as modified.
           gh api "repos/$REPO/compare/$DEFAULT_BRANCH...$HEAD_SHA" \
-            --jq '{files: [.files[] | {filename, additions, deletions}],
+            --jq '{files: [.files[] | {filename, previous_filename, additions, deletions}],
                    commits: [.commits[] | .commit.message]}' > "$WORK/compare.json"
           jq -r 'if (.files | length) >= 300 then "truncated" else .files[].filename end' \
             "$WORK/compare.json" > "$WORK/changed.txt"

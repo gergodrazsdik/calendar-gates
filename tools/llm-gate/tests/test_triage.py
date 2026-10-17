@@ -86,11 +86,12 @@ def test_ai_assistance_raises_by_one_level_and_says_so(tc: TriageConfig) -> None
     assert high.risk == "high"  # nothing above high
 
 
-def test_numstat_counts_renames_under_the_new_path_and_binaries_as_zero() -> None:
+def test_numstat_keeps_both_paths_of_a_rename_and_counts_binaries_as_zero() -> None:
     out = "3\t1\tsrc/a.cs\0-\t-\tlogo.png\0" + "0\t0\t\0old/name.md\0docs/name.md\0"
-    assert triage.parse_numstat(out) == changes(
-        ("src/a.cs", 4), ("logo.png", 0), ("docs/name.md", 0)
-    )
+    assert triage.parse_numstat(out) == [
+        *changes(("src/a.cs", 4), ("logo.png", 0)),
+        FileChange("docs/name.md", 0, "old/name.md"),
+    ]
 
 
 def test_numstat_from_git(repo: Any) -> None:
@@ -679,3 +680,44 @@ def test_cli_triage_without_a_triage_section_gives_no_risk(
 
     assert main(["--repo", str(repo.root), "triage", "--base", "main", "--no-model"]) == 0
     assert json.loads(capsys.readouterr().out)["risk"] is None
+
+
+def test_a_rename_keeps_the_risk_of_where_it_came_from(tc: TriageConfig) -> None:
+    moved = [FileChange("docs/old-ci.md", 0, old_path=".github/workflows/ci.yml")]
+    found = triage.floor(moved, ai_assisted=False, config=tc)
+    assert found.risk == "high"
+    assert found.reasons == ["high: changes CI or the gates (renamed away) (1 file)"]
+    into = [FileChange(".github/workflows/x.yml", 0, old_path="docs/x.md")]
+    assert triage.floor(into, ai_assisted=False, config=tc).risk == "high"
+
+
+def test_renames_are_read_with_both_paths_everywhere() -> None:
+    numstat = "0\t0\t\0.github/workflows/ci.yml\0docs/ci.md\0"
+    assert triage.parse_numstat(numstat) == [
+        FileChange("docs/ci.md", 0, ".github/workflows/ci.yml")
+    ]
+    patch = (
+        "diff --git a/scripts/x.sh b/docs/x.md\nsimilarity index 100%\n"
+        "rename from scripts/x.sh\nrename to docs/x.md\n"
+    )
+    assert triage.changes_from_patch(patch) == [FileChange("docs/x.md", 0, "scripts/x.sh")]
+    api = [{"filename": "docs/x.md", "previous_filename": "scripts/x.sh", "additions": 0}]
+    assert triage.changes_from_compare(api) == [FileChange("docs/x.md", 0, "scripts/x.sh")]
+    listing = triage.user_content(triage.changes_from_compare(api), "", "origin/main", 50)
+    assert "scripts/x.sh -> docs/x.md (0 lines)" in listing
+
+
+def test_numstat_from_git_sees_a_rename(repo: Any) -> None:
+    git(repo.root, "mv", "src/Api/Endpoints/Week.cs", "Week.md")
+    repo.commit("move")
+    (change,) = triage.numstat(repo.root, "main")
+    assert (change.path, change.old_path) == ("Week.md", "src/Api/Endpoints/Week.cs")
+
+
+def test_the_job_summary_quotes_model_and_comment_text_inertly() -> None:
+    from llm_gate.cli import _inert
+
+    assert _inert("see ![x](https://evil.example/a.png) `code`\nnext line") == (
+        "`see ![x](https://evil.example/a.png) 'code' next line`"
+    )
+    assert len(_inert("a" * 1000)) < 210

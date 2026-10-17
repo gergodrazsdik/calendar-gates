@@ -54,6 +54,7 @@ def raise_by(risk: Risk, levels: int) -> Risk:
 class FileChange:
     path: str
     lines: int  # added + deleted (0 for binary files)
+    old_path: str | None = None  # a rename's source: rated too, so a move can't launder a path
 
 
 def counts_for_size(path: str) -> bool:
@@ -84,17 +85,19 @@ def parse_numstat(out: str) -> list[FileChange]:
     while index < len(fields) and fields[index]:
         added, deleted, path = fields[index].split("\t", 2)
         index += 1
+        old: str | None = None
         if not path:  # a rename: the old and the new path follow as fields of their own
-            path = fields[index + 1]
+            old, path = fields[index], fields[index + 1]
             index += 2
         lines = 0 if added == "-" else int(added) + int(deleted)
-        changes.append(FileChange(path, lines))
+        changes.append(FileChange(path, lines, old))
     return changes
 
 
 def changes_from_patch(patch: str) -> list[FileChange]:
     """Changed files and their added + deleted lines, from a unified diff (eval cases)."""
     counts: dict[str, int] = {}
+    renamed: dict[str, str] = {}
     current: str | None = None
     for line in patch.splitlines():
         if line.startswith("diff --git "):
@@ -102,15 +105,21 @@ def changes_from_patch(patch: str) -> list[FileChange]:
             counts.setdefault(current, 0)
         elif current is None or line.startswith(("+++ ", "--- ")):
             continue
+        elif line.startswith("rename from "):
+            renamed[current] = line.removeprefix("rename from ")
         elif line.startswith(("+", "-")):
             counts[current] += 1
-    return [FileChange(path, lines) for path, lines in counts.items()]
+    return [FileChange(path, lines, renamed.get(path)) for path, lines in counts.items()]
 
 
 def changes_from_compare(files: Sequence[Mapping[str, Any]]) -> list[FileChange]:
     """`gh api repos/R/compare/BASE...HEAD --jq .files` → FileChange (the collector's side)."""
     return [
-        FileChange(str(f["filename"]), int(f.get("additions") or 0) + int(f.get("deletions") or 0))
+        FileChange(
+            str(f["filename"]),
+            int(f.get("additions") or 0) + int(f.get("deletions") or 0),
+            str(f["previous_filename"]) if f.get("previous_filename") else None,
+        )
         for f in files
     ]
 
@@ -135,6 +144,10 @@ def floor(changes: Sequence[FileChange], *, ai_assisted: bool, config: TriageCon
     by_reason: dict[tuple[Risk, str], int] = {}
     for change in changes:
         key = rule_risk(change.path, config)
+        if change.old_path is not None:  # a move out of a riskier place keeps that risk
+            source = rule_risk(change.old_path, config)
+            if rank(source[0]) > rank(key[0]):
+                key = (source[0], f"{source[1]} (renamed away)")
         by_reason[key] = by_reason.get(key, 0) + 1
     risk = highest(r for r, _ in by_reason)
     reasons = [
@@ -197,7 +210,10 @@ def _cache_path(cache_dir: Path | None, key: str) -> Path | None:
 
 
 def user_content(changes: Sequence[FileChange], diff_text: str, base: str, max_kb: int) -> str:
-    listing = "\n".join(f"{c.path} ({c.lines} lines)" for c in changes) or "(none)"
+    listing = "\n".join(
+        f"{f'{c.old_path} -> ' if c.old_path else ''}{c.path} ({c.lines} lines)" for c in changes
+    )
+    listing = listing or "(none)"
     limit = max_kb * 1024
     data = diff_text.encode("utf-8")
     truncated = len(data) > limit

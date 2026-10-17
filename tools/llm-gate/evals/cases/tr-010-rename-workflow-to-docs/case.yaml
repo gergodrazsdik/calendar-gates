@@ -1,0 +1,9 @@
+---
+id: tr-010-rename-workflow-to-docs
+kind: triage
+checks: [triage]
+source: security-review sr-21b4 on PR 46
+description: 'A workflow moved under docs/: 0 changed lines, rated by where it came from.'
+base: 0b407197a6271a3a3c5aeaae89b1a3e3027cb774
+expect_risk: high
+expect: []

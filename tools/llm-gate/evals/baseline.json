@@ -145,12 +145,12 @@
   },
   "triage": {
     "api/claude-haiku-5-5": {
-      "cases": 9,
+      "cases": 10,
       "metrics": {
-        "cases": 9,
-        "cost_p50": 0.00025870000000000005,
-        "cost_p90": 0.0029927000000000005,
-        "cost_usd": 0.01546,
+        "cases": 10,
+        "cost_p50": 0.0002557,
+        "cost_p90": 0.0003111,
+        "cost_usd": 0.008939,
         "errors": 0,
         "false_block_rate": null,
         "flip_rate": 0.0,
@@ -163,7 +163,7 @@
         "recall": null,
         "repeats": 3,
         "risk_accuracy": 1.0,
-        "spent_usd": 0.01546,
+        "spent_usd": 0.003023,
         "verdict_accuracy": null
       },
       "prompt_sha256": "2dbea55edb5150e63bfef5999dc6cde43716aa062e2406b98108ce1f2181e887",
