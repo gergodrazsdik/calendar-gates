@@ -1,6 +1,6 @@
 # Gates
 
-Every gate runs locally through `just` and in CI as a named check. `just ci` runs the
+Every gate runs both locally, through `just`, and in CI as a named check. `just ci` runs the
 deterministic ones (format, lint, build, test). Required checks on `main` are set in the ruleset
 `.github/rulesets/main.json` (applied with `just gh-rulesets`): `pr-title`, `format`, `lint`,
 `build-test / dotnet`, `http-tests`, `grype`, `k8s-smoke`, `gates`, `llm / code-review`,
