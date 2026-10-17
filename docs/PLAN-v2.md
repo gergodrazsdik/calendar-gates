@@ -600,6 +600,11 @@ what isn't.
 | 22 | In a PR, change `llm-review.yml` to upload a hand-written "pass" record (a) for another PR, (b) for itself | (a) rejected as `tamper_suspected`; (b) written with `workflow_modified: true`, the check-run cross-check flags any mismatch, and the next release lists the PR as unverified |
 | 23 | Retag an old attested release under a new tag; push a local build to GHCR under the release name | the retag is admitted (attestations bind the digest, not the tag); the local build is denied |
 
+Results (2026-10-17): drill 19's only `/llm-fp` had marked a true positive, so the generated case was
+discarded at review. Drill 23 ran locally, without pushing to GHCR: the retag was admitted. The local
+build under `0.3.1` was admitted *but pinned to the attested digest*, so the release ran and the local
+bytes didn't. Under an unknown tag it was denied ([WRITEUP](WRITEUP.md) §5).
+
 ---
 
 ## Reference
