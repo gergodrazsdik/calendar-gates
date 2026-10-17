@@ -104,6 +104,13 @@ two disagree for Haiku, so treat the starred numbers as approximate.
 - **Biggest drop measured:** drill 14 weakened the security prompt to "only report critical
   issues", and recall fell from 1.00 to 0.17, so `llm-eval` failed the PR.
 
+**To regenerate (costs API credits):**
+- **Production numbers:** `just metrics`, or the weekly "Gate health" issue.
+- **Baseline:** `just eval`.
+- **Model rows:** `just eval --check code-review --check security-review --engine agent --model
+  <model> --out reports/eval-<model> --budget-usd <cap>`. Set the cap: the Haiku and Opus runs here
+  cost $12.30 together.
+
 **Caveat:** the prompts and cases were developed against Sonnet, which favours Sonnet. 16 and
 13 cases is a small set, and the Sonnet rows come from the cache of an earlier run.
 
