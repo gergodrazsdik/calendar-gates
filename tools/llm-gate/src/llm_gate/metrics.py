@@ -128,10 +128,12 @@ def compute(
     for run in runs:
         for f in run.get("findings", []):
             findings[(run.get("pr"), f.get("id"))] = (str(run["check"]), str(f.get("severity")))
+    # A person can change their mind (/llm-fp, then /llm-ack): the latest verdict on a finding wins,
+    # by time, not by the order the record files happen to sort in.
     kinds: dict[tuple[Any, Any], str] = {}
-    for r in recent:
-        if r.get("type") == "feedback":
-            kinds[(r.get("pr"), r.get("finding_id"))] = str(r.get("kind"))  # the latest wins
+    feedback = [r for r in recent if r.get("type") == "feedback"]
+    for r in sorted(feedback, key=lambda r: _when(r.get("ts")) or datetime.min.replace(tzinfo=UTC)):
+        kinds[(r.get("pr"), r.get("finding_id"))] = str(r.get("kind"))
     by_check: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0])
     by_severity: dict[str, list[int]] = defaultdict(lambda: [0, 0])
     for key, (check, severity) in findings.items():

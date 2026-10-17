@@ -77,6 +77,48 @@ def test_false_positive_rates_per_check_and_severity() -> None:
     assert report.fp_by_severity == {"high": (1, 1), "low": (0, 1)}
 
 
+def test_the_latest_feedback_on_a_finding_wins_by_time() -> None:
+    findings = [{"id": "cr-0001", "severity": "high"}]
+
+    def feedback(kind: str, ts: str) -> dict[str, Any]:
+        return {"type": "feedback", "ts": ts, "pr": 1, "finding_id": "cr-0001", "kind": kind}
+
+    # Out of time order, as record files can sort (feedback-<comment id>.jsonl).
+    acked = compute(
+        [
+            run(1, findings=findings),
+            feedback("ack", "2026-10-17T18:00:00Z"),
+            feedback("fp", "2026-10-16T19:00:00Z"),
+            feedback("fp", "2026-10-16T20:00:00Z"),
+        ],
+        [pr(1)],
+    )
+    assert acked.fp_by_check == {"code-review": (0, 1, 1)}
+    assert acked.fp_by_severity == {"high": (0, 1)}
+
+    marked = compute(
+        [
+            run(1, findings=findings),
+            feedback("fp", "2026-10-17T09:00:00Z"),
+            feedback("ack", "2026-10-16T09:00:00Z"),
+        ],
+        [pr(1)],
+    )
+    assert marked.fp_by_check == {"code-review": (1, 0, 1)}
+
+    # A record without a usable ts counts as the oldest: any dated verdict wins over it.
+    undated = compute(
+        [
+            run(1, findings=findings),
+            feedback("ack", "2026-10-16T09:00:00Z"),
+            feedback("fp", ""),
+            feedback("fp", "not a time"),
+        ],
+        [pr(1)],
+    )
+    assert undated.fp_by_check == {"code-review": (0, 1, 1)}
+
+
 def test_overrides_turnaround_and_cost() -> None:
     records = [
         run(1, verdict="fail", override_honoured=True),

@@ -65,7 +65,7 @@ rate below as an anecdote with a denominator.
 |---|---|
 | Coverage: merged PRs where every blocking check decided | 100% |
 | Review turnaround, p50 / p90 | 1.0 / 2.3 min (security-review 71 s / 2.2 min) |
-| Findings marked false positive | 1 of 234 (a code-review "high", on a drill). No `/llm-ack` was used, so fp/(fp+ack) means nothing yet |
+| Findings marked false positive | 0 of 234. The one `/llm-fp` (drill 19, on a planted bug) was reversed with `/llm-ack` once it turned out to be a true positive; one acked finding is too few for an fp/(fp+ack) rate |
 | Overrides | 2 of 6 PRs with blocking findings, both drills |
 | Cost (paid reviews; cache hits are free) | $7.36 in total; per PR p50 $0.06, p90 $1.28 |
 | Triage mix | high 62%, low 25%, medium 12%; AI-assisted 75% |

@@ -13,7 +13,7 @@ PRs merged before the log existed can't be covered.
 |---|---|---|
 | Coverage | merged PRs where every blocking check has a `gate_run` with a real verdict (`pass`, `fail`, `not_applicable`; not `skipped_no_key` or `error`) / merged PRs | `gate_run`, merged PRs |
 | Review turnaround | `finished_at − pr_event_at` per check, p50/p90, for reviews that ran (`pass`, `fail`, `error`) | `gate_run` |
-| False-positive rate | per check and severity: findings marked `/llm-fp` / distinct findings (a finding counts once per PR, however often it was re-reported); also fp / (fp + ack), over the findings people looked at | `gate_run` findings, `feedback` |
+| False-positive rate | per check and severity: findings marked `/llm-fp` / distinct findings (a finding counts once per PR, however often it was re-reported; when people marked it more than once, the latest verdict by time wins); also fp / (fp + ack), over the findings people looked at | `gate_run` findings, `feedback` |
 | Override rate | PRs with an honoured override / PRs where a blocking check failed | `gate_run` (`override_honoured`, `verdict`) |
 | Cost | paid reviews only (cache hits record none): total, per check, per engine/model, p50/p90 per reviewed PR | `gate_run.cost_usd` |
 | Triage mix | share of PRs per final risk; manual `/llm-risk` changes | `triage`, `risk_override` ([ADR 0008](adr/0008-risk-triage.md)) |
