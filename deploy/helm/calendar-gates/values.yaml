@@ -3,6 +3,8 @@ replicaCount: 2
 image:
   repository: ghcr.io/gergodrazsdik/calendar-gates
   tag: "" # defaults to the chart's appVersion
+  # Set by release.yml in released charts (ADR 0009): the attested image, by digest. Wins over tag.
+  digest: ""
   pullPolicy: IfNotPresent
 
 # Extra pod annotations; `just k8s-deploy` sets the image ID here so a rebuilt :dev image rolls out.

@@ -475,7 +475,8 @@ public the moment they're pushed). New order:
   }
   ```
   predicate type `…/attestations/llm-review/v1`, on the image digest.
-- Per PR: `audit-collect.yml` also attests each `gate_run` record file (subject = the record file,
+- **Dropped** ([ADR 0009](adr/0009-build-once-attest-promote.md): every attestation is a permanent
+  public Rekor entry; releases only). Per PR: `audit-collect.yml` also attests each `gate_run` record file (subject = the record file,
   predicate type `…/attestations/llm-review-run/v1`). `gh attestation verify <record> --owner gergodrazsdik`
   then proves a record came from this repo's trusted workflow.
 
