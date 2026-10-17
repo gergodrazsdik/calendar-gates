@@ -198,6 +198,13 @@ lint-chart:
     helm lint --kube-context kind-local --strict {{ chart }} -f {{ chart }}/values-kind.yaml
     helm template --kube-context kind-local calendar-gates {{ chart }} --set ingress.enabled=true \
         | kubeconform -strict -summary -kubernetes-version 1.37.0 -
+    @# Released charts pin the image by digest (release.yml, ADR 0009).
+    helm template --kube-context kind-local calendar-gates {{ chart }} \
+        --set image.digest=sha256:0000000000000000000000000000000000000000000000000000000000000000 \
+        | grep -q 'image: "ghcr.io/gergodrazsdik/calendar-gates@sha256:0000'
+    helm template --kube-context kind-local calendar-gates {{ chart }} \
+        --set image.digest=sha256:0000000000000000000000000000000000000000000000000000000000000000 \
+        | kubeconform -strict -summary -kubernetes-version 1.37.0 -
 
 # Tag main as vX.Y.Z (signed) and push the tag; release.yml then waits for your approval
 [group('release')]
@@ -220,6 +227,42 @@ release version:
     git tag -s "v$version" -m "v$version"
     git push origin "v$version"
     echo "Pushed v$version: approve the release environment in the release workflow run."
+
+# Verify a release's attestations (provenance, SBOM, vuln scan, LLM review; ADR 0009), each signed by release.yml for that tag
+[group('release')]
+verify-release version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    version={{ version }}
+    [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || {
+        echo "usage: just verify-release MAJOR.MINOR.PATCH (no v prefix)" >&2; exit 1; }
+    repo=gergodrazsdik/calendar-gates
+    image="oci://ghcr.io/$repo:$version"
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    types=(
+        provenance=https://slsa.dev/provenance/v1
+        sbom=https://spdx.dev/Document/v2.3
+        vuln-scan=https://github.com/$repo/attestations/vuln-scan/v1
+        llm-review=https://github.com/$repo/attestations/llm-review/v1
+    )
+    for entry in "${types[@]}"; do
+        name=${entry%%=*}
+        # --signer-workflow and --source-ref: signed by release.yml, run for this very tag.
+        gh attestation verify "$image" --owner gergodrazsdik \
+            --signer-workflow "$repo/.github/workflows/release.yml" --source-ref "refs/tags/v$version" \
+            --predicate-type "${entry#*=}" --format json > "$tmp/$name.json"
+        echo "verified: $name"
+    done
+    echo
+    echo "Vulnerabilities (grype $(jq -r '.[0].verificationResult.statement.predicate.scanner.version' "$tmp/vuln-scan.json")):"
+    jq -r '.[0].verificationResult.statement.predicate.results[] | "  \(.platform): \(.counts | to_entries | map("\(.key) \(.value)") | join(", "))"' "$tmp/vuln-scan.json"
+    echo "LLM review:"
+    jq -r '.[0].verificationResult.statement.predicate
+        | "  \(.prs | length) PR(s) from \(.range.from // "the first commit") to \(.range.to)",
+          "  unreviewed: \(.unreviewed | map("#\(.number // .commit): \(.reason)") | join("; ") | if . == "" then "none" else . end)",
+          "  unverified: \(.unverified | map("#\(.number): \(.reason)") | join("; ") | if . == "" then "none" else . end)"' \
+        "$tmp/llm-review.json"
 
 # Local equivalent of the deterministic CI gates; run before calling a change done
 [group('test')]

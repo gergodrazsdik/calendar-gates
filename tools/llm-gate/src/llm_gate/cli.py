@@ -12,7 +12,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from . import aidetect, audit, evals, feedback, metrics, triage
+from . import aidetect, attestations, audit, evals, feedback, metrics, triage
 from .cache import Cache
 from .compare import render_comparison
 from .config import (
@@ -260,6 +260,24 @@ def build_parser() -> argparse.ArgumentParser:
     fbm.add_argument("--body-file", type=Path, required=True)
     fbm.add_argument("--finding", required=True)
     fbm.add_argument("--by", required=True)
+
+    att = sub.add_parser("attest", help="release attestation predicates (ADR 0009)")
+    attsub = att.add_subparsers(dest="attest_command", required=True)
+    vuln = attsub.add_parser("vuln-scan", help="a vuln-scan predicate from grype JSON reports")
+    vuln.add_argument("--grype", type=Path, action="append", required=True, help="one per platform")
+    vuln.add_argument("--out", type=Path, required=True)
+    rev = attsub.add_parser("llm-review", help="an llm-review predicate from the audit log")
+    rev.add_argument("--from", dest="range_from", default="", help="previous tag ('' for none)")
+    rev.add_argument("--to", dest="range_to", required=True)
+    rev.add_argument(
+        "--commits",
+        type=Path,
+        required=True,
+        help="JSON array of {commit, pr, head_sha}: the release's commits and their PRs",
+    )
+    rev.add_argument("--audit-dir", type=Path, required=True)
+    rev.add_argument("--out", type=Path, required=True)
+    rev.add_argument("--notes", type=Path, help="also write the release notes section here")
 
     met = sub.add_parser("metrics", help="gate health report over the audit log (Markdown)")
     met.add_argument("--audit-dir", type=Path, help="default: <repo>/.audit-log")
@@ -720,6 +738,29 @@ def cmd_eval(
     return 1 if failed else 0
 
 
+def cmd_attest(args: argparse.Namespace) -> int:
+    """Predicates for release.yml's `attest` job; no repository needed."""
+    try:
+        if args.attest_command == "vuln-scan":
+            reports = [json.loads(p.read_text(encoding="utf-8")) for p in args.grype]
+            predicate = attestations.vuln_scan(reports)
+        else:
+            predicate = attestations.llm_review(
+                json.loads(args.commits.read_text(encoding="utf-8")),
+                args.audit_dir,
+                range_from=args.range_from or None,
+                range_to=args.range_to,
+            )
+            if args.notes:
+                args.notes.write_text(attestations.render_notes(predicate), encoding="utf-8")
+    except (OSError, ValueError, KeyError) as error:
+        log.error("attest %s: %s: %s", args.attest_command, type(error).__name__, error)
+        return EXIT_ERROR
+    args.out.write_text(json.dumps(predicate, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({k: v for k, v in predicate.items() if k != "prs"}, indent=2))
+    return 0
+
+
 def cmd_feedback(args: argparse.Namespace, checks: Mapping[str, Check]) -> int:
     if args.feedback_command == "mark":
         body = args.body_file.read_text(encoding="utf-8")
@@ -820,6 +861,8 @@ def main(argv: Sequence[str] | None = None, engines: Mapping[str, Engine] | None
     try:
         if args.command == "audit" and args.audit_command != "skip":
             return cmd_audit(args)
+        if args.command == "attest":
+            return cmd_attest(args)
         root = repo_root(args.repo or Path.cwd())
         config = args.config or root / "tools" / "llm-gate" / "checks.yaml"
         # The gate's own checkout (config + prompts) may differ from the reviewed one (ADR 0004).

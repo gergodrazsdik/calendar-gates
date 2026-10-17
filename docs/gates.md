@@ -117,20 +117,33 @@ is required too (see below).
 `just release X.Y.Z` (from a clean `main` in sync with origin, after `just ci`) pushes the signed
 tag `vX.Y.Z`. The workflow then:
 
-1. **verify**: the tag is SemVer, annotated, signed (verified by GitHub) and on `main`.
-2. **build-test** and **scan**: the same build, tests and grype gate as pull requests.
-3. **publish**: waits for approval in the `release` environment, then pushes the amd64 + arm64
-   image (`X.Y.Z`, `X.Y`, `sha-<short>`) with an SBOM and a provenance attestation, the Helm chart
-   to `oci://ghcr.io/gergodrazsdik/charts`, and a **draft** GitHub Release with the SPDX SBOM and
-   the chart.
-4. **smoke**: scans the pushed digest with grype (the bytes that were published, not the local
-   build), runs it, checks `/api/version` reports `X.Y.Z`, runs the contract tests, and only then
-   publishes the release. A failed smoke leaves a draft; re-running the workflow refreshes it.
+1. **verify**: the tag is SemVer, annotated, signed (verified by GitHub) and on `main`; it also
+   finds the previous release tag.
+2. **build-test**: the same build and tests as pull requests.
+3. **build**: builds the amd64 + arm64 image **once** (no cache) and pushes it by digest, tagged
+   only `candidate-vX.Y.Z`. Every later job uses that digest
+   ([ADR 0009](adr/0009-build-once-attest-promote.md)).
+4. **scan**: grype on the pushed digest, both platforms, with the same config and fail-on-high as
+   pull requests.
+5. **attest**: four attestations on the digest, pushed next to the image: build provenance, the
+   SPDX SBOM, the **vulnerability scan** (counts per platform, ignores with their reasons) and the
+   **LLM review** (every PR since the previous release with its gate verdicts on the merged head,
+   plus the unreviewed and unverified ones, from `audit-log`). Each one is a permanent entry in the
+   public Rekor log; that's why only releases are attested.
+6. **publish**: waits for approval in the `release` environment, then gives the attested digest
+   its version tags (`X.Y.Z`, `X.Y`; nothing is rebuilt), pushes the Helm chart with the digest
+   pinned in `image.digest` to `oci://ghcr.io/gergodrazsdik/charts`, and drafts the GitHub Release
+   with the SBOM, the chart and an "LLM review" section listing any unreviewed or unverified PRs.
+7. **smoke**: runs the digest, checks `/api/version` reports `X.Y.Z`, runs the contract tests, and
+   only then publishes the release. A failed smoke leaves a draft; re-running the workflow
+   refreshes it.
 
-Check the supply chain afterwards with
-`gh attestation verify oci://ghcr.io/gergodrazsdik/calendar-gates:X.Y.Z --owner gergodrazsdik`,
-and deploy it with `just k8s-deploy-release X.Y.Z`. Tags can't be moved or deleted (`release-tags`
-ruleset), so a bad release is fixed with a new version.
+A failed scan leaves only the candidate tag: no version tags, no chart, no release.
+
+Check the supply chain afterwards with `just verify-release X.Y.Z`: it verifies all four
+attestations, signed by `release.yml` for that tag, and prints the vulnerability counts and the
+review gaps. Deploy it with `just k8s-deploy-release X.Y.Z`. Tags can't be moved or deleted
+(`release-tags` ruleset), so a bad release is fixed with a new version.
 
 ## Hooks are not gates
 
