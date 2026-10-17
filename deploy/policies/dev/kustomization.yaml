@@ -1,0 +1,23 @@
+# `calendar-gates-dev`: the same policies, auditing instead of denying. Violations land in the
+# namespace's PolicyReports (`just k8s-policy-report calendar-gates-dev`).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../base
+nameSuffix: -dev
+patches:
+  - target:
+      group: policies.kyverno.io
+    patch: |-
+      - op: replace
+        path: /spec/validationActions
+        value: [Audit]
+      - op: replace
+        path: /spec/matchConstraints/namespaceSelector/matchLabels/kubernetes.io~1metadata.name
+        value: calendar-gates-dev
+  - target:
+      kind: Namespace
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: calendar-gates-dev

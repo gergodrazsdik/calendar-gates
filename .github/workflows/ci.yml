@@ -108,6 +108,18 @@ jobs:
           helm lint --strict "$chart" -f "$chart/values-kind.yaml"
           helm template calendar-gates "$chart" --set ingress.enabled=true |
             docker run --rm -i "$kubeconform" -strict -summary -kubernetes-version 1.37.0 -
+          # Released charts pin the image by digest (ADR 0009).
+          digest=sha256:0000000000000000000000000000000000000000000000000000000000000000
+          helm template calendar-gates "$chart" --set image.digest=$digest |
+            grep -q "image: \"ghcr.io/gergodrazsdik/calendar-gates@$digest\""
+          helm template calendar-gates "$chart" --set image.digest=$digest |
+            docker run --rm -i "$kubeconform" -strict -summary -kubernetes-version 1.37.0 -
+      # The image verification itself needs the registry: release.yml's admission-smoke (ADR 0010).
+      - name: Admission policies (kustomize renders, offline kyverno tests)
+        run: |
+          kubectl kustomize deploy/policies > /dev/null
+          kyverno=ghcr.io/kyverno/kyverno-cli:v1.19.1@sha256:ced7b2be0b04250cabfe695f15307f69eb715fe23234816388af4f3812915b2a
+          docker run --rm -v "$PWD:/repo:ro" --workdir /repo "$kyverno" test deploy/policies/tests --remove-color
 
   build-test:
     name: build-test

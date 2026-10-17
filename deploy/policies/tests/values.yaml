@@ -1,0 +1,9 @@
+# Namespace labels the policies select on (kyverno test has no cluster to ask).
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Value
+metadata:
+  name: values
+namespaceSelector:
+  - name: calendar-gates
+    labels:
+      kubernetes.io/metadata.name: calendar-gates

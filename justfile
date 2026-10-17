@@ -5,6 +5,13 @@ image := "localhost/calendar-gates:dev"
 chart := "deploy/helm/calendar-gates"
 k8s_ns := "calendar-gates"
 
+# Kubernetes (docs/adr/0010-admission-control.md): the project's own kind cluster, with Kyverno, is
+# the default; `just cluster=local <recipe>` targets kind-local as in v1. The project cluster's
+# kubeconfig lives in the state dir, so ~/.kube/config is never touched.
+cluster := "calendar-gates"
+kube_context := "kind-" + cluster
+export KUBECONFIG := if cluster == "local" { env("KUBECONFIG", home_directory() / ".kube" / "config") } else { home_directory() / ".local" / "state" / "calendar-gates" / "kubeconfig" }
+
 # List recipes
 default:
     @just --list
@@ -132,42 +139,84 @@ llm check engine="":
 llm-compare check:
     just llm {{ check }} both
 
-# Start the kind-local cluster, creating it if it does not exist yet
+# Start the cluster, creating it if needed: the project cluster (deploy/kind/cluster.yaml), or kind-local with cluster=local
 [group('k8s')]
 k8s-up:
     #!/usr/bin/env bash
     set -euo pipefail
-    if kind-local status | grep -q 'not created'; then kind-local create; else kind-local start; fi
+    if [ "{{ cluster }}" = local ]; then
+        if kind-local status | grep -q 'not created'; then kind-local create; else kind-local start; fi
+        exit 0
+    fi
+    mkdir -p -m 700 "$(dirname "$KUBECONFIG")"
+    if kind get clusters 2> /dev/null | grep -qx "{{ cluster }}"; then
+        podman start "{{ cluster }}-control-plane" > /dev/null
+        echo "started {{ cluster }}"
+    else
+        kind create cluster --name "{{ cluster }}" --config deploy/kind/cluster.yaml --wait 120s
+    fi
 
-# Build the image and load it into kind-local (kind can't see podman's images, so via an archive)
+# Delete the project cluster (never kind-local) and everything in it
+[group('k8s')]
+[confirm('Delete the kind cluster calendar-gates and everything in it?')]
+k8s-cluster-down:
+    kind delete cluster --name calendar-gates
+
+# Install Kyverno (chart pinned by version and sha256, images by digest) and apply deploy/policies
+[group('k8s')]
+k8s-policy-up:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    [ "{{ cluster }}" != local ] || { echo "admission control runs on the project cluster, not kind-local" >&2; exit 1; }
+    # deploy/kyverno/chart.sha256 pins the chart: its file name carries the version, its hash the bytes.
+    dir="$HOME/.cache/calendar-gates/kyverno"
+    file=$(awk '{print $2}' deploy/kyverno/chart.sha256)
+    version=${file#kyverno-}; version=${version%.tgz}
+    mkdir -p "$dir"
+    [ -f "$dir/$file" ] || helm pull kyverno --repo https://kyverno.github.io/kyverno/ --version "$version" -d "$dir"
+    (cd "$dir" && sha256sum -c --quiet) < deploy/kyverno/chart.sha256
+    helm upgrade --install kyverno "$dir/$file" --kube-context {{ kube_context }} -n kyverno --create-namespace \
+        -f deploy/kyverno/values.yaml --wait --timeout 5m
+    kubectl --context {{ kube_context }} apply -k deploy/policies
+    kubectl --context {{ kube_context }} get validatingpolicies,imagevalidatingpolicies
+
+# Policy results (Audit findings, passes) for a namespace
+[group('k8s')]
+k8s-policy-report ns=(k8s_ns + "-dev"):
+    kubectl --context {{ kube_context }} -n {{ ns }} get policyreports -o json \
+        | jq -r '.items[] | "\(.scope.kind)/\(.scope.name)" as $r | .results[]? | "\(.result)\t\(.policy)\t\($r)\t\(.message // "")"' \
+        | sort | column -t -s "$(printf '\t')"
+
+# Build the image and load it into the cluster (kind can't see podman's images, so via an archive)
 [group('k8s')]
 k8s-load: image
     mkdir -p reports
+    rm -f reports/calendar-gates.tar # podman save doesn't overwrite an archive
     podman save -o reports/calendar-gates.tar {{ image }}
-    kind load image-archive reports/calendar-gates.tar --name local
+    kind load image-archive reports/calendar-gates.tar --name {{ cluster }}
 
-# Install or upgrade the chart on kind-local with the loaded :dev image; rolls back on failure
+# Install or upgrade the chart with the loaded :dev image; rolls back on failure. The policies deny it in calendar-gates: `just k8s-deploy calendar-gates-dev`
 [group('k8s')]
-k8s-deploy:
-    helm upgrade --install calendar-gates {{ chart }} --kube-context kind-local \
-        -n {{ k8s_ns }} --create-namespace -f {{ chart }}/values-kind.yaml \
+k8s-deploy ns=k8s_ns:
+    helm upgrade --install calendar-gates {{ chart }} --kube-context {{ kube_context }} \
+        -n {{ ns }} --create-namespace -f {{ chart }}/values-kind.yaml \
         --set-string "podAnnotations.calendar-gates/image-id=$(podman image inspect --format '{{{{.Id}}' {{ image }} | cut -c1-12)" \
         --reset-values --rollback-on-failure --timeout 2m
 
-# Deploy a published release to kind-local: chart and image from GHCR (after `just release`)
+# Deploy a published release: chart and image from GHCR (after `just release`)
 [group('k8s')]
-k8s-deploy-release version:
+k8s-deploy-release version ns=k8s_ns:
     @# --reset-values: without it, an upgrade with no values reuses the previous release's.
     helm upgrade --install calendar-gates oci://ghcr.io/gergodrazsdik/charts/calendar-gates \
-        --version {{ version }} --kube-context kind-local -n {{ k8s_ns }} --create-namespace \
+        --version {{ version }} --kube-context {{ kube_context }} -n {{ ns }} --create-namespace \
         --reset-values --rollback-on-failure --timeout 3m
 
-# HTTP contract tests against kind-local through a port-forward (localhost:18080)
+# HTTP contract tests through a port-forward (localhost:18080)
 [group('k8s')]
-k8s-http:
+k8s-http ns=k8s_ns:
     #!/usr/bin/env bash
     set -euo pipefail
-    kubectl --context kind-local -n {{ k8s_ns }} port-forward svc/calendar-gates 18080:80 >/dev/null &
+    kubectl --context {{ kube_context }} -n {{ ns }} port-forward svc/calendar-gates 18080:80 >/dev/null &
     forward=$!
     trap 'kill $forward' EXIT
     scripts/wait-for-health.sh http://localhost:18080/health 30
@@ -175,21 +224,21 @@ k8s-http:
 
 # Pods, services and recent events of the deployment
 [group('k8s')]
-k8s-status:
-    kubectl --context kind-local -n {{ k8s_ns }} get all,ingress
-    kubectl --context kind-local -n {{ k8s_ns }} get events --sort-by=.lastTimestamp | tail -n 10
+k8s-status ns=k8s_ns:
+    kubectl --context {{ kube_context }} -n {{ ns }} get all,ingress
+    kubectl --context {{ kube_context }} -n {{ ns }} get events --sort-by=.lastTimestamp | tail -n 10
 
 # Follow the logs of all pods
 [group('k8s')]
-k8s-logs:
-    stern --context kind-local -n {{ k8s_ns }} calendar-gates
+k8s-logs ns=k8s_ns:
+    stern --context {{ kube_context }} -n {{ ns }} calendar-gates
 
-# Remove the release and its namespace from kind-local
+# Remove the release and its namespace
 [group('k8s')]
-[confirm('Uninstall calendar-gates and delete its namespace on kind-local?')]
-k8s-down:
-    helm uninstall calendar-gates --kube-context kind-local -n {{ k8s_ns }} --ignore-not-found
-    kubectl --context kind-local delete namespace {{ k8s_ns }} --ignore-not-found
+[confirm('Uninstall calendar-gates and delete its namespace?')]
+k8s-down ns=k8s_ns:
+    helm uninstall calendar-gates --kube-context {{ kube_context }} -n {{ ns }} --ignore-not-found
+    kubectl --context {{ kube_context }} delete namespace {{ ns }} --ignore-not-found
 
 # The chart part of the lint gate: helm lint and the rendered manifests against the Kubernetes schemas
 [group('format')]
@@ -205,6 +254,17 @@ lint-chart:
     helm template --kube-context kind-local calendar-gates {{ chart }} \
         --set image.digest=sha256:0000000000000000000000000000000000000000000000000000000000000000 \
         | kubeconform -strict -summary -kubernetes-version 1.37.0 -
+
+# The admission policies: both kustomize layers render, and the offline kyverno tests pass (the image verification itself runs in release.yml's admission-smoke)
+[group('format')]
+lint-policies:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    want=1.19.1 # as deploy/kyverno and ci.yml's kyverno-cli image
+    got=$(kyverno version 2> /dev/null | awk '/^Version:/ {print $2}')
+    [ "$got" = "$want" ] || { echo "kyverno CLI $want needed, found ${got:-none}" >&2; exit 1; }
+    kubectl --context {{ kube_context }} kustomize deploy/policies > /dev/null
+    kyverno test deploy/policies/tests --remove-color
 
 # Tag main as vX.Y.Z (signed) and push the tag; release.yml then waits for your approval
 [group('release')]
@@ -266,7 +326,7 @@ verify-release version:
 
 # Local equivalent of the deterministic CI gates; run before calling a change done
 [group('test')]
-ci: fmt-check lint lint-chart build test
+ci: fmt-check lint lint-chart lint-policies build test
 
 # Build the solution (warnings are errors)
 [group('dev')]

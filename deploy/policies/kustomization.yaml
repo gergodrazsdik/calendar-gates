@@ -1,0 +1,6 @@
+# Both namespaces: `kubectl apply -k deploy/policies` (just k8s-policy-up, release.yml).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - base
+  - dev

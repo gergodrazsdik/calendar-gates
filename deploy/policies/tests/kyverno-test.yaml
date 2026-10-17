@@ -1,0 +1,20 @@
+# Offline tests for the policy that needs no registry (`just lint`, ci.yml lint). The image
+# verification policies are proven by release.yml's admission-smoke against real attestations.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: calendar-gates-images
+policies:
+  - ../base/images.yaml
+resources:
+  - resources.yaml
+variables: values.yaml
+results:
+  - policy: calendar-gates-images
+    kind: Pod
+    resources: [release-by-digest, release-tag-and-digest]
+    result: pass
+  - policy: calendar-gates-images
+    kind: Pod
+    resources: [release-by-tag, lookalike-repository, foreign-init-container]
+    result: fail

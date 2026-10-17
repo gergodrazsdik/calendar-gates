@@ -1,0 +1,65 @@
+# Release images only (docs/adr/0010-admission-control.md): build provenance and a vulnerability
+# scan without critical findings, both attested by release.yml on a v* tag (ADR 0009). CI already
+# fails a release on high findings; admission fails on critical: two layers, two thresholds.
+apiVersion: policies.kyverno.io/v1
+kind: ImageValidatingPolicy
+metadata:
+  name: calendar-gates-release
+spec:
+  validationActions: [Deny]
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: calendar-gates
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        # The subresource is how `kubectl debug` adds an ephemeral container to a running pod.
+        resources: [pods, pods/ephemeralcontainers]
+  # A cold check fetches every attestation and the Sigstore trust root; 10 s (the default) isn't
+  # always enough. Results are cached for an hour.
+  webhookConfiguration:
+    timeoutSeconds: 30
+  matchImageReferences:
+    - glob: "ghcr.io/gergodrazsdik/calendar-gates*"
+  validationConfigurations:
+    mutateDigest: true # what runs is the digest that was verified
+    verifyDigest: true
+    required: true
+  attestors:
+    - name: release
+      cosign:
+        keyless:
+          identities:
+            - issuer: https://token.actions.githubusercontent.com
+              # A regex can't be wrapped safely.
+              # yamllint disable-line rule:line-length
+              subjectRegExp: '^https://github\.com/gergodrazsdik/calendar-gates/\.github/workflows/release\.yml@refs/tags/v[0-9].*$'
+  attestations:
+    - name: provenance
+      intoto:
+        type: https://slsa.dev/provenance/v1
+    - name: vulnscan
+      intoto:
+        type: https://github.com/gergodrazsdik/calendar-gates/attestations/vuln-scan/v1
+  # extractPayload() returns the in-toto statement of a GitHub attestation, so the predicate is under
+  # .predicate.
+  # Every container kind, not only spec.containers: an unattested image must not slip in as an init
+  # or ephemeral container.
+  variables:
+    - name: allImages
+      expression: images.containers + images.initContainers + images.ephemeralContainers
+  validations:
+    - expression: >-
+        variables.allImages.map(image,
+          verifyAttestationSignatures(image, attestations.provenance, [attestors.release])).all(e, e > 0)
+      message: the image has no build provenance signed by release.yml on a release tag
+    - expression: >-
+        variables.allImages.map(image,
+          verifyAttestationSignatures(image, attestations.vulnscan, [attestors.release]) > 0
+          && extractPayload(image, attestations.vulnscan).predicate.results.all(r, r.counts.critical == 0)
+        ).all(e, e)
+      message: >-
+        the image has no vulnerability-scan attestation from release.yml, or it lists critical
+        findings
