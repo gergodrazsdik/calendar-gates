@@ -44,7 +44,8 @@ all of the policy.
 5. **The level decides what runs.**
    - `low`: code-review and docs-drift, both advisory.
    - `medium`: everything but workflow-review. Code-review and security-review block.
-   - `high`: everything. The blocking checks move to the agent engine and the strong model.
+   - `high`: everything. The blocking checks move to the agent engine, keeping their own model
+     (amended 2026-10-17; see Consequences).
 
    Every `llm / <check>` job still runs and reports. A check outside the level's plan passes as
    "not needed at risk: <level>" (verdict `not_needed`), and one that is advisory at this level
@@ -70,8 +71,14 @@ all of the policy.
   them by default, but nothing proves a commit wasn't AI-assisted. The markers are a transparency
   signal for triage and the metrics, not enforcement.
 - **Most PRs here will be rated high.** Most PRs in this repository are Claude-assisted and touch
-  the gate, so code-review and security-review usually run on the agent engine with Opus. Each
-  review is capped by `budget_usd`. Setting `ai_assisted_raise: 0` is a one-line policy change, and
+  the gate, so code-review and security-review usually run on the agent engine. Each review is
+  capped by `budget_usd`.
+- **Amended 2026-10-17: Sonnet, not Opus, at high risk.** The high level first also switched the
+  blocking checks to Opus (`LLM_MODEL_STRONG`). The model evals done for docs/WRITEUP.md then
+  showed no gain. On the agent engine, Opus matched Sonnet's recall (1.00) but was noisier on
+  clean cases (0.87 vs 0.23 findings per code-review case) and less consistent (verdict
+  accuracy 0.96 vs 1.00). It cost 3 to 4 times more per review. The level now changes only the
+  engine. Setting `ai_assisted_raise: 0` is a one-line policy change, and
   it goes through review like any other change to `checks.yaml`.
 - **The model can only add review.** A prompt injection that talks the model down changes nothing,
   because the floor still holds. Talking it up costs money but weakens nothing. Eval case

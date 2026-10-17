@@ -218,9 +218,22 @@ def test_the_plan_per_level(real: GateConfig, tc: TriageConfig) -> None:
 
     high = triage.plan_for("high", tc, real.checks)
     assert all(high.values())
-    cr, docs = high["code-review"], high["docs-drift"]
-    assert cr is not None and (cr.engine, cr.model) == ("agent", "claude-opus-5-5")
+    cr, sr, docs = high["code-review"], high["security-review"], high["docs-drift"]
+    # High risk changes the engine of the blocking checks, not their model (ADR 0008, amended).
+    assert cr is not None and (cr.engine, cr.model) == ("agent", real.checks["code-review"].model)
+    assert sr is not None and (sr.engine, sr.model) == (
+        "agent",
+        real.checks["security-review"].model,
+    )
+    assert sr.model == "claude-sonnet-5-5"
     assert docs is not None and docs.model == "claude-haiku-5-5"  # advisory: unchanged
+
+
+def test_the_former_strong_model_variable_changes_nothing() -> None:
+    gate = load_gate_config(CONFIG, REPO_ROOT, env={"LLM_MODEL_STRONG": "claude-opus-5-5"})
+    assert gate.triage is not None
+    high = triage.plan_for("high", gate.triage, gate.checks)
+    assert {c.model for c in high.values() if c is not None and c.blocking} == {"claude-sonnet-5-5"}
 
 
 def write_config(tmp_path: Path, levels: str) -> Path:

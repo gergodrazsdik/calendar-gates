@@ -160,8 +160,8 @@ two disagree for Haiku, so treat the starred numbers as approximate.
 - **The high-risk reviewer choice doesn't hold up yet.** Since Phase 17, high-risk PRs, about 60% of
   those triaged here, get Opus on the agent engine. The evals measured afterwards (§3) show no recall gain over
   Sonnet on these cases, at three to four times the cost and with more noise. Haiku on the agent engine
-  was the most expensive of all, because it explores more. The next change is to keep Sonnet for
-  high risk and spend the difference on more eval cases.
+  was the most expensive of all, because it explores more. So on 2026-10-17 high risk went back to
+  Sonnet, still on the agent engine, and the difference can go to more eval cases.
 - **A false positive turned out to be a true one.** The only `/llm-fp` so far (drill 19) marked a
   finding on a drill PR that had planted the bug, so the finding was correct and marking it only
   tested the command. `eval add-from-fp` turned it into a case that would have forbidden the right
