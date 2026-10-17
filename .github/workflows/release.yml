@@ -431,14 +431,17 @@ jobs:
           done
       - name: Unattested and foreign images are denied in calendar-gates
         run: |
-          refused() { # pod name, image, the policy that must refuse it
+          # Each image policy has its own webhook, called in parallel: an image that fails both
+          # Deny policies may be refused by either one first, so the check takes a regex.
+          refused() { # pod name, image, the policy (an ERE) that must refuse it
             if out=$(kubectl -n calendar-gates run "$1" --image="$2" --restart=Never --dry-run=server 2>&1); then
               echo "::error::$2 was admitted in calendar-gates"; exit 1
             fi
             echo "$out"
-            grep -q "Policy $3 failed" <<< "$out" || { echo "::error::$2 was not refused by $3"; exit 1; }
+            grep -qE "Policy ($3) failed" <<< "$out" || { echo "::error::$2 was not refused by $3"; exit 1; }
           }
-          refused edge "$IMAGE:edge" calendar-gates-release
+          unattested='calendar-gates-release|calendar-gates-llm-review'
+          refused edge "$IMAGE:edge" "$unattested"
           refused foreign "$FOREIGN" calendar-gates-images
           # An unattested image hidden in an init container, next to the attested release.
           if out=$(kubectl create --dry-run=server -f - 2>&1 <<EOF
@@ -453,8 +456,8 @@ jobs:
             echo "::error::an edge init container was admitted in calendar-gates"; exit 1
           fi
           echo "$out"
-          grep -q "Policy calendar-gates-release failed" <<< "$out" \
-            || { echo "::error::the edge init container was not refused by calendar-gates-release"; exit 1; }
+          grep -qE "Policy ($unattested) failed" <<< "$out" \
+            || { echo "::error::the edge init container was not refused by $unattested"; exit 1; }
       - name: calendar-gates-dev admits edge and reports it
         run: |
           kubectl -n calendar-gates-dev run edge --image="$IMAGE:edge" --restart=Never

@@ -1,11 +1,12 @@
-# The release's LLM-review attestation (ADR 0009) must be there. Audit for now; switch to Deny
-# after a few releases have carried it (docs/adr/0010-admission-control.md).
+# The release's LLM-review attestation (ADR 0009) must be there. Deny since v0.3.1: it started as
+# Audit until releases carried it (v0.3.0, v0.3.1). The dev overlay still only audits
+# (docs/adr/0010-admission-control.md).
 apiVersion: policies.kyverno.io/v1
 kind: ImageValidatingPolicy
 metadata:
   name: calendar-gates-llm-review
 spec:
-  validationActions: [Audit]
+  validationActions: [Deny]
   matchConstraints:
     namespaceSelector:
       matchLabels:
