@@ -658,7 +658,11 @@ def cmd_eval(
             repo_root=root,
             cases_dir=cases_dir,
         )
-        print(f"wrote {directory}; review it and commit it with the change that fixes the prompt")
+        print(
+            f"wrote {directory}; review it: loosen forbid.title (a regex, now the exact title) to "
+            "the mistake's core, check the finding really was wrong, and commit it with the change "
+            "that fixes the prompt"
+        )
         return 0
 
     cases = evals.load_cases(cases_dir, args.cases)

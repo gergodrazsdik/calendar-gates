@@ -69,11 +69,24 @@ class Expectation(_Strict):
 
 class Forbidden(_Strict):
     """A finding that must not come back (a confirmed false positive): file, and optionally a
-    line range and category."""
+    line range, a regex over the title (case-insensitive) and a category. Prefer `title` to
+    `category`: models name categories freely, so the same mistake comes back as `broken-test` one
+    run and `weak-assertion` the next (fp-tr-835a)."""
 
     file: str
     lines: tuple[int, int] | None = None
+    title: str | None = None
     category: str | None = None
+
+    @field_validator("title")
+    @classmethod
+    def _regex(cls, value: str | None) -> str | None:
+        if value is not None:
+            try:
+                re.compile(value)
+            except re.error as error:
+                raise ValueError(f"forbid.title is not a valid regex: {error}") from error
+        return value
 
 
 class Case(_Strict):
@@ -211,6 +224,8 @@ def forbidden_hit(finding: Finding, forbidden: Forbidden) -> bool:
     if finding.file != forbidden.file:
         return False
     if forbidden.category is not None and finding.category != forbidden.category:
+        return False
+    if forbidden.title is not None and not re.search(forbidden.title, finding.title, re.IGNORECASE):
         return False
     if forbidden.lines is None:
         return True
@@ -867,7 +882,9 @@ def case_from_false_positive(
             Forbidden(
                 file=finding["file"],
                 lines=(finding_line, finding_line) if isinstance(finding_line, int) else None,
-                category=finding.get("category") or None,
+                # The exact title, escaped: forbids nothing else by accident. Loosen it to the
+                # mistake's core when reviewing the case, since titles get reworded run to run.
+                title="^" + re.escape(str(finding.get("title") or "")) + "$",
             )
         ],
     )
