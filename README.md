@@ -5,7 +5,8 @@ Easter, workdays, leap years) wrapped in merge gates for formatting, linting, te
 tests, vulnerability scanning, a Kubernetes smoke test and an LLM reviewer built on the Claude
 SDKs, plus a release pipeline with a human approval gate.
 
-It's a learning project, not production software. [`docs/PLAN.md`](docs/PLAN.md) is the plan,
+It's a learning project, not production software. Start with [`docs/WRITEUP.md`](docs/WRITEUP.md): a
+ten-minute read on what the gates do, what's measured, and what isn't. [`docs/PLAN.md`](docs/PLAN.md) is the plan,
 [`docs/gates.md`](docs/gates.md) says what each gate checks and how to fix or override it, and
 [`docs/adr/`](docs/adr) records the decisions.
 
