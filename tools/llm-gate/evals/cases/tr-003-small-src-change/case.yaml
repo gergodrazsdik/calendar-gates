@@ -1,0 +1,9 @@
+---
+id: tr-003-small-src-change
+kind: triage
+checks: [triage]
+source: phase-17
+description: A one-line change in the workdays calculator.
+base: 0b407197a6271a3a3c5aeaae89b1a3e3027cb774
+expect_risk: medium
+expect: []

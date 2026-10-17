@@ -4,6 +4,7 @@ import time
 from typing import Any
 
 import anthropic
+from pydantic import BaseModel
 
 from ..models import EngineResult, Review, Usage
 from ..prompts import DIFF_REFERENCE, diff_block, render
@@ -30,6 +31,51 @@ def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float | 
     return (input_tokens * prices[0] + output_tokens * prices[1]) / 1_000_000
 
 
+def structured_call[T: BaseModel](
+    client: Any | None,
+    *,
+    model: str,
+    system: str,
+    user: str,
+    output_format: type[T],
+    what: str,
+    max_tokens: int = MAX_TOKENS,
+) -> tuple[Any, T]:
+    """One Messages request with structured output: the response and its parsed output. Every
+    failure (API, refusal, truncation, no output) is an EngineError. Shared by the review engine
+    and triage (`triage.assess`)."""
+    fallback = model in FALLBACK_MODELS
+    try:
+        # Creating the client already fails without credentials (no ANTHROPIC_API_KEY).
+        client = client or anthropic.Anthropic()
+        response = client.beta.messages.parse(
+            model=model,
+            max_tokens=max_tokens,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+            output_format=output_format,
+            betas=[FALLBACK_BETA] if fallback else anthropic.omit,
+            fallbacks="default" if fallback else anthropic.omit,
+        )
+    except anthropic.APIStatusError as error:
+        raise EngineError(f"Claude API error {error.status_code}: {error.message}") from error
+    except anthropic.APIConnectionError as error:
+        raise EngineError(f"cannot reach the Claude API: {error}") from error
+    except anthropic.AnthropicError as error:  # e.g. no credentials configured
+        raise EngineError(f"Claude API client error: {error}") from error
+
+    if response.stop_reason == "refusal":
+        category = response.stop_details.category if response.stop_details else None
+        raise EngineError(f"the model declined the {what} (category: {category})")
+    if response.stop_reason == "max_tokens":
+        raise EngineError(f"the {what} was cut off at max_tokens={max_tokens}")
+    parsed = response.parsed_output
+    if not isinstance(parsed, output_format):
+        stop = response.stop_reason
+        raise EngineError(f"no structured {what} in the response (stop reason: {stop})")
+    return response, parsed
+
+
 class ApiEngine:
     name = "api"
 
@@ -38,40 +84,16 @@ class ApiEngine:
         self._client = client
 
     def review(self, request: ReviewRequest) -> EngineResult:
-        model = request.check.model
-        fallback = model in FALLBACK_MODELS
         started = time.monotonic()
-        try:
-            # Creating the client already fails without credentials (no ANTHROPIC_API_KEY).
-            client = self._client or anthropic.Anthropic()
-            response = client.beta.messages.parse(
-                model=model,
-                max_tokens=MAX_TOKENS,
-                system=render(request.prompt, DIFF_REFERENCE),
-                messages=[
-                    {"role": "user", "content": diff_block(request.diff.base, request.diff.text)}
-                ],
-                output_format=Review,
-                betas=[FALLBACK_BETA] if fallback else anthropic.omit,
-                fallbacks="default" if fallback else anthropic.omit,
-            )
-        except anthropic.APIStatusError as error:
-            raise EngineError(f"Claude API error {error.status_code}: {error.message}") from error
-        except anthropic.APIConnectionError as error:
-            raise EngineError(f"cannot reach the Claude API: {error}") from error
-        except anthropic.AnthropicError as error:  # e.g. no credentials configured
-            raise EngineError(f"Claude API client error: {error}") from error
+        response, review = structured_call(
+            self._client,
+            model=request.check.model,
+            system=render(request.prompt, DIFF_REFERENCE),
+            user=diff_block(request.diff.base, request.diff.text),
+            output_format=Review,
+            what="review",
+        )
         duration_ms = int((time.monotonic() - started) * 1000)
-
-        if response.stop_reason == "refusal":
-            category = response.stop_details.category if response.stop_details else None
-            raise EngineError(f"the model declined to review (category: {category})")
-        if response.stop_reason == "max_tokens":
-            raise EngineError(f"the review was cut off at max_tokens={MAX_TOKENS}")
-        review = response.parsed_output
-        if not isinstance(review, Review):
-            stop = response.stop_reason
-            raise EngineError(f"no structured review in the response (stop reason: {stop})")
 
         usage = response.usage
         return EngineResult(

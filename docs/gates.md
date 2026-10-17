@@ -60,6 +60,18 @@ is required too (see below).
   applicable" only updates an existing one). PRs without the API key (forks, Dependabot) skip with a
   notice; set the repo variable `LLM_GATE_MISSING_KEY=fail` to make blocking checks fail closed
   instead (gate drill 9). Adding or removing a label re-runs only these checks, from the cache.
+- **Triage** ([ADR 0008](adr/0008-risk-triage.md)): the `triage` job (first in `llm-review.yml`)
+  rates the PR `low`, `medium` or `high`.
+  - **Rules:** the paths in `checks.yaml` `triage.rules` (`.github/`, the gate and deployment are
+    high), raised by size and by AI markers (commit trailers, the PR body).
+  - **Model:** a cheap model may raise the rating, never lower it.
+  - **Labels:** triage sets `risk:<level>` and `ai-assisted`. A hand-set `risk:*` label is put back.
+    To change the risk, comment `/llm-risk <level> <reason>`.
+
+  The level decides which checks review and which block. At `low`, only code-review and docs-drift
+  review, and both are advisory. At `high`, the blocking checks use the agent engine and the strong
+  model. A check the level doesn't need still reports success with "not needed at risk: <level>",
+  so required checks never go missing. The job summary shows why the PR got its level.
 - **api-contract** runs when a PR touches `Endpoints/`, `Domain/`, `Program.cs` or `http/`. The JSON
   contract isn't only in `Endpoints/`: `IsoWeekInfo` (in `Domain/`) is returned as-is by `/api/week`, and
   `Program.cs` holds the `/api` group and OpenAPI. Found by the evals (`ac-001`, drill 3), where the
@@ -78,7 +90,7 @@ is required too (see below).
   settings or MCP servers) and gets the prompt as text with the diff inline. A gate change takes
   effect for the PRs after it merges. **Remaining hole**: the workflow file itself comes from the PR
   on `pull_request`, so a PR can edit `llm-review.yml`; v2 marks such runs (`workflow_modified`,
-  Phase 14) and raises their risk (Phase 17); a team repository would also require CODEOWNERS
+  Phase 14) and triage rates them high (ADR 0008); a team repository would also require CODEOWNERS
   review for `tools/llm-gate/`, `.claude/` and `.github/`. Fork code never runs with the key: `pull_request`
   withholds secrets from forks, and `llm-compare` refuses PRs whose branch is not in this repository.
 - **Overrides need a reason** ([ADR 0005](adr/0005-audit-trail.md)): the `llm-override` label is
@@ -87,7 +99,8 @@ is required too (see below).
   `/llm-override <reason>`: the feedback workflow adds the label and re-runs the review. Without one, the job warns "override not honoured" and the findings fail as usual.
 - **Feedback commands** ([ADR 0007](adr/0007-feedback-commands.md)): collaborators comment
   `/llm-fp <finding-id> <reason>`, `/llm-ack <finding-id>`, `/llm-override <reason>` (adds the label
-  and re-runs llm-review) or `/llm-risk <level> <reason>`; `llm-feedback.yml` records them on
+  and re-runs llm-review) or `/llm-risk <level> <reason>` (re-runs triage with that risk);
+  `llm-feedback.yml` records them on
   `audit-log` and reacts 👍. Metrics over all of it: `docs/metrics.md`, `just metrics`, and the
   weekly "Gate health" issue (`metrics.yml`).
 - **Audit trail** ([ADR 0005](adr/0005-audit-trail.md)): every `llm / <check>` job uploads its

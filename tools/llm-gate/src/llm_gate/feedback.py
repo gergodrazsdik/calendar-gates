@@ -7,7 +7,7 @@ comment that starts with `/llm-`; the comment is untrusted input and is only par
 | /llm-fp <finding-id> <reason>    | feedback (kind fp)        | marks the finding's row           |
 | /llm-ack <finding-id> [<reason>] | feedback (kind ack)       |                                   |
 | /llm-override <reason>           | override                  | adds llm-override, re-runs review |
-| /llm-risk <level> <reason>       | risk_override             | (Phase 17 acts on it)             |
+| /llm-risk <level> <reason>       | risk_override             | re-runs review (triage uses it)   |
 
 Only people with a write, maintain or admin role are heard (the workflow looks the role up;
 outsiders never start it). A collaborator without that role, and any command that doesn't parse or
@@ -106,6 +106,23 @@ def find_finding(audit_dir: Path, pr: int, finding_id: str) -> str | None:
     return None
 
 
+def current_risk(audit_dir: Path, pr: int) -> str:
+    """The final risk of the PR's latest triage record, or `unknown` if it has none yet."""
+    latest: tuple[str, str] | None = None
+    for path in sorted(audit_dir.glob("events/**/*.jsonl")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            if record.get("type") != "triage" or record.get("pr") != pr:
+                continue
+            found = (str(record.get("ts")), str(record.get("final_risk")))
+            if latest is None or found[0] >= latest[0]:
+                latest = found
+    return latest[1] if latest and latest[1] in RISK_LEVELS else "unknown"
+
+
 def handle(
     event: Mapping[str, Any],
     *,
@@ -190,12 +207,13 @@ def handle(
         record = audit.RiskOverride.model_validate(
             {
                 **base.model_dump(),
-                "from": "unknown",  # Phase 17: the current triage risk
+                "from": current_risk(audit_dir, pr),
                 "to": parsed.level,
                 "by": login,
                 "reason": reason,
             }
         )
+        actions.rerun = True  # triage reads the new record from audit-log (ADR 0008)
     actions.records = [audit.dumps(record)]
     return actions
 

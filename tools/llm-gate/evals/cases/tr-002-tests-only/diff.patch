@@ -1,0 +1,12 @@
+diff --git a/tests/CalendarGates.UnitTests/LeapYearCalculatorTests.cs b/tests/CalendarGates.UnitTests/LeapYearCalculatorTests.cs
+index 98579c6..2dc94d0 100644
+--- a/tests/CalendarGates.UnitTests/LeapYearCalculatorTests.cs
++++ b/tests/CalendarGates.UnitTests/LeapYearCalculatorTests.cs
+@@ -11,6 +11,7 @@ public class LeapYearCalculatorTests
+     [Arguments(2026, false)]
+     [Arguments(2100, false)]
+     [Arguments(2400, true)]
++    [Arguments(1600, true)] // divisible by 400
+     public async Task AppliesGregorianRules(int year, bool expected)
+     {
+         await Assert.That(LeapYearCalculator.IsLeap(year)).IsEqualTo(expected);

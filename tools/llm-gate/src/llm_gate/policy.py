@@ -16,6 +16,7 @@ class Verdict(StrEnum):
     FAIL = "fail"
     OVERRIDDEN = "overridden"  # blocking findings, but the PR has the override label
     NOT_APPLICABLE = "not-applicable"
+    NOT_NEEDED = "not-needed"  # triage: the PR's risk level doesn't call for this check
     ERROR = "error"
 
 
@@ -40,8 +41,11 @@ def decide(
     result: EngineResult | None = None,
     error: str | None = None,
     not_applicable: str | None = None,
+    not_needed: str | None = None,
     override: bool = False,
 ) -> Decision:
+    if not_needed is not None:
+        return Decision(Verdict.NOT_NEEDED, EXIT_PASS, not_needed)
     if not_applicable is not None:
         return Decision(Verdict.NOT_APPLICABLE, EXIT_PASS, not_applicable)
 

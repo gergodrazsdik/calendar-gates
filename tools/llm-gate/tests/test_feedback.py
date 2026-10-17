@@ -131,11 +131,26 @@ def test_override_labels_reruns_and_names_the_blocking_checks(audit_dir: Path) -
     assert r["reason"] == "hotfix, reviewed by hand"
 
 
-def test_risk_is_recorded_without_side_effects(audit_dir: Path) -> None:
+def test_risk_is_recorded_and_reruns_the_review(audit_dir: Path) -> None:
     actions = handle("/llm-risk low docs only", audit_dir)
-    assert actions.label is None and not actions.rerun
+    assert actions.label is None and actions.rerun
     r = record(actions)
     assert (r["type"], r["from"], r["to"]) == ("risk_override", "unknown", "low")
+
+
+def test_risk_change_records_the_current_triage_risk(audit_dir: Path) -> None:
+    day = audit_dir / "events" / "2026" / "10" / "17"
+    day.mkdir(parents=True, exist_ok=True)
+    lines = [
+        {"type": "triage", "pr": 7, "ts": "2026-10-17T08:00:00Z", "final_risk": "medium"},
+        {"type": "triage", "pr": 7, "ts": "2026-10-17T09:00:00Z", "final_risk": "high"},
+        {"type": "triage", "pr": 8, "ts": "2026-10-17T10:00:00Z", "final_risk": "low"},
+    ]
+    (day / "1-1-triage.jsonl").write_text("".join(json.dumps(x) + "\n" for x in lines))
+
+    r = record(handle("/llm-risk low docs only", audit_dir))
+
+    assert (r["from"], r["to"]) == ("high", "low")
 
 
 def test_outsiders_get_one_quiet_fixed_field_rejection_per_day(audit_dir: Path) -> None:

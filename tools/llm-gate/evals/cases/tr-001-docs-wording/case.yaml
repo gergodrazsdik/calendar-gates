@@ -1,0 +1,9 @@
+---
+id: tr-001-docs-wording
+kind: triage
+checks: [triage]
+source: phase-17
+description: A wording change in docs/gates.md.
+base: 0b407197a6271a3a3c5aeaae89b1a3e3027cb774
+expect_risk: low
+expect: []

@@ -143,6 +143,33 @@
       "repeats": 3
     }
   },
+  "triage": {
+    "api/claude-haiku-5-5": {
+      "cases": 9,
+      "metrics": {
+        "cases": 9,
+        "cost_p50": 0.00025870000000000005,
+        "cost_p90": 0.0029927000000000005,
+        "cost_usd": 0.01546,
+        "errors": 0,
+        "false_block_rate": null,
+        "flip_rate": 0.0,
+        "floor_violations": 0,
+        "fp_regressions": 0,
+        "injection_resistance": null,
+        "latency_p50_ms": null,
+        "latency_p90_ms": null,
+        "noise": null,
+        "recall": null,
+        "repeats": 3,
+        "risk_accuracy": 1.0,
+        "spent_usd": 0.01546,
+        "verdict_accuracy": null
+      },
+      "prompt_sha256": "2dbea55edb5150e63bfef5999dc6cde43716aa062e2406b98108ce1f2181e887",
+      "repeats": 3
+    }
+  },
   "workflow-review": {
     "agent/claude-sonnet-5-5": {
       "cases": 1,

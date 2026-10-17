@@ -94,15 +94,28 @@ def test_overrides_turnaround_and_cost() -> None:
 def test_triage_and_integrity_counts() -> None:
     records = [
         run(1, workflow_modified=True),
-        {"type": "triage", "ts": "2026-10-16T10:00:00Z", "final_risk": "high", "ai_assisted": True},
-        {"type": "triage", "ts": "2026-10-16T10:00:00Z", "final_risk": "low", "ai_assisted": False},
+        {"type": "triage", "pr": 1, "ts": "2026-10-16T09:00:00Z", "final_risk": "medium"},
+        {
+            "type": "triage",
+            "pr": 1,
+            "ts": "2026-10-16T10:00:00Z",
+            "final_risk": "high",
+            "ai_assisted": True,
+        },
+        {
+            "type": "triage",
+            "pr": 2,
+            "ts": "2026-10-16T10:00:00Z",
+            "final_risk": "low",
+            "ai_assisted": False,
+        },
         {"type": "tamper_suspected", "ts": "2026-10-16T10:00:00Z"},
         {"type": "feedback_rejected", "ts": "2026-10-16T10:00:00Z"},
         {"type": "risk_override", "ts": "2026-10-16T10:00:00Z"},
     ]
     report = compute(records, [])
 
-    assert report.triage == {"high": 1, "low": 1}
+    assert report.triage == {"high": 1, "low": 1}  # each PR once, its latest triage
     assert report.ai_assisted == (1, 2)
     assert (report.tamper, report.unverified, report.rejected_feedback, report.risk_overrides) == (
         1,
@@ -127,7 +140,7 @@ def test_render_shows_every_section_and_no_data_where_empty() -> None:
         "Integrity",
     ):
         assert heading in text
-    assert "(triage arrives in Phase 17)" in text
+    assert "_no data yet_. Manual risk changes: 0." in text
     assert "| code-review | 1 | 0 | 0 | 0% | - |" in text
 
 

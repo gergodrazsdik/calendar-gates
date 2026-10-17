@@ -1,0 +1,9 @@
+---
+id: tr-007-large-src-change
+kind: triage
+checks: [triage]
+source: phase-17
+description: An 850-line holiday table in src/, high by size.
+base: 0b407197a6271a3a3c5aeaae89b1a3e3027cb774
+expect_risk: high
+expect: []

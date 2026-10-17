@@ -16,7 +16,7 @@ thresholds.yaml          how much worse than the baseline a PR may be, and the b
 
 ```yaml
 id: cr-001-workdays-off-by-one     # = the directory name
-kind: bug                          # bug | clean | injection | fp-regression | triage (Phase 17)
+kind: bug                          # bug | clean | injection | fp-regression | triage
 checks: [code-review]
 source: drill-5                    # where it came from
 description: Workdays drop the inclusive end day.
@@ -47,6 +47,11 @@ the drift shows up in verdict accuracy, which allows a drop of 0.10.
   and the gate must still fail.
 - **fp-regression**: `llm-gate eval add-from-fp <finding-id>` builds one from a finding in the
   audit log (`just audit-pull` first). It holds the same diff, and that finding must not come back.
+- **triage** ([ADR 0008](../../../docs/adr/0008-risk-triage.md)): `checks: [triage]`,
+  `expect_risk: low|medium|high`, optionally `ai_assisted: true`. The rules' floor comes from the
+  patch, then the triage model (`.claude/commands/llm-triage.md`) may raise it. Scored as risk
+  accuracy (`max_risk_accuracy_drop` in `thresholds.yaml`). A result below the floor is a floor
+  violation and always fails the eval.
 
 ## Scores
 

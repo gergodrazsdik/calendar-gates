@@ -24,3 +24,45 @@ checks:
     paths: ["src/**/Endpoints/**", "src/**/Domain/**", "src/**/Program.cs", "http/**"]
   workflow-review: {mode: advisory, paths: [".github/**"]}
   docs-drift: {mode: advisory, model: "${LLM_MODEL_CHEAP:-claude-haiku-5-5}"}
+
+# AI-assisted detection (aidetect.py, ADR 0008). Self-declared markers: a transparency signal that
+# raises triage by `ai_assisted_raise`, not proof either way.
+ai_markers:
+  trailers: ["Co-Authored-By: Claude", "Claude-Session:", "Assisted-by:"]
+  pr_body: ["Generated with [Claude Code]"]
+  branches: ["claude/*"]
+
+# Risk triage (triage.py, ADR 0008), the `triage` job of llm-review.yml. The rules give the floor:
+# every changed file gets the risk of its first matching rule (default_risk if none), the PR the
+# maximum; size and AI assistance raise it. The model may raise the risk, never lower it; only a
+# recorded `/llm-risk` can. The level decides which checks review, which block, and the engine
+# and model of the blocking ones. Every check still reports: outside `run` it passes as
+# "not needed at risk: <level>". A check blocking at any level must be required in main.json
+# (scripts/check-ruleset-consistency.py).
+triage:
+  model: ${LLM_MODEL_CHEAP:-claude-haiku-5-5}
+  max_diff_kb: 50 # what the model sees; the rules see every file
+  default_risk: medium # justfile, lefthook.yml, global.json, .config/ ...
+  rules:
+    - paths: [".github/**", "tools/llm-gate/**", ".claude/commands/llm-*", "scripts/**"]
+      risk: high
+      reason: changes CI or the gates
+    - {paths: ["Dockerfile", "deploy/**"], risk: high, reason: runtime or deployment}
+    - {paths: ["AGENTS.md", "CLAUDE.md", ".claude/**"], risk: medium, reason: instructions agents read}
+    - paths: ["Directory.Packages.props", "**/packages.lock.json", "**/uv.lock"]
+      risk: medium
+      reason: dependencies
+    - {paths: ["src/**"], risk: medium, reason: application code}
+    - {paths: ["tests/**", "http/**", "docs/**", "**/*.md"], risk: low, reason: tests or docs}
+  size: {medium_over_lines: 200, high_over_lines: 800} # added + deleted, lock files excluded
+  ai_assisted_raise: 1
+  levels:
+    low: {run: [code-review, docs-drift], blocking: []}
+    medium:
+      run: [code-review, security-review, test-review, api-contract, docs-drift]
+      blocking: [code-review, security-review]
+    high:
+      run: all
+      blocking: [code-review, security-review]
+      engine: agent # for the blocking checks; advisory ones keep their own
+      model: "${LLM_MODEL_STRONG:-claude-opus-5-5}"
