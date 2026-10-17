@@ -13,6 +13,10 @@ EXCLUDES = (
     "**/*.g.cs",
     "**/*.generated.cs",
     "**/*.min.js",
+    # Eval fixtures (evals/README.md): diffs with planted bugs and injections, applied only in a
+    # temporary export by llm-eval and never run. Reviewing them reports the planted problems as
+    # findings and spends the size cap; their case.yaml is still reviewed.
+    "tools/llm-gate/evals/cases/*/diff.patch",
 )
 
 

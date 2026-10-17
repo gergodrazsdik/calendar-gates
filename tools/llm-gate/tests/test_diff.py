@@ -23,6 +23,7 @@ def test_generated_and_lock_files_are_excluded(repo: Repo) -> None:
     repo.write("tools/x/uv.lock", "lock\n")
     repo.write("src/Api/Form.Designer.cs", "class Form {}\n")
     repo.write("src/Api/obj/Thing.g.cs", "class Thing {}\n")
+    repo.write("tools/llm-gate/evals/cases/cr-9/diff.patch", "+planted bug\n")
     repo.commit("change")
 
     diff = merge_base_diff(repo.root, "main")

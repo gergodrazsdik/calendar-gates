@@ -31,6 +31,10 @@ expect:
 forbid: []                         # fp-regression: findings that must not come back
 ```
 
+A PR's `diff.patch` files are left out of the reviewed diff (`diff.py` `EXCLUDES`): their planted
+bugs would come back as findings, and they would use up `max_diff_kb`. Their `case.yaml` files
+are still reviewed, and triage still rates the PR by path (`tools/llm-gate/**` is high).
+
 Each case is reviewed in a temporary export of `base` with the patch applied, so the agent engine
 reads a consistent tree. The repository isn't touched. The gate's verdict for the case is expected
 to be `fail` when an expected finding is blocking, and `pass` otherwise.
