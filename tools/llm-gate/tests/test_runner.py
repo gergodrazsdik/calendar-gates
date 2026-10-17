@@ -436,21 +436,54 @@ def test_a_record_that_cannot_be_built_does_not_change_the_verdict(
     assert record(gate, "code-review", "api")["verdict"] == "fail"
 
 
-def test_a_file_over_max_file_kb_is_left_out_and_named(gate: Repo) -> None:
+def test_an_advisory_check_reviews_the_rest_and_names_what_it_skipped(gate: Repo) -> None:
     change(gate, "src/Api/Domain/Small.cs", "class Small {}\n")
-    # Over the default max_file_kb (64), while the rest of the diff stays under max_diff_kb.
+    # Over the default max_file_kb (64) and on trimmable_paths, so it may be left out.
     change(gate, "src/Api/Grpc/Generated.pb.cs", "x = 1;\n" * 10000)
     api = FakeEngine("api")
 
-    assert run({"api": api}, "--check", "code-review") == 0
+    assert run({"api": api}, "--check", "docs-drift") == 0
 
     reviewed = api.requests[0].diff.text
     assert "class Small {}" in reviewed
     assert "Generated.pb.cs" not in reviewed
-    data = record(gate, "code-review", "api")
+    data = record(gate, "docs-drift", "api")
     assert omitted_paths(data["omitted"]) == ["src/Api/Grpc/Generated.pb.cs"]
     assert data["verdict"] == "pass"
+
+
+def test_a_blocking_check_will_not_review_a_partial_diff_without_an_override(gate: Repo) -> None:
+    """Trimming is a hole in a blocking review, so a human has to accept it with a reason."""
+    change(gate, "src/Api/Domain/Small.cs", "class Small {}\n")
+    change(gate, "src/Api/Grpc/Generated.pb.cs", "x = 1;\n" * 10000)
+    api = FakeEngine("api")
+
+    assert run({"api": api}, "--check", "code-review") == 2
+
+    assert api.requests == []
+    reason = str(record(gate, "code-review", "api")["reason"])
+    assert "needs an llm-override" in reason
+    assert "src/Api/Grpc/Generated.pb.cs" in reason
+
+
+def test_an_override_lets_a_blocking_check_review_the_rest(
+    gate: Repo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    change(gate, "src/Api/Domain/Small.cs", "class Small {}\n")
+    change(gate, "src/Api/Grpc/Generated.pb.cs", "x = 1;\n" * 10000)
+    monkeypatch.setenv("LLM_GATE_OVERRIDE", "true")
+    monkeypatch.setenv("LLM_GATE_OVERRIDE_REASON", "generated stubs, regenerated from the proto")
+    monkeypatch.setenv("LLM_GATE_OVERRIDE_BY", "maintainer")
+    api = FakeEngine("api")
+
+    assert run({"api": api}, "--check", "code-review") == 0
+
+    assert "class Small {}" in api.requests[0].diff.text  # the rest is still reviewed
+    data = record(gate, "code-review", "api")
+    assert data["verdict"] == "pass"
+    assert "part of the change was not reviewed" in str(data["reason"])
     gate_run = audit_lines(gate)[0]
+    assert gate_run["override_honoured"] is True
     assert omitted_paths(gate_run["omitted_files"]) == ["src/Api/Grpc/Generated.pb.cs"]
 
 
@@ -509,7 +542,7 @@ def test_the_reviewer_is_told_which_files_it_did_not_see(gate: Repo) -> None:
     change(gate, "src/Api/Grpc/Service.pb.cs", "x = 1;\n" * 10000)
     api = FakeEngine("api")
 
-    assert run({"api": api}, "--check", "code-review") == 0
+    assert run({"api": api}, "--check", "docs-drift") == 0
 
     from llm_gate.prompts import diff_block
 

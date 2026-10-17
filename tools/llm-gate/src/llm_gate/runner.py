@@ -68,6 +68,15 @@ def run_check(
         not_applicable = f"no changes against {diff.base}"
     elif check.paths and not touches(diff.files, check.paths):
         not_applicable = f"the change touches none of {', '.join(check.paths)}"
+    elif check.blocking and diff.omitted and not override:
+        # Trimming is a hole in a blocking review, so a human has to accept it with a reason: the
+        # size cap decides what *may* be left out, never that it passes unseen (ADR 0002).
+        error_kind = ErrorKind.TOO_LARGE
+        names = ", ".join(o.path for o in diff.omitted)
+        error = (
+            f"{len(diff.omitted)} file(s) over max_file_kb {check.max_file_kb} "
+            f"({names}); a blocking check needs an llm-override to review the rest"
+        )
     elif diff.size_bytes > check.max_diff_kb * 1024:
         # Reported per policy instead of spending tokens (gate drill 10). Overridable, unlike an
         # engine failure: the diff is simply too big to review, which a human can accept with a
@@ -107,6 +116,7 @@ def run_check(
         not_applicable=not_applicable,
         not_needed=not_needed,
         override=override,
+        partial=bool(diff.omitted) and check.blocking,
     )
     return RunRecord(
         check=check.name,

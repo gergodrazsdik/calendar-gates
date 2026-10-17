@@ -54,6 +54,7 @@ def decide(
     not_applicable: str | None = None,
     not_needed: str | None = None,
     override: bool = False,
+    partial: bool = False,
 ) -> Decision:
     if not_needed is not None:
         return Decision(Verdict.NOT_NEEDED, EXIT_PASS, not_needed)
@@ -80,8 +81,16 @@ def decide(
     findings = blocking_findings(check, result)
     if not check.blocking:
         return Decision(Verdict.PASS, EXIT_PASS, "advisory check, findings are informational")
+    # A blocking check only gets here with files missing if an override let it (see `runner`), so
+    # the record carries that: the review covered part of the change and a human accepted it.
+    partial_note = ", part of the change was not reviewed" if partial else ""
     if not findings:
-        return Decision(Verdict.PASS, EXIT_PASS, f"no findings at or above {check.fail_on}")
+        return Decision(
+            Verdict.PASS,
+            EXIT_PASS,
+            f"no findings at or above {check.fail_on}{partial_note}",
+            override_honoured=partial,
+        )
     count = f"{len(findings)} finding(s) at or above {check.fail_on}"
     if override:
         return Decision(

@@ -1,5 +1,6 @@
 """Review prompts live in .claude/commands/llm-<check>.md, shared with interactive Claude Code."""
 
+import json
 import re
 from collections.abc import Iterable
 from pathlib import Path
@@ -47,7 +48,11 @@ def diff_block(base: str, text: str, omitted: Iterable[OmittedFile] = ()) -> str
     files = list(omitted)
     if not files:
         return block
-    names = "\n".join(f"- {f.path} ({f.bytes // 1024} KB)" for f in files)
+    # The paths come from the PR, so they are data too: JSON-quoted, which escapes quotes and
+    # newlines, and with `<` neutralised so a path can't close this element and pose as prose.
+    names = "\n".join(
+        f"- {json.dumps(f.path).replace('<', '\\u003c')} ({f.bytes // 1024} KB)" for f in files
+    )
     return (
         f"{block}\n<omitted-for-size>\nThese generated files changed too but are not in the diff "
         f"above, because each one's own diff is over the size cap. You have not reviewed them:\n"

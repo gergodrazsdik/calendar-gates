@@ -1,6 +1,5 @@
 """The change under review: `git diff --merge-base <base> HEAD`, minus generated files."""
 
-import re
 import subprocess
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
@@ -21,20 +20,17 @@ EXCLUDES = (
 )
 
 
-# Only these may be trimmed when a single file's diff is over `max_file_kb`: generated code, where
-# the bulk is machine-written and reviewing it costs the whole size cap. Everything else stays in
-# the diff whatever its size, so no one can hide a hand-written change by padding it past the cap;
-# an oversized diff then needs a recorded override instead (ADR 0002).
+# Only these may be left out when a single file's diff is over `max_file_kb`: generated code, where
+# the bulk is machine-written and reviewing it would cost the whole size cap. The list is narrow
+# and names file types, not directories, because a directory glob matches hand-written code too.
+# It decides only what may be left out: a blocking check still needs an honoured override before it
+# reviews a diff with anything missing (ADR 0002), so this list is never the only thing in the way.
 TRIMMABLE = (
     "**/*.pb.cs",  # gRPC / protobuf stubs
     "**/*_pb2.py",
-    "**/Migrations/**",  # EF Core migrations
+    "**/Migrations/*.cs",  # EF Core migrations and their model snapshot
     "**/*.seed.sql",  # seed data
-    "**/testdata/**",
 )
-
-# A file's diff starts here. `--no-ext-diff` keeps git's own format, so this is the only boundary.
-_FILE_HEADER = re.compile(r"^diff --git a/(.*) b/(.*)$", re.MULTILINE)
 
 
 class DiffError(Exception):
@@ -54,6 +50,9 @@ class Diff:
     base: str
     text: str
     files: tuple[str, ...]
+    # One entry per changed file, as git produced it: `(path, that file's diff)`. The text is
+    # assembled from these, so trimming never has to parse the diff back apart.
+    chunks: tuple[tuple[str, str], ...] = ()
     # Files whose own diff was over `max_file_kb` and was left out of `text` (`trim_large_files`).
     # They stay in `files`, so a check's `paths:` filter and triage's size rule still see them.
     omitted: tuple[OmittedFile, ...] = ()
@@ -78,26 +77,27 @@ def repo_root(start: Path) -> Path:
 
 
 def merge_base_diff(root: Path, base: str) -> Diff:
-    """Committed changes on HEAD since it branched off `base` (uncommitted work is not included)."""
-    pathspec = ["--", ".", *(f":(exclude,glob){pattern}" for pattern in EXCLUDES)]
-    text = git(root, "diff", "--no-color", "--no-ext-diff", "--merge-base", base, "HEAD", *pathspec)
-    names = git(root, "diff", "--name-only", "--merge-base", base, "HEAD", *pathspec)
-    return Diff(base=base, text=text, files=tuple(names.splitlines()))
+    """Committed changes on HEAD since it branched off `base` (uncommitted work is not included).
 
-
-def split_file_diffs(text: str) -> tuple[tuple[str, str], ...]:
-    """The diff cut into one chunk per file: `(path, chunk)`, in git's order.
-
-    The path comes from the `b/` side (the new name), which is what a reviewer reads; for a
-    deletion that is the old name, as git repeats it. Anything before the first header (there is
-    nothing in `git diff` output) is ignored.
+    The diff is fetched one file at a time, so each file's own diff is known exactly: splitting a
+    single blob on `diff --git` headers would miss git's quoted form (non-ASCII paths) and silently
+    attach that file's changes to the previous file's chunk. `core.quotepath=false` keeps paths
+    literal, and `-z` separates names with NULs so even a newline in a path is unambiguous.
     """
-    headers = list(_FILE_HEADER.finditer(text))
-    chunks = []
-    for n, header in enumerate(headers):
-        end = headers[n + 1].start() if n + 1 < len(headers) else len(text)
-        chunks.append((header.group(2), text[header.start() : end]))
-    return tuple(chunks)
+    excludes = [f":(exclude,glob){pattern}" for pattern in EXCLUDES]
+    common = ["-c", "core.quotepath=false", "diff", "--no-color", "--no-ext-diff"]
+    names = git(
+        root, *common, "--name-only", "-z", "--merge-base", base, "HEAD", "--", ".", *excludes
+    )
+    files = tuple(name for name in names.split("\0") if name)
+    chunks = tuple(
+        (
+            path,
+            git(root, *common, "--merge-base", base, "HEAD", "--", f":(literal){path}"),
+        )
+        for path in files
+    )
+    return Diff(base=base, text="".join(c for _, c in chunks), files=files, chunks=chunks)
 
 
 def trim_large_files(diff: Diff, max_file_kb: int, trimmable: Iterable[str] = TRIMMABLE) -> Diff:
@@ -112,18 +112,22 @@ def trim_large_files(diff: Diff, max_file_kb: int, trimmable: Iterable[str] = TR
     """
     limit = max_file_kb * 1024
     patterns = tuple(trimmable)
-    chunks = split_file_diffs(diff.text)
     kept, omitted = [], []
-    for path, chunk in chunks:
+    for path, chunk in diff.chunks:
         size = len(chunk.encode("utf-8"))
         generated = any(PurePosixPath(path).full_match(pattern) for pattern in patterns)
         if size > limit and generated:
             omitted.append(OmittedFile(path=path, bytes=size))
         else:
-            kept.append(chunk)
+            kept.append((path, chunk))
     if not omitted:
         return diff
-    return replace(diff, text="".join(kept), omitted=tuple(omitted))
+    return replace(
+        diff,
+        text="".join(c for _, c in kept),
+        omitted=tuple(omitted),
+        chunks=tuple(kept),
+    )
 
 
 def touches(files: Iterable[str], patterns: Iterable[str]) -> bool:

@@ -752,3 +752,18 @@ def test_risk_is_one_of_three_levels() -> None:
     raw = {**json.loads(audit.dumps(gate_run())), "risk": "free text"}
     with pytest.raises(ValueError, match="risk"):
         audit.parse(json.dumps(raw))
+
+
+def test_a_blocking_check_may_not_omit_files_without_an_override(tmp_path: Path) -> None:
+    record = gate_run(
+        verdict="pass",
+        exit_code=0,
+        blocking=True,
+        omitted_files=[{"path": "src/Api/Grpc/Service.pb.cs", "bytes": 300_000}],
+    )
+    artifact(tmp_path, "audit-100-1-code-review", audit.dumps(record))
+
+    ((info, lines),) = collect(tmp_path, jobs={"llm / code-review": "success"})
+
+    assert info.tamper is True
+    assert "omitted files without an honoured override" in " ".join(lines[0]["problems"])

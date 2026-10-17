@@ -101,7 +101,9 @@ is required too (see below).
   file (`trimmable_paths` in `checks.yaml`) whose own diff is over `max_file_kb` (64) is left out
   of the review and named in the comment, the audit record and the release attestation, so
   generated code doesn't crowd out the hand-written part of a change. Any other file stays under
-  review whatever its size. If the rest is still over `max_diff_kb` (200), the review can't run; an
+  review whatever its size, and a **blocking** check reviews a diff with anything missing only
+  with an honoured `/llm-override` — so `code-review` and `security-review` never skip a file
+  silently. If the rest is still over `max_diff_kb` (200), the review can't run; an
   override then accepts the diff unreviewed, and the attestation lists the PR under `unreviewed`.
   The verdict stays `error`, and the metrics count it apart from overridden findings.
 - **Feedback commands** ([ADR 0007](adr/0007-feedback-commands.md)): collaborators comment

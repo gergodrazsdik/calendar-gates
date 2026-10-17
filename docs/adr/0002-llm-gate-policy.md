@@ -27,8 +27,12 @@ truncated output, and the gate has to say what happens then.
   list given to the reviewer as well. Generated code (gRPC stubs, EF Core migrations, SQL seed
   data) would otherwise crowd the hand-written part of a change out of `max_diff_kb`, or push the
   whole diff over it, and a PR carrying such a file had no way through the gate but editing the
-  gate. Only paths on `trimmable_paths` are ever dropped: a file nobody generated stays under
-  review however big it is, so padding one past the cap cannot hide it from a blocking check. If the trimmed diff is still over `max_diff_kb`,
+  gate. Two things keep that from becoming a way through: only paths on `trimmable_paths` (narrow
+  file types, not directories) may be left out, and a **blocking** check reviews a diff with
+  anything missing only when the PR carries an honoured override, so every partial blocking review
+  has a human reason on the audit log. An advisory check trims and reports, since it blocks
+  nothing. The diff is fetched one file at a time, so a quoted or awkward path cannot be swallowed
+  into a trimmed file's chunk. If the trimmed diff is still over `max_diff_kb`,
   the `llm-override` label plus its `/llm-override <reason>` comment accepts it **unreviewed**:
   the verdict stays `error`, the exit code becomes 0, and the record carries
   `override_honoured`. An API error, refusal, truncated output or a crash stays non-overridable:
