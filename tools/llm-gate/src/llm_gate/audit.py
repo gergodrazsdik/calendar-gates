@@ -705,10 +705,6 @@ def _record_problems(record: AuditRecord, expected: Expected, check: str | None)
         passing_error = record.verdict == "error" and record.exit_code == 0
         if record.blocking and passing_error and not record.override_honoured:
             problems.append("a blocking check reports error with exit code 0 and no override")
-        # The same rule for a partial review: a blocking check that didn't see part of the change
-        # can only have run because a human accepted that (ADR 0002).
-        if record.blocking and record.omitted_files and not record.override_honoured:
-            problems.append("a blocking check omitted files without an honoured override")
         prefix = f"{finding_prefix(record.check)}-"
         if any(not f.id.startswith(prefix) for f in record.findings):
             problems.append(f"finding ids not of the form {prefix}xxxx")
@@ -974,8 +970,16 @@ def _override_problems(records: Sequence[AuditRecord], trusted: OverrideRequest 
                 problems.append(
                     f"override by {record.by!r} does not match {trusted.by!r}'s /llm-override"
                 )
-        elif isinstance(record, GateRun) and record.override_honoured and isinstance(trusted, str):
-            problems.append(f"{record.check}: override honoured, but the collector found none")
+        elif isinstance(record, GateRun) and isinstance(trusted, str):
+            if record.override_honoured:
+                problems.append(f"{record.check}: override honoured, but the collector found none")
+            # A blocking check reviews a partial diff only under an override (ADR 0002), so the
+            # collector must have found one itself; `omitted_files` alone can't vouch for that.
+            elif record.blocking and record.omitted_files:
+                problems.append(
+                    f"{record.check}: {len(record.omitted_files)} file(s) omitted from a blocking "
+                    "review, but the collector found no override"
+                )
     return problems
 
 

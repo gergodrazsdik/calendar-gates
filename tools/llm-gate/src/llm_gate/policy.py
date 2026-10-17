@@ -81,15 +81,14 @@ def decide(
     findings = blocking_findings(check, result)
     if not check.blocking:
         return Decision(Verdict.PASS, EXIT_PASS, "advisory check, findings are informational")
-    # A blocking check only gets here with files missing if an override let it (see `runner`), so
-    # the record carries that: the review covered part of the change and a human accepted it.
+    # A blocking check only gets here with files missing if an override let it (see `runner`).
+    # `override_honoured` stays for outcomes an override *changed* (findings, an unreviewable
+    # diff); the partial review is on the record as `omitted_files`, which the collector checks
+    # against the override it found itself.
     partial_note = ", part of the change was not reviewed" if partial else ""
     if not findings:
         return Decision(
-            Verdict.PASS,
-            EXIT_PASS,
-            f"no findings at or above {check.fail_on}{partial_note}",
-            override_honoured=partial,
+            Verdict.PASS, EXIT_PASS, f"no findings at or above {check.fail_on}{partial_note}"
         )
     count = f"{len(findings)} finding(s) at or above {check.fail_on}"
     if override:

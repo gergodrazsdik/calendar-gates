@@ -339,7 +339,9 @@ def cmd_run(
     started = datetime.now(UTC)
     # Files whose own diff is over max_file_kb go first, so the rest of the change still gets
     # reviewed and the agent engine reads the same trimmed patch (ADR 0002).
-    diff = trim_large_files(merge_base_diff(root, base), check.max_file_kb, check.trimmable_paths)
+    diff = trim_large_files(
+        merge_base_diff(root, base), check.max_file_kb, check.trimmable_paths, root
+    )
     out.mkdir(parents=True, exist_ok=True)
     diff_path = out / "diff.patch"
     diff_path.write_text(diff.text, encoding="utf-8")
