@@ -20,12 +20,22 @@ class Verdict(StrEnum):
     ERROR = "error"
 
 
+class ErrorKind(StrEnum):
+    """Why no review result came back. Only `TOO_LARGE` can be overridden (ADR 0002): it is a
+    visible, bounded property of the diff, while everything else means the gate itself is broken
+    or refused, where the answer is a re-run and not a pass."""
+
+    TOO_LARGE = "too_large"
+    ENGINE = "engine"
+
+
 @dataclass(frozen=True)
 class Decision:
     verdict: Verdict
     exit_code: int
     reason: str
     blocking: tuple[Finding, ...] = ()
+    override_honoured: bool = False
 
 
 def blocking_findings(check: Check, result: EngineResult) -> tuple[Finding, ...]:
@@ -40,9 +50,11 @@ def decide(
     *,
     result: EngineResult | None = None,
     error: str | None = None,
+    error_kind: ErrorKind = ErrorKind.ENGINE,
     not_applicable: str | None = None,
     not_needed: str | None = None,
     override: bool = False,
+    partial: bool = False,
 ) -> Decision:
     if not_needed is not None:
         return Decision(Verdict.NOT_NEEDED, EXIT_PASS, not_needed)
@@ -52,6 +64,16 @@ def decide(
     if error is not None or result is None:
         message = error or "no review result"
         if check.blocking and check.on_error == "fail":
+            # The verdict stays `error`: nothing was reviewed, and an override doesn't change that.
+            # It only says a human with write access accepted the diff unreviewed, with a reason
+            # on the audit log, which the release attestation lists under `unreviewed` (ADR 0002).
+            if override and error_kind is ErrorKind.TOO_LARGE:
+                return Decision(
+                    Verdict.ERROR,
+                    EXIT_PASS,
+                    f"{message} (accepted unreviewed by override)",
+                    override_honoured=True,
+                )
             return Decision(Verdict.ERROR, EXIT_ERROR, f"{message} (blocking check, fails closed)")
         why = "advisory check" if not check.blocking else "on_error: pass"
         return Decision(Verdict.ERROR, EXIT_PASS, f"{message} (ignored: {why})")
@@ -59,9 +81,22 @@ def decide(
     findings = blocking_findings(check, result)
     if not check.blocking:
         return Decision(Verdict.PASS, EXIT_PASS, "advisory check, findings are informational")
+    # A blocking check only gets here with files missing if an override let it (see `runner`).
+    # `override_honoured` stays for outcomes an override *changed* (findings, an unreviewable
+    # diff); the partial review is on the record as `omitted_files`, which the collector checks
+    # against the override it found itself.
+    partial_note = ", part of the change was not reviewed" if partial else ""
     if not findings:
-        return Decision(Verdict.PASS, EXIT_PASS, f"no findings at or above {check.fail_on}")
+        return Decision(
+            Verdict.PASS, EXIT_PASS, f"no findings at or above {check.fail_on}{partial_note}"
+        )
     count = f"{len(findings)} finding(s) at or above {check.fail_on}"
     if override:
-        return Decision(Verdict.OVERRIDDEN, EXIT_PASS, f"{count}, overridden by label", findings)
+        return Decision(
+            Verdict.OVERRIDDEN,
+            EXIT_PASS,
+            f"{count}, overridden by label",
+            findings,
+            override_honoured=True,
+        )
     return Decision(Verdict.FAIL, EXIT_FINDINGS, count, findings)

@@ -1,7 +1,7 @@
 import pytest
 from conftest import Repo
 
-from llm_gate.diff import DiffError, merge_base_diff, touches
+from llm_gate.diff import DiffError, merge_base_diff, touches, trim_large_files
 
 
 def test_diff_contains_branch_changes_only(repo: Repo) -> None:
@@ -47,7 +47,7 @@ def test_changes_on_main_after_branching_are_not_part_of_the_diff(repo: Repo) ->
 
 
 def test_unknown_base_is_an_error(repo: Repo) -> None:
-    with pytest.raises(DiffError, match="git diff"):
+    with pytest.raises(DiffError, match="bad revision"):
         merge_base_diff(repo.root, "origin/does-not-exist")
 
 
@@ -64,3 +64,135 @@ def test_unknown_base_is_an_error(repo: Repo) -> None:
 )
 def test_paths_filter(files: list[str], patterns: list[str], expected: bool) -> None:
     assert touches(files, patterns) is expected
+
+
+def test_the_diff_is_one_chunk_per_file_whatever_the_path(repo: Repo) -> None:
+    """Chunks come from git, one call per file, so a quoted or awkward path can't merge two files
+    into one chunk and hide the second behind the first."""
+    repo.write("src/Api/A.cs", "class A {}\n")
+    repo.write("src/Api/with a space.cs", "class B {}\n")
+    repo.write("src/Api/Programé.cs", "class Accented {}\n")
+    repo.commit("three awkward paths")
+
+    diff = merge_base_diff(repo.root, "main")
+
+    assert [path for path, _ in diff.chunks] == list(diff.files)
+    assert sorted(diff.files) == [
+        "src/Api/A.cs",
+        "src/Api/Programé.cs",
+        "src/Api/with a space.cs",
+    ]
+    assert all(chunk.startswith("diff --git ") for _, chunk in diff.chunks)
+    for path, chunk in diff.chunks:
+        assert path in chunk
+    assert diff.text == "".join(chunk for _, chunk in diff.chunks)
+
+
+def test_a_file_after_a_trimmed_one_is_still_reviewed(repo: Repo) -> None:
+    """The swallowing bypass: a quoted path sorting after a trimmed generated file must not be
+    dropped with it."""
+    repo.write("src/Api/Migrations/Big.cs", "// generated\n" + "x = 1;\n" * 4000)
+    repo.write("src/Api/Programé.cs", "// backdoor\n")
+    repo.commit("generated, then an accented hand-written file")
+
+    trimmed = trim_large_files(merge_base_diff(repo.root, "main"), max_file_kb=4)
+
+    assert [o.path for o in trimmed.omitted] == ["src/Api/Migrations/Big.cs"]
+    assert "// backdoor" in trimmed.text
+
+
+def test_trim_large_files_drops_only_the_files_over_the_cap(repo: Repo) -> None:
+    repo.write("src/Api/Small.cs", "class Small {}\n")
+    repo.write("src/Api/Generated.pb.cs", "// generated\n" + "x = 1;\n" * 4000)  # TRIMMABLE
+    repo.commit("hand-written next to generated")
+    diff = merge_base_diff(repo.root, "main")
+
+    trimmed = trim_large_files(diff, max_file_kb=4)
+
+    assert [o.path for o in trimmed.omitted] == ["src/Api/Generated.pb.cs"]
+    assert trimmed.omitted[0].bytes > 4 * 1024
+    assert "class Small {}" in trimmed.text
+    assert "Generated.pb.cs" not in trimmed.text
+    # The file still counts as changed, so `paths:` filters and triage's size rule see it.
+    assert trimmed.files == diff.files
+
+
+def test_trim_large_files_keeps_a_file_under_the_cap(repo: Repo) -> None:
+    repo.write("src/Api/Grpc/Edge.pb.cs", "y\n")
+    repo.commit("small generated change")
+    diff = merge_base_diff(repo.root, "main")
+
+    assert len(diff.chunks[0][1].encode()) <= 1024
+    assert trim_large_files(diff, max_file_kb=1).omitted == ()
+
+
+def test_trim_large_files_returns_the_diff_unchanged_when_nothing_is_over(repo: Repo) -> None:
+    repo.write("src/Api/A.cs", "class A {}\n")
+    repo.commit("change")
+    diff = merge_base_diff(repo.root, "main")
+
+    assert trim_large_files(diff, max_file_kb=64) is diff
+
+
+def test_a_hand_written_file_over_the_cap_is_never_trimmed(repo: Repo) -> None:
+    """The bypass this closes: padding a file past the cap must not hide it from a review."""
+    repo.write("src/Api/Program.cs", "// backdoor\n" + "// pad\n" * 4000)
+    repo.commit("a big hand-written change")
+    diff = merge_base_diff(repo.root, "main")
+
+    trimmed = trim_large_files(diff, max_file_kb=4)
+
+    assert trimmed is diff  # nothing dropped
+    assert "// backdoor" in trimmed.text
+    assert trimmed.omitted == ()
+
+
+def test_only_generated_paths_are_trimmable(repo: Repo) -> None:
+    repo.write("src/Api/Grpc/Service.pb.cs", "// generated\n" + "x = 1;\n" * 4000)
+    repo.write("src/Api/Migrations/20261018_Init.cs", "// migration\n" + "y = 2;\n" * 4000)
+    repo.write("src/Api/Big.cs", "// hand-written\n" + "z = 3;\n" * 4000)
+    repo.commit("generated and hand-written, all over the cap")
+
+    trimmed = trim_large_files(merge_base_diff(repo.root, "main"), max_file_kb=4)
+
+    assert [o.path for o in trimmed.omitted] == [
+        "src/Api/Grpc/Service.pb.cs",
+        "src/Api/Migrations/20261018_Init.cs",
+    ]
+    assert "// hand-written" in trimmed.text
+
+
+def test_the_trimmable_list_can_be_narrowed(repo: Repo) -> None:
+    repo.write("src/Api/Grpc/Service.pb.cs", "// generated\n" + "x = 1;\n" * 4000)
+    repo.commit("generated")
+    diff = merge_base_diff(repo.root, "main")
+
+    assert trim_large_files(diff, 4, trimmable=["**/Migrations/**"]) is diff
+
+
+def test_only_a_marked_generated_file_is_trimmable(repo: Repo) -> None:
+    repo.write("src/Api/Grpc/Marked.pb.cs", "// <auto-generated />\n" + "x = 1;\n" * 4000)
+    repo.write("src/Api/Grpc/Unmarked.pb.cs", "// hand-written\n" + "y = 2;\n" * 4000)
+    repo.commit("one generated, one only named like it")
+
+    trimmed = trim_large_files(merge_base_diff(repo.root, "main"), max_file_kb=4, root=repo.root)
+
+    assert [o.path for o in trimmed.omitted] == ["src/Api/Grpc/Marked.pb.cs"]
+    assert "// hand-written" in trimmed.text
+
+
+def test_a_deleted_generated_file_stays_in_the_diff(repo: Repo) -> None:
+    """Its content is gone, so the marker can't be checked: it is reviewed rather than dropped."""
+    from conftest import git
+
+    git(repo.root, "switch", "-q", "main")
+    repo.write("src/Api/Grpc/Gone.pb.cs", "// <auto-generated />\n" + "x = 1;\n" * 4000)
+    repo.commit("add the generated file")
+    git(repo.root, "switch", "-q", "feature")
+    git(repo.root, "merge", "-q", "--ff-only", "main")
+    (repo.root / "src/Api/Grpc/Gone.pb.cs").unlink()
+    repo.commit("delete it")
+
+    trimmed = trim_large_files(merge_base_diff(repo.root, "main"), max_file_kb=4, root=repo.root)
+
+    assert trimmed.omitted == ()

@@ -69,7 +69,7 @@ class ToolCallLog:
 def agent_prompt(request: ReviewRequest) -> str:
     return (
         f"{render(request.prompt, DIFF_REFERENCE)}\n\n"
-        f"{diff_block(request.diff.base, request.diff.text)}"
+        f"{diff_block(request.diff.base, request.diff.text, request.diff.omitted)}"
     )
 
 
