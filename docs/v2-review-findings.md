@@ -107,6 +107,16 @@ exactly the bypass it describes, so it was not built. What is confirmed without 
 `http-tests` and `k8s-smoke` hold `checks: write` while running PR code. Moving test reporting to
 a job that runs no PR code removes the question.
 
+**Since the review (2026-10-18).** Two things changed under this document:
+- **#62** (`feat(llm-gate)`) gave oversized diffs a path through the gate. The hole wasn't on this
+  list: it surfaced when this very document, 488 KB, failed both blocking checks on the size cap
+  and the override couldn't lift an `error`. ADR 0002 is amended. Along the way the gate's own
+  reviews caught three defects in that change, two of them fresh bypasses, which is the clearest
+  evidence here that the blocking checks earn their place.
+- **[F050](#f050)** is marked unverifiable, as described above.
+
+Nothing else in this document has been fixed.
+
 **Next release:** the next release, v0.3.2, will be the first to run #54's Deny policy and its
 `admission-smoke` assertions ([F095](#f095)). Read [F084](#f084) before re-running one that
 fails.
