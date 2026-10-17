@@ -72,14 +72,14 @@ all of the policy.
   signal for triage and the metrics, not enforcement.
 - **Most PRs here will be rated high.** Most PRs in this repository are Claude-assisted and touch
   the gate, so code-review and security-review usually run on the agent engine. Each review is
-  capped by `budget_usd`.
+  capped by `budget_usd`. Setting `ai_assisted_raise: 0` is a one-line policy change, and it goes
+  through review like any other change to `checks.yaml`.
 - **Amended 2026-10-17: Sonnet, not Opus, at high risk.** The high level first also switched the
   blocking checks to Opus (`LLM_MODEL_STRONG`). The model evals done for docs/WRITEUP.md then
   showed no gain. On the agent engine, Opus matched Sonnet's recall (1.00) but was noisier on
   clean cases (0.87 vs 0.23 findings per code-review case) and less consistent (verdict
   accuracy 0.96 vs 1.00). It cost 3 to 4 times more per review. The level now changes only the
-  engine. Setting `ai_assisted_raise: 0` is a one-line policy change, and
-  it goes through review like any other change to `checks.yaml`.
+  engine.
 - **The model can only add review.** A prompt injection that talks the model down changes nothing,
   because the floor still holds. Talking it up costs money but weakens nothing. Eval case
   `tr-008` keeps checking that the model raises when the diff asks for a low rating.

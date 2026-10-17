@@ -70,6 +70,8 @@ class Report:
     triage: dict[str, int] = field(default_factory=dict)
     risk_overrides: int = 0
     ai_assisted: tuple[int, int] = (0, 0)  # flagged PRs, triaged PRs
+    # Triaged PRs split by the AI flag: PRs, distinct findings, findings marked false positive.
+    ai_comparison: dict[str, tuple[int, int, int]] = field(default_factory=dict)
     tamper: int = 0
     unverified: int = 0
     rejected_feedback: int = 0
@@ -129,7 +131,8 @@ def compute(
         for f in run.get("findings", []):
             findings[(run.get("pr"), f.get("id"))] = (str(run["check"]), str(f.get("severity")))
     # A person can change their mind (/llm-fp, then /llm-ack): the latest verdict on a finding wins,
-    # by time, not by the order the record files happen to sort in.
+    # by time, not by the order the record files happen to sort in. (`recent` holds dated records
+    # only, so the fallback is just for the type checker.)
     kinds: dict[tuple[Any, Any], str] = {}
     feedback = [r for r in recent if r.get("type") == "feedback"]
     for r in sorted(feedback, key=lambda r: _when(r.get("ts")) or datetime.min.replace(tzinfo=UTC)):
@@ -179,6 +182,21 @@ def compute(
     triage = list(latest.values())
     report.triage = dict(Counter(str(r.get("final_risk")) for r in triage))
     report.ai_assisted = (sum(1 for r in triage if r.get("ai_assisted")), len(triage))
+    # The plan's "their finding and false-positive rates next to the rest" (docs/metrics.md).
+    ai_by_pr = {r.get("pr"): bool(r.get("ai_assisted")) for r in triage}
+    split = {True: [0, 0, 0], False: [0, 0, 0]}
+    for flag in ai_by_pr.values():
+        split[flag][0] += 1
+    for pr_number, finding in findings:
+        if pr_number in ai_by_pr:
+            group = split[ai_by_pr[pr_number]]
+            group[1] += 1
+            group[2] += kinds.get((pr_number, finding)) == "fp"
+    if triage:
+        report.ai_comparison = {
+            label: (v[0], v[1], v[2])
+            for label, v in (("AI-assisted", split[True]), ("not AI-assisted", split[False]))
+        }
     report.risk_overrides = sum(1 for r in recent if r.get("type") == "risk_override")
 
     report.tamper = sum(1 for r in recent if r.get("type") == "tamper_suspected")
@@ -291,6 +309,10 @@ def render(report: Report, *, generated: datetime) -> str:
             + f"; manual risk changes: {report.risk_overrides}; AI-assisted: "
             + f"{_pct(_ratio(*report.ai_assisted))}."
         )
+        lines += ["", "| Triaged PRs | PRs | Findings per PR | Marked fp |", "|---|---|---|---|"]
+        for label, (prs_n, found, fp) in report.ai_comparison.items():
+            per_pr = f"{found / prs_n:.1f}" if prs_n else "-"
+            lines.append(f"| {label} | {prs_n} | {per_pr} | {_pct(_ratio(fp, found))} |")
     else:
         lines.append(f"{NO_DATA}. Manual risk changes: {report.risk_overrides}.")
     lines += ["", "### Eval trend (latest run)", ""]

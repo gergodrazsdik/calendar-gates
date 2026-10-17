@@ -264,3 +264,23 @@ def test_an_empty_release_or_log(tmp_path: Path) -> None:
     # No records at all: every PR predates the log.
     nothing = attestations.llm_review([commit(1)], tmp_path, range_from=None, range_to="v1.0.0")
     assert nothing["unreviewed"] == [{"number": 1, "reason": "merged before the audit log existed"}]
+
+
+def test_override_reasons_are_quoted_in_the_notes_and_the_log_start_is_a_time(
+    tmp_path: Path,
+) -> None:
+    log = write_log(
+        tmp_path,
+        gate_run(1, "code-review", "fail", override_honoured=True),
+        {"type": "override", "pr": 1, "head_sha": HEAD, "by": "alice", "checks": ["code-review"],
+         "reason": "see [this](https://example.com) `x`", "ts": "2026-10-17T10:00:00.5+00:00"},
+    )  # fmt: skip
+    notes = attestations.render_notes(
+        attestations.llm_review([commit(1)], log, range_from=None, range_to="v1.0.0")
+    )
+    assert "overridden by @alice: `see [this](https://example.com) 'x'`" in notes
+    # Merged before the first record, in a different but equal-meaning time format.
+    early = attestations.llm_review(
+        [commit(2, merged_at="2026-10-17T11:59:59+02:00")], log, range_from=None, range_to="v1"
+    )
+    assert early["unreviewed"][0]["reason"] == "merged before the audit log existed"

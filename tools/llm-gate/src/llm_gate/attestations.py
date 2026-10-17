@@ -93,6 +93,19 @@ def _records(audit_dir: Path) -> list[dict[str, Any]]:
     return records
 
 
+def _parse(value: object) -> datetime | None:
+    try:
+        return _utc(str(value)) if value else None
+    except ValueError:
+        return None
+
+
+def _inert(text: object) -> str:
+    """Free text from the audit log for the release notes: one line, in a code span."""
+    flat = " ".join(str(text).split()).replace("`", "'")
+    return f"`{flat}`"
+
+
 def _utc(value: str) -> datetime:
     parsed = datetime.fromisoformat(value)
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
@@ -117,7 +130,8 @@ def llm_review(
     merged_at}` (the PR that merged it, that PR's final head and merge time, or nulls for a commit
     without a PR)."""
     records = _records(audit_dir)
-    log_start = min((str(r["ts"]) for r in records if r.get("ts")), default=None)
+    stamps = [t for r in records if (t := _parse(r.get("ts"))) is not None]
+    log_start = min(stamps, default=None)  # compared as times, not strings
     prs: list[dict[str, Any]] = []
     unreviewed: list[dict[str, Any]] = []
     unverified: list[dict[str, Any]] = []
@@ -159,7 +173,7 @@ def llm_review(
         if not latest:
             reason = "no review record for the merged head"
             merged = str(item.get("merged_at") or "")
-            if log_start is None or (merged and _utc(merged) < _utc(log_start)):
+            if log_start is None or (merged and _utc(merged) < log_start):
                 reason = "merged before the audit log existed"
             elif any(r.get("pr") == number and r.get("type") == "gate_run" for r in records):
                 reason += " (earlier heads were reviewed)"
@@ -212,7 +226,7 @@ def render_notes(predicate: Mapping[str, Any]) -> str:
     overridden = [pr for pr in prs if pr["overrides"]]
     for pr in overridden:
         for o in pr["overrides"]:
-            lines.append(f"- #{pr['number']} overridden by @{o['by']}: {o['reason']}")
+            lines.append(f"- #{pr['number']} overridden by @{o['by']}: {_inert(o['reason'])}")
     if overridden:
         lines.append("")
     for key, title in (("unreviewed", "Unreviewed"), ("unverified", "Unverified")):

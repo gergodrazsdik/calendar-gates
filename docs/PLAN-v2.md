@@ -9,6 +9,38 @@ ADRs 0001–0003 and the v1 deviations). Phases continue the v1 numbering (13–
 PR through the existing gates, and each one updates `docs/gates.md`, `AGENTS.md`/`CLAUDE.md` and,
 when it adds or renames a check, `.github/rulesets/main.json` plus `scripts/check-ruleset-consistency.py`.
 
+## Status (2026-10-17): done
+
+Every phase, 13 to 21, is implemented and merged, from #25 to the wrap-up PR. The releases
+v0.3.0 and v0.3.1 met Phases 18 and 19's done-conditions. [`WRITEUP.md`](WRITEUP.md) has the
+measured results. The plan below is kept as written. Where the implementation differs, the
+deviation is recorded in the ADR named here.
+
+| Plan says | Built | Where it's recorded |
+|---|---|---|
+| ADR-0005 `audit-log-storage`, ADR-0006 triage, ADR-0007 cluster, ADR-0008 Kyverno format | [0005](adr/0005-audit-trail.md) audit trail, [0006](adr/0006-llm-eval-gate.md) eval gate, [0007](adr/0007-feedback-commands.md) feedback, [0008](adr/0008-risk-triage.md) triage, [0009](adr/0009-build-once-attest-promote.md) attestations, [0010](adr/0010-admission-control.md) cluster and Kyverno | the numbers were taken in build order |
+| Phase 13: tooling from the PR's `base.sha` | the base branch's current head, pinned per run (`gate_sha`) | ADR 0004 (amended): `base.sha` doesn't move with the branch |
+| 14.3: Checks API cross-check, `concurrency: audit-log`, one retry | the jobs API, no concurrency group (it would drop pending runs), retried PUTs | ADR 0005 |
+| 14.4: an `update` rule on `audit-log` | deletion and non-fast-forward only; a personal repo can't exempt GitHub Actions | ADR 0005 |
+| 15.4: `eval_run` records into the audit log | in the run's artifact only | ADR 0006 |
+| 16.1: outsiders recorded as `feedback_rejected` | filtered out before the job starts | ADR 0007 |
+| 16.2: DuckDB | plain Python: DuckDB has no wheel for Python 3.15 | `metrics.py` docstring, WRITEUP §5 |
+| 17: a separate `ai-detect` job; triage rules as listed | inside the `triage` job, which replaces `llm-plan`; also `scripts/**` high, agent instruction files medium, renames rated by both paths | ADR 0008 |
+| 17: `engine: agent, model: strong` at high risk | the agent engine, each check's own model (Sonnet): Opus measured no better | ADR 0008 (amended), WRITEUP §3 |
+| 18.1: candidate tagged `sha-<short>`; `attest-sbom` | `candidate-vX.Y.Z` (`sha-<short>` is the edge image's); `actions/attest` for all four | ADR 0009 |
+| 18.2: `scripts/vuln-predicate.py`, one set of counts | `llm-gate attest vuln-scan`, counts per platform | ADR 0009 |
+| 18.3: per-PR record attestations from `audit-collect.yml` | dropped: every attestation is a permanent public Rekor entry | ADR 0009, note in 18.3 |
+| 19: Kyverno `v1beta1`, namespaced policies; Kubernetes version open | `policies.kyverno.io/v1` (already served by 1.19), cluster-scoped policies with namespace selectors, node v1.35.8, kubeconfig outside `~/.kube` | ADR 0010 |
+| 19.3: LLM-review policy Audit, Deny "after a few releases" | Deny since v0.3.1 (#54) | ADR 0010 |
+| 21: drill 23's local build "denied" | admitted but pinned by Kyverno to the attested digest; under an unknown tag, denied | WRITEUP §5, note under the drill table |
+
+**Left open on purpose.** These are noted as limits, not as work:
+- **The workflow-file hole:** a PR can edit `llm-review.yml` itself. Closing it needs org-level
+  required workflows (WRITEUP §4).
+- **The "LLM-review alone denies" proof:** it needs an image with every attestation except that
+  one.
+- **The live `/llm-fp` → eval-case loop:** waiting for a genuine false positive.
+
 ---
 
 ## 0. Scope
