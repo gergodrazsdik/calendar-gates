@@ -17,7 +17,7 @@ PRs merged before the log existed can't be covered.
 | Override rate | PRs with an honoured override / PRs where a blocking check failed | `gate_run` (`override_honoured`, `verdict`) |
 | Cost | paid reviews only (cache hits record none): total, per check, per engine/model, p50/p90 per reviewed PR | `gate_run.cost_usd` |
 | Triage mix | share of PRs per final risk; manual `/llm-risk` changes | `triage`, `risk_override` ([ADR 0008](adr/0008-risk-triage.md)) |
-| AI-assisted share | triaged PRs flagged as AI-assisted / triaged PRs | `triage` |
+| AI-assisted share | triaged PRs flagged as AI-assisted / triaged PRs; and side by side for flagged and other triaged PRs: distinct findings per PR, and the share of findings marked `/llm-fp` | `triage`, `gate_run` findings, `feedback` |
 | Eval trend | the latest eval run's recall, false blocks, verdict accuracy and flips per check, engine and prompt | `llm-eval` artifact (`reports/eval/`) |
 | Integrity | `tamper_suspected` events, reviews from PRs that changed the review workflow, rejected `/llm-*` commands | `tamper_suspected`, `gate_run.workflow_modified`, `feedback_rejected` |
 
