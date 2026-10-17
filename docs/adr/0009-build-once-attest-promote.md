@@ -46,9 +46,13 @@ A release also said nothing about how its changes were reviewed. The LLM gate's 
     - **unverified:** a PR that changed the review workflow itself, or one with `tamper_suspected`
       events.
 
-    The release notes print the same lists.
+    The release notes print the same lists. The range starts at the previous **final** release
+    for a final version, and at the previous release of any kind for a prerelease. PRs that only
+    reached an `-rc` tag therefore still count for the final release.
 - **Promote after approval.** `publish` (the `release` environment) gives the attested digest
   `X.Y.Z` and `X.Y` with `buildx imagetools create`, and checks that both tags resolve to it.
+  An existing `X.Y.Z` is never moved. A full re-run builds new bytes, so `publish` fails rather
+  than move the version tag to them, and the fix is a new version, as for git tags.
   It pushes the chart with `image.digest` pinned, so a released chart can only pull the attested
   bytes.
 - **Verify.** `just verify-release X.Y.Z` runs `gh attestation verify` for each predicate type,

@@ -200,7 +200,9 @@ def test_notes_without_gaps_have_no_gap_sections(tmp_path: Path) -> None:
     assert "Unreviewed" not in notes and "Unverified" not in notes
 
 
-def test_cli_attest(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_attest(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], caplog: pytest.LogCaptureFixture
+) -> None:
     grype = tmp_path / "amd64.json"
     grype.write_text(json.dumps(grype_report("amd64", "High")))
     out = tmp_path / "vuln.json"
@@ -234,7 +236,31 @@ def test_cli_attest(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert notes.read_text().startswith("## LLM review")
     capsys.readouterr()
 
-    assert (
-        main(["attest", "vuln-scan", "--grype", str(tmp_path / "missing.json"), "--out", str(out)])
-        == 2
+    missing = tmp_path / "missing.json"
+    assert main(["attest", "vuln-scan", "--grype", str(missing), "--out", str(out)]) == 2
+    assert "attest vuln-scan: FileNotFoundError" in caplog.text
+
+
+def test_error_verdicts_risk_fallback_and_bad_lines(tmp_path: Path) -> None:
+    log = write_log(
+        tmp_path,
+        gate_run(1, "code-review", "error", risk="medium"),
+        gate_run(1, "security-review", "pass", risk="medium"),
     )
+    (log / "events" / "2026" / "10" / "17" / "broken.jsonl").write_text('not json\n["a list"]\n')
+
+    predicate = attestations.llm_review([commit(1)], log, range_from=None, range_to="v1.0.0")
+
+    (pr,) = predicate["prs"]
+    assert pr["risk"] == "medium"  # no triage record: the gate runs' risk
+    assert pr["ai_assisted"] is None
+    assert predicate["unreviewed"] == [{"number": 1, "reason": "code-review: error"}]
+
+
+def test_an_empty_release_or_log(tmp_path: Path) -> None:
+    empty = attestations.llm_review([], tmp_path, range_from="v1.0.0", range_to="v1.0.1")
+    assert (empty["prs"], empty["unreviewed"], empty["unverified"]) == ([], [], [])
+    assert "0 pull request(s) since v1.0.0" in attestations.render_notes(empty)
+    # No records at all: every PR predates the log.
+    nothing = attestations.llm_review([commit(1)], tmp_path, range_from=None, range_to="v1.0.0")
+    assert nothing["unreviewed"] == [{"number": 1, "reason": "merged before the audit log existed"}]
