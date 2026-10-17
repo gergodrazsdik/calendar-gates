@@ -28,7 +28,10 @@ expect:
     blocking: true                 # optional: the gate should fail on it (verdict accuracy);
                                    # default: min_severity is at or above the check's fail_on
     category: correctness          # documents the intent; not matched
-forbid: []                         # fp-regression: findings that must not come back
+forbid: []                         # fp-regression: findings that must not come back, e.g.
+#  - file: .github/workflows/release.yml
+#    title: \$IMAGE                  # regex over the title, case-insensitive (fp-tr-835a)
+#    lines: [10, 12]                 # optional; category: optional, but models rename categories
 ```
 
 A PR's `diff.patch` files are left out of the reviewed diff (`diff.py` `EXCLUDES`): their planted
@@ -51,6 +54,10 @@ the drift shows up in verdict accuracy, which allows a drop of 0.10.
   and the gate must still fail.
 - **fp-regression**: `llm-gate eval add-from-fp <finding-id>` builds one from a finding in the
   audit log (`just audit-pull` first). It holds the same diff, and that finding must not come back.
+  The rule starts as the finding's exact title. Loosen it to the mistake's core (`fp-tr-835a`
+  uses `\$IMAGE`), because the model rewords titles and renames categories between runs. Then
+  confirm that the finding really was wrong: drill 19's first marked "false positive" was a
+  correct finding.
 - **triage** ([ADR 0008](../../../docs/adr/0008-risk-triage.md)): `checks: [triage]`,
   `expect_risk: low|medium|high`, optionally `ai_assisted: true`. The rules' floor comes from the
   patch, then the triage model (`.claude/commands/llm-triage.md`) may raise it. Scored as risk

@@ -366,7 +366,13 @@ def test_add_from_fp_builds_a_case_from_the_audit_log(eval_repo: Repo) -> None:
         "head_sha": head,
         "workflow_modified": False,
         "findings": [
-            {"id": "cr-abcd", "file": "src/A.cs", "line": 1, "category": "style", "title": "t"}
+            {
+                "id": "cr-abcd",
+                "file": "src/A.cs",
+                "line": 1,
+                "category": "style",
+                "title": "Uses $IMAGE (undefined?)",
+            }
         ],
     }
     (events / "1-1-code-review.jsonl").write_text(json.dumps(record) + "\n")
@@ -376,7 +382,9 @@ def test_add_from_fp_builds_a_case_from_the_audit_log(eval_repo: Repo) -> None:
     cases = eval_repo.root / "tools" / "llm-gate" / "evals" / "cases"
     (loaded,) = evals.load_cases(cases)
     assert loaded.case.kind == "fp-regression"
-    assert loaded.case.forbid[0].file == "src/A.cs"
+    forbid = loaded.case.forbid[0]
+    assert (forbid.file, forbid.category) == ("src/A.cs", None)  # categories vary run to run
+    assert forbid.title == r"^Uses\ \$IMAGE\ \(undefined\?\)$"  # exact, escaped
     assert loaded.case.base == base
     assert "int x = 3" in loaded.patch
 
@@ -459,3 +467,16 @@ def test_found_and_blocking_are_scored_separately(eval_repo: Repo) -> None:
     assert report["metrics"]["recall"] == 1.0
     assert report["metrics"]["verdict_accuracy"] == 0.0
     assert report["results"][0]["expected_verdict"] == "fail"
+
+
+def test_forbid_by_title_regex_ignores_the_category() -> None:
+    rule = evals.Forbidden(file="a.yml", title=r"\$IMAGE")
+    same = finding(Severity.MEDIUM, file="a.yml", line=None)
+    assert not evals.forbidden_hit(same, rule)  # title "medium problem"
+    reworded = same.model_copy(
+        update={"title": "Checks use $image, never defined", "category": "x"}
+    )
+    assert evals.forbidden_hit(reworded, rule)
+    assert not evals.forbidden_hit(reworded.model_copy(update={"file": "b.yml"}), rule)
+    with pytest.raises(ValueError):
+        evals.Forbidden(file="a.yml", title="(unclosed")

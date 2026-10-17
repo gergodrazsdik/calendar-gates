@@ -1,0 +1,959 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 529729a..445b0d0 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -108,6 +108,18 @@ jobs:
+           helm lint --strict "$chart" -f "$chart/values-kind.yaml"
+           helm template calendar-gates "$chart" --set ingress.enabled=true |
+             docker run --rm -i "$kubeconform" -strict -summary -kubernetes-version 1.37.0 -
++          # Released charts pin the image by digest (ADR 0009).
++          digest=sha256:0000000000000000000000000000000000000000000000000000000000000000
++          helm template calendar-gates "$chart" --set image.digest=$digest |
++            grep -q "image: \"ghcr.io/gergodrazsdik/calendar-gates@$digest\""
++          helm template calendar-gates "$chart" --set image.digest=$digest |
++            docker run --rm -i "$kubeconform" -strict -summary -kubernetes-version 1.37.0 -
++      # The image verification itself needs the registry: release.yml's admission-smoke (ADR 0010).
++      - name: Admission policies (kustomize renders, offline kyverno tests)
++        run: |
++          kubectl kustomize deploy/policies > /dev/null
++          kyverno=ghcr.io/kyverno/kyverno-cli:v1.19.1@sha256:ced7b2be0b04250cabfe695f15307f69eb715fe23234816388af4f3812915b2a
++          docker run --rm -v "$PWD:/repo:ro" --workdir /repo "$kyverno" test deploy/policies/tests --remove-color
+ 
+   build-test:
+     name: build-test
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index 95cf173..1e32b70 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -371,9 +371,118 @@ jobs:
+             echo "- chart: \`$CHART_REPO/calendar-gates --version $VERSION\` (pinned to the digest)"
+           } >> "$GITHUB_STEP_SUMMARY"
+ 
++  # Admission control (ADR 0010): Kyverno with the project's policies on a throwaway kind cluster.
++  # The release must be admitted in `calendar-gates`; the unattested edge image and a foreign image
++  # must be denied; `calendar-gates-dev` must admit edge and report it. The release only goes
++  # public (smoke) if the policies hold.
++  admission-smoke:
++    name: admission-smoke
++    needs: [verify, build, publish]
++    runs-on: ubuntu-24.04
++    timeout-minutes: 20
++    permissions:
++      contents: read
++    env:
++      VERSION: ${{ needs.verify.outputs.version }}
++      DIGEST: ${{ needs.build.outputs.digest }}
++      # Pinned so the test can't drift; it is only ever refused (a server-side dry run, never pulled).
++      FOREIGN: docker.io/library/busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e
++    steps:
++      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
++        with:
++          persist-credentials: false
++      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
++        with:
++          version: v4.2.2
++      # The project cluster's definition (node image pinned by digest; Kubernetes 1.35 for Kyverno 1.19).
++      - uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
++        with:
++          version: v0.33.0
++          kubectl_version: v1.35.8
++          config: deploy/kind/cluster.yaml
++          cluster_name: calendar-gates
++      - name: Kyverno (chart pinned by sha256, images by digest)
++        run: |
++          file=$(awk '{print $2}' deploy/kyverno/chart.sha256)
++          version=${file#kyverno-}; version=${version%.tgz}
++          helm pull kyverno --repo https://kyverno.github.io/kyverno/ --version "$version" -d "$RUNNER_TEMP"
++          (cd "$RUNNER_TEMP" && sha256sum -c --quiet) < deploy/kyverno/chart.sha256
++          helm install kyverno "$RUNNER_TEMP/$file" -n kyverno --create-namespace \
++            -f deploy/kyverno/values.yaml --wait --timeout 5m
++      - name: Policies (both namespaces), ready
++        run: |
++          kubectl apply -k deploy/policies
++          for _ in $(seq 60); do
++            pending=$(kubectl get validatingpolicies,imagevalidatingpolicies -o json \
++              | jq '[.items[] | select(.status.conditionStatus.ready != true)] | length')
++            [ "$pending" = 0 ] && break
++            sleep 2
++          done
++          kubectl get validatingpolicies,imagevalidatingpolicies
++          [ "$pending" = 0 ] || { echo "::error::$pending policies are not ready"; exit 1; }
++      - name: The release is admitted in calendar-gates
++        run: |
++          helm install calendar-gates oci://ghcr.io/gergodrazsdik/charts/calendar-gates \
++            --version "$VERSION" -n calendar-gates --wait --timeout 4m
++          kubectl -n calendar-gates get pods -o wide
++          running=$(kubectl -n calendar-gates get pods -o jsonpath='{.items[*].spec.containers[*].image}')
++          for image in $running; do
++            [[ $image == *"@$DIGEST" ]] || { echo "::error::$image is not the release digest $DIGEST"; exit 1; }
++          done
++      - name: Unattested and foreign images are denied in calendar-gates
++        run: |
++          refused() { # pod name, image, the policy that must refuse it
++            if out=$(kubectl -n calendar-gates run "$1" --image="$2" --restart=Never --dry-run=server 2>&1); then
++              echo "::error::$2 was admitted in calendar-gates"; exit 1
++            fi
++            echo "$out"
++            grep -q "Policy $3 failed" <<< "$out" || { echo "::error::$2 was not refused by $3"; exit 1; }
++          }
++          refused edge "$IMAGE:edge" calendar-gates-release
++          refused foreign "$FOREIGN" calendar-gates-images
++          # An unattested image hidden in an init container, next to the attested release.
++          if out=$(kubectl create --dry-run=server -f - 2>&1 <<EOF
++          apiVersion: v1
++          kind: Pod
++          metadata: {name: init-edge, namespace: calendar-gates}
++          spec:
++            initContainers: [{name: sneak, image: "$IMAGE:edge"}]
++            containers: [{name: app, image: "$IMAGE@$DIGEST"}]
++          EOF
++          ); then
++            echo "::error::an edge init container was admitted in calendar-gates"; exit 1
++          fi
++          echo "$out"
++          grep -q "Policy calendar-gates-release failed" <<< "$out" \
++            || { echo "::error::the edge init container was not refused by calendar-gates-release"; exit 1; }
++      - name: calendar-gates-dev admits edge and reports it
++        run: |
++          kubectl -n calendar-gates-dev run edge --image="$IMAGE:edge" --restart=Never
++          for _ in $(seq 30); do
++            found=$(kubectl -n calendar-gates-dev get policyreports -o json | jq -r '[.items[]
++              | select(.scope.name == "edge") | .results[]?
++              | select(.policy == "calendar-gates-release-dev" and .result == "fail")] | length')
++            [ "${found:-0}" -gt 0 ] && break
++            sleep 2
++          done
++          [ "${found:-0}" -gt 0 ] || { echo "::error::no PolicyReport failure for edge in calendar-gates-dev"; exit 1; }
++          echo "calendar-gates-dev: edge admitted, reported as failing calendar-gates-release-dev"
++      - name: Explain a failure
++        if: failure()
++        run: |
++          {
++            echo "### admission-smoke diagnostics"
++            echo '```'
++            kubectl get validatingpolicies,imagevalidatingpolicies -o wide 2>&1 || true
++            kubectl get pods -A 2>&1 || true
++            kubectl -n calendar-gates get events --sort-by=.lastTimestamp 2>&1 | tail -n 30 || true
++            kubectl -n kyverno logs deploy/kyverno-admission-controller --tail=60 2>&1 || true
++            echo '```'
++          } >> "$GITHUB_STEP_SUMMARY"
++
+   smoke:
+     name: smoke
+-    needs: [verify, build, publish]
++    needs: [verify, build, publish, admission-smoke]
+     runs-on: ubuntu-24.04
+     timeout-minutes: 10
+     permissions:
+diff --git a/AGENTS.md b/AGENTS.md
+index d84c080..29af901 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -13,7 +13,8 @@ adding things from later phases.
+ | `src/CalendarGates.Api/` | Minimal API: `Program.cs`, `Endpoints/` (one static class per feature), `Domain/` (pure calculators) |
+ | `tests/CalendarGates.UnitTests/`, `tests/CalendarGates.IntegrationTests/` | TUnit tests (calculators; API via `TUnit.AspNetCore`) |
+ | `http/` | `.http` contract tests run by `ijhttp` (`http-client.env.json`; the private env file is gitignored) |
+-| `Dockerfile`, `deploy/helm/calendar-gates/` | Container image and Helm chart (kind-local, CI smoke) |
++| `Dockerfile`, `deploy/helm/calendar-gates/` | Container image and Helm chart (kind clusters, CI smoke) |
++| `deploy/kind/`, `deploy/kyverno/`, `deploy/policies/` | The project's kind cluster, Kyverno (pinned) and the admission policies ([ADR 0010](docs/adr/0010-admission-control.md)) |
+ | `tools/llm-gate/` | Python (uv) LLM review gate on the Claude SDKs; policy in `checks.yaml` |
+ | `.claude/commands/` | Review prompts, shared by interactive Claude Code and the CI LLM gate |
+ | `.github/` | Workflows, composite action, rulesets (as JSON), Dependabot |
+@@ -30,7 +31,12 @@ that needs them, so the list is the truth, not this file.
+ - Local tools: `dotnet tool restore` (CSharpier, MinVer CLI from `.config/dotnet-tools.json`).
+ - Python: `uv run ...` inside `tools/llm-gate/`, never pip.
+ - Containers: `docker` is podman locally; containers publish on host port **8081** (kind-local owns 8080).
+-- Kubernetes: always `--context kind-local` / `--kube-context kind-local`.
++- Kubernetes: two clusters, and always an explicit context. `kind-calendar-gates` is the
++  project's own cluster with Kyverno, and the `k8s-*` recipes' default. Its kubeconfig is
++  `~/.local/state/calendar-gates/kubeconfig`, so `export KUBECONFIG=` that, or use the recipes.
++  `kind-local` (`--context kind-local`, `just cluster=local …`) is the machine's shared
++  cluster, with no project components. Running both costs memory and inotify instances;
++  `kind-local stop` is fine while working here.
+ 
+ ## Conventions
+ 
+@@ -78,9 +84,15 @@ Details, fixes and overrides: `docs/gates.md`.
+    `tools/llm-gate/evals/cases` against `evals/baseline.json` ([ADR 0006](docs/adr/0006-llm-eval-gate.md)).
+    Locally: `just eval` (spends API credits; a PR pays only for the checks it changes),
+    `just eval-baseline` to update the baseline in a PR. Required, on its own (not part of `gates`).
+-9. `k8s-smoke`: Helm install on a throwaway kind cluster + ijhttp. Locally on kind-local:
+-   `just k8s-load k8s-deploy k8s-http` (port-forward, [ADR 0003](docs/adr/0003-kind-access.md)).
++9. `k8s-smoke`: Helm install on a throwaway kind cluster + ijhttp. Locally, the dev image runs in
++   `calendar-gates-dev` (the policies deny it in `calendar-gates`): `just k8s-load`, then
++   `just k8s-deploy calendar-gates-dev` and `just k8s-http calendar-gates-dev`. On kind-local:
++   `just cluster=local k8s-load k8s-deploy k8s-http` (port-forward, [ADR 0003](docs/adr/0003-kind-access.md)).
+ 10. `gates`: aggregator over the `ci.yml` gates.
++11. Admission (releases, [ADR 0010](docs/adr/0010-admission-control.md)): Kyverno admits only
++    attested release images in `calendar-gates` and audits `calendar-gates-dev`.
++    `release.yml`'s `admission-smoke` proves it on every release. Locally: `just k8s-up
++    k8s-policy-up`, `just k8s-policy-report`; offline tests: `just lint-policies`.
+ 
+ ## Don'ts
+ 
+diff --git a/Dockerfile b/Dockerfile
+index 3a9366a..4ffec41 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -30,6 +30,9 @@ LABEL org.opencontainers.image.title="calendar-gates" \
+       org.opencontainers.image.source="https://github.com/gergodrazsdik/calendar-gates"
+ WORKDIR /app
+ COPY --from=build /app ./
++# The image's appsettings never change, so don't watch them: each watcher takes an inotify
++# instance, and a host running several kind clusters runs out (docs/adr/0010-admission-control.md).
++ENV DOTNET_hostBuilder__reloadConfigOnChange=false
+ USER app
+ EXPOSE 8080
+ ENTRYPOINT ["dotnet", "CalendarGates.Api.dll"]
+diff --git a/deploy/kind/cluster.yaml b/deploy/kind/cluster.yaml
+new file mode 100644
+index 0000000..c9a2dbe
+--- /dev/null
++++ b/deploy/kind/cluster.yaml
+@@ -0,0 +1,11 @@
++# The project's own kind cluster (docs/adr/0010-admission-control.md): `just k8s-up`, then
++# `just k8s-policy-up`. Kyverno's webhooks act cluster-wide, so they don't go into kind-local
++# (ADR 0003). One node, no host port mappings: access is a port-forward, as on kind-local.
++# Kubernetes 1.35: the newest version Kyverno 1.19 supports (1.33 to 1.35); kind v0.33.0's image.
++# release.yml's admission-smoke creates its cluster from this file too.
++apiVersion: kind.x-k8s.io/v1alpha4
++kind: Cluster
++name: calendar-gates
++nodes:
++  - role: control-plane
++    image: kindest/node:v1.35.8@sha256:07b2536e30b803ed61d1677a79df6115f798ce64c80f9e22f6ed45afd09323c0
+diff --git a/deploy/kyverno/chart.sha256 b/deploy/kyverno/chart.sha256
+new file mode 100644
+index 0000000..71db49c
+--- /dev/null
++++ b/deploy/kyverno/chart.sha256
+@@ -0,0 +1 @@
++7b7fe51a431b5b133b0ce7eb9dcb222b6a37fb967c163223cf480054ad14d752  kyverno-3.9.1.tgz
+diff --git a/deploy/kyverno/values.yaml b/deploy/kyverno/values.yaml
+new file mode 100644
+index 0000000..06c49a3
+--- /dev/null
++++ b/deploy/kyverno/values.yaml
+@@ -0,0 +1,52 @@
++# Kyverno for the project cluster (docs/adr/0010-admission-control.md), chart 3.9.1 = Kyverno
++# v1.19.1. Every image is pinned to a digest whose SLSA provenance was verified on 2026-10-17
++# (cosign verify-attestation --type slsaprovenance02: slsa-github-generator, built from
++# kyverno/kyverno at 40ec788d48, the v1.19.1 tag). The chart has no digest field, so the digest
++# rides on the tag: repo:v1.19.1@sha256:..., where the digest wins. Update all of them together,
++# with the chart version in the justfile, after verifying the new release the same way.
++admissionController:
++  rbac:
++    clusterRole:
++      extraResources:
++        - apiGroups: [""]
++          resources: [pods/ephemeralcontainers]
++          verbs: [get, list, watch]
++  initContainer:
++    image:
++      tag: v1.19.1@sha256:c25c47461f06f2845a48c319ae86fbbc1730a7b9ed5b701889c9dc1f9ee94b09
++  container:
++    image:
++      tag: v1.19.1@sha256:b31d8511ae5fd6010e2a01ea72ebae08eb82fa51d91af14a1d9fe989949b4edb
++backgroundController:
++  rbac:
++    clusterRole:
++      extraResources:
++        - apiGroups: [""]
++          resources: [pods/ephemeralcontainers]
++          verbs: [get, list, watch]
++  image:
++    tag: v1.19.1@sha256:8f1e9143373a27578cafc2d28d2c66ba0926c63b4c77e63de8d2fdd4a122859f
++cleanupController:
++  image:
++    tag: v1.19.1@sha256:67a48e62a8d8f8120c86914ff822b90017c54054c7b64ef8a1555645e9d9761e
++reportsController:
++  rbac:
++    clusterRole:
++      extraResources:
++        - apiGroups: [""]
++          resources: [pods/ephemeralcontainers]
++          verbs: [get, list, watch]
++  image:
++    tag: v1.19.1@sha256:c0eee97b9b44a0dd35805d56b358fa52548480f79d4944602b9609538eccd64c
++crds:
++  migration:
++    image:
++      tag: v1.19.1@sha256:ced7b2be0b04250cabfe695f15307f69eb715fe23234816388af4f3812915b2a
++webhooksCleanup:
++  image:
++    tag: v1.19.1@sha256:31bb42ce7f5b2e27c1cf633aeff4f0cad1f5bb63761e2cb09f0e25cdd26572bf
++test:
++  image:
++    tag: v1.19.1@sha256:31bb42ce7f5b2e27c1cf633aeff4f0cad1f5bb63761e2cb09f0e25cdd26572bf
++# The policies also match pods/ephemeralcontainers (how `kubectl debug` adds a container); the
++# controllers need to read that subresource, or Kyverno reports the policies as not ready.
+diff --git a/deploy/policies/base/images.yaml b/deploy/policies/base/images.yaml
+new file mode 100644
+index 0000000..23b9d2a
+--- /dev/null
++++ b/deploy/policies/base/images.yaml
+@@ -0,0 +1,34 @@
++# Admission control for the `calendar-gates` namespace (docs/adr/0010-admission-control.md).
++# Only this project's images, referenced by digest. Kyverno's image policies rewrite verified tags
++# to digests before validation, so the check applies to what actually runs.
++apiVersion: policies.kyverno.io/v1
++kind: ValidatingPolicy
++metadata:
++  name: calendar-gates-images
++spec:
++  validationActions: [Deny]
++  matchConstraints:
++    namespaceSelector:
++      matchLabels:
++        kubernetes.io/metadata.name: calendar-gates
++    resourceRules:
++      - apiGroups: [""]
++        apiVersions: [v1]
++        operations: [CREATE, UPDATE]
++        # The subresource is how `kubectl debug` adds an ephemeral container to a running pod.
++        resources: [pods, pods/ephemeralcontainers]
++  variables:
++    - name: images
++      expression: >-
++        object.spec.containers.map(c, c.image)
++        + (has(object.spec.initContainers) ? object.spec.initContainers.map(c, c.image) : [])
++        + (has(object.spec.ephemeralContainers) ? object.spec.ephemeralContainers.map(c, c.image) : [])
++    - name: pinned
++      expression: >-
++        variables.images.filter(i,
++          !i.matches('^ghcr\\.io/gergodrazsdik/calendar-gates(:[^@/]+)?@sha256:[0-9a-f]{64}$'))
++  validations:
++    - expression: size(variables.pinned) == 0
++      messageExpression: >-
++        'only ghcr.io/gergodrazsdik/calendar-gates images by digest may run here, not: '
++        + variables.pinned.join(', ')
+diff --git a/deploy/policies/base/kustomization.yaml b/deploy/policies/base/kustomization.yaml
+new file mode 100644
+index 0000000..5965379
+--- /dev/null
++++ b/deploy/policies/base/kustomization.yaml
+@@ -0,0 +1,8 @@
++# `calendar-gates`: the policies deny (docs/adr/0010-admission-control.md). `../dev` audits.
++apiVersion: kustomize.config.k8s.io/v1beta1
++kind: Kustomization
++resources:
++  - namespace.yaml
++  - images.yaml
++  - release.yaml
++  - llm-review.yaml
+diff --git a/deploy/policies/base/llm-review.yaml b/deploy/policies/base/llm-review.yaml
+new file mode 100644
+index 0000000..d5d4292
+--- /dev/null
++++ b/deploy/policies/base/llm-review.yaml
+@@ -0,0 +1,47 @@
++# The release's LLM-review attestation (ADR 0009) must be there. Audit for now; switch to Deny
++# after a few releases have carried it (docs/adr/0010-admission-control.md).
++apiVersion: policies.kyverno.io/v1
++kind: ImageValidatingPolicy
++metadata:
++  name: calendar-gates-llm-review
++spec:
++  validationActions: [Audit]
++  matchConstraints:
++    namespaceSelector:
++      matchLabels:
++        kubernetes.io/metadata.name: calendar-gates
++    resourceRules:
++      - apiGroups: [""]
++        apiVersions: [v1]
++        operations: [CREATE, UPDATE]
++        # The subresource is how `kubectl debug` adds an ephemeral container to a running pod.
++        resources: [pods, pods/ephemeralcontainers]
++  # A cold check fetches every attestation and the Sigstore trust root; 10 s (the default) isn't
++  # always enough. Results are cached for an hour.
++  webhookConfiguration:
++    timeoutSeconds: 30
++  matchImageReferences:
++    - glob: "ghcr.io/gergodrazsdik/calendar-gates*"
++  attestors:
++    - name: release
++      cosign:
++        keyless:
++          identities:
++            - issuer: https://token.actions.githubusercontent.com
++              # A regex can't be wrapped safely.
++              # yamllint disable-line rule:line-length
++              subjectRegExp: '^https://github\.com/gergodrazsdik/calendar-gates/\.github/workflows/release\.yml@refs/tags/v[0-9].*$'
++  attestations:
++    - name: llmreview
++      intoto:
++        type: https://github.com/gergodrazsdik/calendar-gates/attestations/llm-review/v1
++  # Every container kind, not only spec.containers: an unattested image must not slip in as an init
++  # or ephemeral container.
++  variables:
++    - name: allImages
++      expression: images.containers + images.initContainers + images.ephemeralContainers
++  validations:
++    - expression: >-
++        variables.allImages.map(image,
++          verifyAttestationSignatures(image, attestations.llmreview, [attestors.release])).all(e, e > 0)
++      message: the image has no LLM-review attestation signed by release.yml on a release tag
+diff --git a/deploy/policies/base/namespace.yaml b/deploy/policies/base/namespace.yaml
+new file mode 100644
+index 0000000..71fe007
+--- /dev/null
++++ b/deploy/policies/base/namespace.yaml
+@@ -0,0 +1,4 @@
++apiVersion: v1
++kind: Namespace
++metadata:
++  name: calendar-gates
+diff --git a/deploy/policies/base/release.yaml b/deploy/policies/base/release.yaml
+new file mode 100644
+index 0000000..d019d51
+--- /dev/null
++++ b/deploy/policies/base/release.yaml
+@@ -0,0 +1,65 @@
++# Release images only (docs/adr/0010-admission-control.md): build provenance and a vulnerability
++# scan without critical findings, both attested by release.yml on a v* tag (ADR 0009). CI already
++# fails a release on high findings; admission fails on critical: two layers, two thresholds.
++apiVersion: policies.kyverno.io/v1
++kind: ImageValidatingPolicy
++metadata:
++  name: calendar-gates-release
++spec:
++  validationActions: [Deny]
++  matchConstraints:
++    namespaceSelector:
++      matchLabels:
++        kubernetes.io/metadata.name: calendar-gates
++    resourceRules:
++      - apiGroups: [""]
++        apiVersions: [v1]
++        operations: [CREATE, UPDATE]
++        # The subresource is how `kubectl debug` adds an ephemeral container to a running pod.
++        resources: [pods, pods/ephemeralcontainers]
++  # A cold check fetches every attestation and the Sigstore trust root; 10 s (the default) isn't
++  # always enough. Results are cached for an hour.
++  webhookConfiguration:
++    timeoutSeconds: 30
++  matchImageReferences:
++    - glob: "ghcr.io/gergodrazsdik/calendar-gates*"
++  validationConfigurations:
++    mutateDigest: true # what runs is the digest that was verified
++    verifyDigest: true
++    required: true
++  attestors:
++    - name: release
++      cosign:
++        keyless:
++          identities:
++            - issuer: https://token.actions.githubusercontent.com
++              # A regex can't be wrapped safely.
++              # yamllint disable-line rule:line-length
++              subjectRegExp: '^https://github\.com/gergodrazsdik/calendar-gates/\.github/workflows/release\.yml@refs/tags/v[0-9].*$'
++  attestations:
++    - name: provenance
++      intoto:
++        type: https://slsa.dev/provenance/v1
++    - name: vulnscan
++      intoto:
++        type: https://github.com/gergodrazsdik/calendar-gates/attestations/vuln-scan/v1
++  # extractPayload() returns the in-toto statement of a GitHub attestation, so the predicate is under
++  # .predicate.
++  # Every container kind, not only spec.containers: an unattested image must not slip in as an init
++  # or ephemeral container.
++  variables:
++    - name: allImages
++      expression: images.containers + images.initContainers + images.ephemeralContainers
++  validations:
++    - expression: >-
++        variables.allImages.map(image,
++          verifyAttestationSignatures(image, attestations.provenance, [attestors.release])).all(e, e > 0)
++      message: the image has no build provenance signed by release.yml on a release tag
++    - expression: >-
++        variables.allImages.map(image,
++          verifyAttestationSignatures(image, attestations.vulnscan, [attestors.release]) > 0
++          && extractPayload(image, attestations.vulnscan).predicate.results.all(r, r.counts.critical == 0)
++        ).all(e, e)
++      message: >-
++        the image has no vulnerability-scan attestation from release.yml, or it lists critical
++        findings
+diff --git a/deploy/policies/dev/kustomization.yaml b/deploy/policies/dev/kustomization.yaml
+new file mode 100644
+index 0000000..ad72a16
+--- /dev/null
++++ b/deploy/policies/dev/kustomization.yaml
+@@ -0,0 +1,23 @@
++# `calendar-gates-dev`: the same policies, auditing instead of denying. Violations land in the
++# namespace's PolicyReports (`just k8s-policy-report calendar-gates-dev`).
++apiVersion: kustomize.config.k8s.io/v1beta1
++kind: Kustomization
++resources:
++  - ../base
++nameSuffix: -dev
++patches:
++  - target:
++      group: policies.kyverno.io
++    patch: |-
++      - op: replace
++        path: /spec/validationActions
++        value: [Audit]
++      - op: replace
++        path: /spec/matchConstraints/namespaceSelector/matchLabels/kubernetes.io~1metadata.name
++        value: calendar-gates-dev
++  - target:
++      kind: Namespace
++    patch: |-
++      - op: replace
++        path: /metadata/name
++        value: calendar-gates-dev
+diff --git a/deploy/policies/kustomization.yaml b/deploy/policies/kustomization.yaml
+new file mode 100644
+index 0000000..98cf4fd
+--- /dev/null
++++ b/deploy/policies/kustomization.yaml
+@@ -0,0 +1,6 @@
++# Both namespaces: `kubectl apply -k deploy/policies` (just k8s-policy-up, release.yml).
++apiVersion: kustomize.config.k8s.io/v1beta1
++kind: Kustomization
++resources:
++  - base
++  - dev
+diff --git a/deploy/policies/tests/kyverno-test.yaml b/deploy/policies/tests/kyverno-test.yaml
+new file mode 100644
+index 0000000..d821393
+--- /dev/null
++++ b/deploy/policies/tests/kyverno-test.yaml
+@@ -0,0 +1,20 @@
++# Offline tests for the policy that needs no registry (`just lint`, ci.yml lint). The image
++# verification policies are proven by release.yml's admission-smoke against real attestations.
++apiVersion: cli.kyverno.io/v1alpha1
++kind: Test
++metadata:
++  name: calendar-gates-images
++policies:
++  - ../base/images.yaml
++resources:
++  - resources.yaml
++variables: values.yaml
++results:
++  - policy: calendar-gates-images
++    kind: Pod
++    resources: [release-by-digest, release-tag-and-digest]
++    result: pass
++  - policy: calendar-gates-images
++    kind: Pod
++    resources: [release-by-tag, lookalike-repository, foreign-init-container]
++    result: fail
+diff --git a/deploy/policies/tests/resources.yaml b/deploy/policies/tests/resources.yaml
+new file mode 100644
+index 0000000..d2843c1
+--- /dev/null
++++ b/deploy/policies/tests/resources.yaml
+@@ -0,0 +1,55 @@
++# Pods for kyverno test (kyverno-test.yaml): what calendar-gates-images admits and refuses.
++# Image references with a digest are longer than the line limit and can't be wrapped.
++# yamllint disable rule:line-length
++apiVersion: v1
++kind: Pod
++metadata:
++  name: release-by-digest
++  namespace: calendar-gates
++spec:
++  containers:
++    - name: app
++      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
++---
++apiVersion: v1
++kind: Pod
++metadata:
++  name: release-tag-and-digest
++  namespace: calendar-gates
++spec:
++  containers:
++    - name: app
++      image: ghcr.io/gergodrazsdik/calendar-gates:0.3.0@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
++---
++apiVersion: v1
++kind: Pod
++metadata:
++  name: release-by-tag
++  namespace: calendar-gates
++spec:
++  containers:
++    - name: app
++      image: ghcr.io/gergodrazsdik/calendar-gates:0.3.0
++---
++apiVersion: v1
++kind: Pod
++metadata:
++  name: lookalike-repository
++  namespace: calendar-gates
++spec:
++  containers:
++    - name: app
++      image: ghcr.io/gergodrazsdik/calendar-gates-evil@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
++---
++apiVersion: v1
++kind: Pod
++metadata:
++  name: foreign-init-container
++  namespace: calendar-gates
++spec:
++  initContainers:
++    - name: setup
++      image: docker.io/library/busybox@sha256:0000000000000000000000000000000000000000000000000000000000000000
++  containers:
++    - name: app
++      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+diff --git a/deploy/policies/tests/values.yaml b/deploy/policies/tests/values.yaml
+new file mode 100644
+index 0000000..425681e
+--- /dev/null
++++ b/deploy/policies/tests/values.yaml
+@@ -0,0 +1,9 @@
++# Namespace labels the policies select on (kyverno test has no cluster to ask).
++apiVersion: cli.kyverno.io/v1alpha1
++kind: Value
++metadata:
++  name: values
++namespaceSelector:
++  - name: calendar-gates
++    labels:
++      kubernetes.io/metadata.name: calendar-gates
+diff --git a/docs/adr/0010-admission-control.md b/docs/adr/0010-admission-control.md
+new file mode 100644
+index 0000000..fae285a
+--- /dev/null
++++ b/docs/adr/0010-admission-control.md
+@@ -0,0 +1,102 @@
++# 10. Admission control: Kyverno verifies the release attestations, in the project's own cluster
++
++- Status: accepted
++- Date: 2026-10-17
++
++## Context
++
++Releases carry build provenance, an SBOM, a vulnerability scan and an LLM-review attestation
++(ADR 0009), but nothing used them: any image could run anywhere. The plan (docs/PLAN-v2.md
++Phase 19) calls the two decisions here ADR-0007 and ADR-0008; those numbers went to other ADRs.
++
++There were three constraints:
++
++- **Webhooks act cluster-wide.** Admission webhooks see every request in a cluster, and ADR 0003
++  keeps `kind-local` free of project components.
++- **Kyverno's old path is going away.** Kyverno 1.19 deprecates `ClusterPolicy`, and 1.20 removes
++  it. The old `verifyImages` path, the one documented for GitHub attestations, is therefore a dead
++  end.
++- **Version support.** Kyverno 1.19 supports Kubernetes 1.33 to 1.35. `kind-local` runs 1.37.
++
++## Decision
++
++**A project cluster.** `kind-calendar-gates` is defined in `deploy/kind/cluster.yaml`: one node,
++`kindest/node:v1.35.8` pinned by digest (the newest node image kind v0.33.0 ships that Kyverno
++supports), and no host ports. Access stays a port-forward (ADR 0003).
++
++- **Kubeconfig:** `~/.local/state/calendar-gates/kubeconfig`, so `~/.kube/config` never changes.
++- **Recipes:** `just k8s-up` creates or starts it, `k8s-policy-up` installs Kyverno and the
++  policies, and `k8s-cluster-down` deletes it. Every `k8s-*` recipe targets it by default;
++  `just cluster=local …` targets kind-local as in v1.
++
++**Kyverno is pinned.** Kyverno is **1.19.1**, chart **3.9.1**. The chart is unsigned, so its
++sha256 is pinned in `deploy/kyverno/chart.sha256`. Every image is pinned by digest in
++`deploy/kyverno/values.yaml`, after `cosign verify-attestation` showed SLSA provenance from
++slsa-github-generator for kyverno/kyverno at the v1.19.1 commit. The chart has no digest field,
++so the digest is part of the tag (`v1.19.1@sha256:…`), where it wins.
++
++**The spike: `ImageValidatingPolicy` v1 reads GitHub attestations.** `actions/attest` pushes
++Sigstore bundles as OCI referrers. An `intoto` attestation with a keyless GitHub identity verifies
++them on Sigstore's public-good roots, and `extractPayload()` returns the in-toto statement, with
++the predicate under `.predicate`. The spike results:
++
++- v0.2.0 and v0.3.0 were admitted;
++- the `edge` image was denied;
++- no cosign re-signing was needed, and no `ClusterPolicy` is used.
++
++Kyverno 1.19 already serves `policies.kyverno.io/v1`, so the policies use it, and 1.20 needs no
++`kyverno migrate`.
++
++**The policies** live in `deploy/policies/`. `base/` is the Deny set for `calendar-gates`, and
++`dev/` is a kustomize overlay that audits in `calendar-gates-dev`. They are cluster-scoped
++policies that select their namespace, so a tenant of the namespace can't edit or delete them.
++They check every container kind (init and ephemeral containers too), on `pods` and on
++`pods/ephemeralcontainers`, the subresource `kubectl debug` writes to. Kyverno's controllers get
++read access to that subresource in `deploy/kyverno/values.yaml`, or they report the policies as
++not ready.
++
++1. **`calendar-gates-images`** (`ValidatingPolicy`): every container image is
++   `ghcr.io/gergodrazsdik/calendar-gates…@sha256:…`.
++2. **`calendar-gates-release`** (`ImageValidatingPolicy`): two checks, both signed by
++   `release.yml` on a `v*` tag (keyless, issuer `token.actions.githubusercontent.com`):
++   - build provenance;
++   - a vulnerability scan with `counts.critical == 0` on every platform.
++
++   It also sets `mutateDigest`, so what runs is the digest that was verified.
++3. **`calendar-gates-llm-review`** (`ImageValidatingPolicy`): the LLM-review attestation is
++   present. It **audits in both namespaces** for now; once a few releases carry it, it moves to
++   Deny with a one-line change.
++
++**Proof on every release.** `release.yml`'s `admission-smoke` builds the same cluster, Kyverno
++and policies on the runner, then checks:
++
++- the just-published chart is admitted and runs the release digest;
++- `edge` and a foreign image are denied, each by the expected policy;
++- `calendar-gates-dev` admits `edge` and reports it as failing.
++
++`smoke`, which publishes the release, waits for it. `kyverno test` covers the one policy that needs
++no registry (`just lint-policies`, ci.yml).
++
++## Consequences
++
++- **Two layers, two thresholds.** CI fails a release on **high** vulnerabilities, and admission on
++  **critical**. The scan is a snapshot from release time. Admission re-reads it on every
++  deployment, but it never rescans: a CVE published after the release doesn't block it. The
++  admission threshold is therefore the backstop, not the main check.
++- **Kyverno pins tags to digests before validation.** An image referenced by tag passes rule 1 once
++  `calendar-gates-release` has resolved it to its verified digest. The rule's real job is to
++  restrict the repository, and the release chart pins the digest anyway.
++- **Verification is slow when cold.** A cold check fetches every attestation and the Sigstore
++  trust root, which took more than the 10 s webhook default. The image policies allow 30 s, the
++  maximum, and Kyverno caches results for an hour.
++- **Failure is closed.** The webhooks fail closed. When Kyverno is down, no pod starts in
++  `calendar-gates`, and a policy that can't be evaluated denies. The spike saw this: a wrong CEL
++  path denied the release instead of admitting it.
++- **Two clusters exhaust inotify.** The spike crashed a .NET pod on this machine: two kind clusters
++  plus Kyverno used up the per-user `fs.inotify.max_user_instances` limit of 128, and every .NET
++  config watcher takes one instance. The image now sets
++  `DOTNET_hostBuilder__reloadConfigOnChange=false`, since its config never changes. The machine
++  should also raise the limit to 512, as kind's known-issues page recommends; that's a setup-doc
++  change. `kind-local stop` while working here frees memory as well.
++- **kubectl skew:** kubectl 1.37 against the 1.35 node is outside kubectl's ±1-minor support. It
++  works for what the recipes do, and CI pins kubectl 1.35.8.
+diff --git a/docs/gates.md b/docs/gates.md
+index ee154af..9f4df35 100644
+--- a/docs/gates.md
++++ b/docs/gates.md
+@@ -22,7 +22,7 @@ is required too (see below).
+ | `image` | `just image` | Docker build fails | Build output in the job log | none |
+ | `http-tests` | `just image http-docker` | An `http/calendar.http` handler assertion fails against the built container | The **http test results** check run names the request; container logs are printed on failure | none |
+ | `grype` | `just image scan` | A **high** or **critical** vulnerability in the image | Update the package or base image (Dependabot `docker`/`nuget`) | `ignore:` entry in `.grype.yaml` with a reason and an expiry date, called out in the PR |
+-| `k8s-smoke` | `just k8s-load k8s-deploy k8s-http` (kind-local) | The chart does not install on a fresh kind cluster, a pod never becomes ready, or a `.http` test fails through the port-forward | The job summary lists pods, recent events (probe failures, image errors) and pod logs | none |
++| `k8s-smoke` | `just k8s-load`, `just k8s-deploy calendar-gates-dev`, `just k8s-http calendar-gates-dev` (or `just cluster=local k8s-load k8s-deploy k8s-http`) | The chart does not install on a fresh kind cluster, a pod never becomes ready, or a `.http` test fails through the port-forward | The job summary lists pods, recent events (probe failures, image errors) and pod logs | none |
+ | `llm / <check>` (`llm-review.yml`) | `just llm <check>` | A **blocking** check (`code-review`: high, `security-review`: medium) has a finding at or above its threshold, or fails closed on an error | Fix the finding, or argue it in the PR | Label `llm-override` **plus** a `/llm-override <reason>` comment by whoever added it (findings still reported, the override is recorded); thresholds in `tools/llm-gate/checks.yaml` |
+ | `llm-eval` (`llm-eval.yml`) | `just eval` | The PR changes a review prompt or `tools/llm-gate/` and scores worse than `evals/baseline.json` beyond `evals/thresholds.yaml` (recall, false blocks, flips, cost), or the eval doesn't finish within its budget | Fix the prompt or code; or, if the new scores are the intended trade-off, update the baseline in the same PR (`just eval-baseline`) and say why | `evals/thresholds.yaml` (changing it weakens the gate: say so) |
+ | `gates` | n/a | Any gate it needs did not succeed (failed, cancelled or skipped) | Fix that gate | none |
+@@ -134,9 +134,14 @@ tag `vX.Y.Z`. The workflow then:
+    its version tags (`X.Y.Z`, `X.Y`; nothing is rebuilt), pushes the Helm chart with the digest
+    pinned in `image.digest` to `oci://ghcr.io/gergodrazsdik/charts`, and drafts the GitHub Release
+    with the SBOM, the chart and an "LLM review" section listing any unreviewed or unverified PRs.
+-7. **smoke**: runs the digest, checks `/api/version` reports `X.Y.Z`, runs the contract tests, and
+-   only then publishes the release. A failed smoke leaves a draft; re-running the workflow
+-   refreshes it.
++7. **admission-smoke** ([ADR 0010](adr/0010-admission-control.md)): on a throwaway kind cluster,
++   installs Kyverno and the policies from `deploy/policies`. It checks that the published chart is
++   admitted in `calendar-gates` and runs the release digest. It checks that the `edge` image (no
++   release attestations) and a foreign image are denied, each by the policy that should deny them.
++   And it checks that `calendar-gates-dev` admits `edge` and reports it as a failure.
++8. **smoke**: runs the digest, checks `/api/version` reports `X.Y.Z`, runs the contract tests,
++   and only after that, and after `admission-smoke`, publishes the release. A failed smoke leaves
++   a draft; re-running the workflow refreshes it.
+ 
+ A failed scan leaves only the candidate tag: no version tags, no chart, no release.
+ 
+@@ -145,6 +150,23 @@ attestations, signed by `release.yml` for that tag, and prints the vulnerability
+ review gaps. Deploy it with `just k8s-deploy-release X.Y.Z`. Tags can't be moved or deleted
+ (`release-tags` ruleset), so a bad release is fixed with a new version.
+ 
++## Admission control (the project cluster)
++
++Kyverno 1.19.1 on `kind-calendar-gates` (`just k8s-up k8s-policy-up`,
++[ADR 0010](adr/0010-admission-control.md)) enforces three policies.
++
++| Policy | `calendar-gates` | `calendar-gates-dev` | Fails when |
++|---|---|---|---|
++| `calendar-gates-images` | Deny | Audit | An image isn't `ghcr.io/gergodrazsdik/calendar-gates` by digest |
++| `calendar-gates-release` | Deny | Audit | There's no build provenance or vulnerability scan signed by `release.yml` on a `v*` tag, or the scan lists a critical finding |
++| `calendar-gates-llm-review` | Audit | Audit | There's no LLM-review attestation (to become Deny after a few releases) |
++
++- **Fix a denial:** deploy a release (`just k8s-deploy-release X.Y.Z`). A local build goes to
++  `calendar-gates-dev` (`just k8s-deploy calendar-gates-dev`).
++- **See the findings:** `just k8s-policy-report [namespace]` lists the Audit findings.
++- **Test offline:** `just lint-policies` runs the policy tests that need no registry; it's part of
++  `just ci` and the `lint` job.
++
+ ## Hooks are not gates
+ 
+ lefthook (`just setup`) formats on commit, checks commit messages and runs tests before push. It is
+diff --git a/justfile b/justfile
+index 23783cd..0497bd0 100644
+--- a/justfile
++++ b/justfile
+@@ -5,6 +5,13 @@ image := "localhost/calendar-gates:dev"
+ chart := "deploy/helm/calendar-gates"
+ k8s_ns := "calendar-gates"
+ 
++# Kubernetes (docs/adr/0010-admission-control.md): the project's own kind cluster, with Kyverno, is
++# the default; `just cluster=local <recipe>` targets kind-local as in v1. The project cluster's
++# kubeconfig lives in the state dir, so ~/.kube/config is never touched.
++cluster := "calendar-gates"
++kube_context := "kind-" + cluster
++export KUBECONFIG := if cluster == "local" { env("KUBECONFIG", home_directory() / ".kube" / "config") } else { home_directory() / ".local" / "state" / "calendar-gates" / "kubeconfig" }
++
+ # List recipes
+ default:
+     @just --list
+@@ -132,42 +139,84 @@ llm check engine="":
+ llm-compare check:
+     just llm {{ check }} both
+ 
+-# Start the kind-local cluster, creating it if it does not exist yet
++# Start the cluster, creating it if needed: the project cluster (deploy/kind/cluster.yaml), or kind-local with cluster=local
+ [group('k8s')]
+ k8s-up:
+     #!/usr/bin/env bash
+     set -euo pipefail
+-    if kind-local status | grep -q 'not created'; then kind-local create; else kind-local start; fi
++    if [ "{{ cluster }}" = local ]; then
++        if kind-local status | grep -q 'not created'; then kind-local create; else kind-local start; fi
++        exit 0
++    fi
++    mkdir -p -m 700 "$(dirname "$KUBECONFIG")"
++    if kind get clusters 2> /dev/null | grep -qx "{{ cluster }}"; then
++        podman start "{{ cluster }}-control-plane" > /dev/null
++        echo "started {{ cluster }}"
++    else
++        kind create cluster --name "{{ cluster }}" --config deploy/kind/cluster.yaml --wait 120s
++    fi
++
++# Delete the project cluster (never kind-local) and everything in it
++[group('k8s')]
++[confirm('Delete the kind cluster calendar-gates and everything in it?')]
++k8s-cluster-down:
++    kind delete cluster --name calendar-gates
++
++# Install Kyverno (chart pinned by version and sha256, images by digest) and apply deploy/policies
++[group('k8s')]
++k8s-policy-up:
++    #!/usr/bin/env bash
++    set -euo pipefail
++    [ "{{ cluster }}" != local ] || { echo "admission control runs on the project cluster, not kind-local" >&2; exit 1; }
++    # deploy/kyverno/chart.sha256 pins the chart: its file name carries the version, its hash the bytes.
++    dir="$HOME/.cache/calendar-gates/kyverno"
++    file=$(awk '{print $2}' deploy/kyverno/chart.sha256)
++    version=${file#kyverno-}; version=${version%.tgz}
++    mkdir -p "$dir"
++    [ -f "$dir/$file" ] || helm pull kyverno --repo https://kyverno.github.io/kyverno/ --version "$version" -d "$dir"
++    (cd "$dir" && sha256sum -c --quiet) < deploy/kyverno/chart.sha256
++    helm upgrade --install kyverno "$dir/$file" --kube-context {{ kube_context }} -n kyverno --create-namespace \
++        -f deploy/kyverno/values.yaml --wait --timeout 5m
++    kubectl --context {{ kube_context }} apply -k deploy/policies
++    kubectl --context {{ kube_context }} get validatingpolicies,imagevalidatingpolicies
++
++# Policy results (Audit findings, passes) for a namespace
++[group('k8s')]
++k8s-policy-report ns=(k8s_ns + "-dev"):
++    kubectl --context {{ kube_context }} -n {{ ns }} get policyreports -o json \
++        | jq -r '.items[] | "\(.scope.kind)/\(.scope.name)" as $r | .results[]? | "\(.result)\t\(.policy)\t\($r)\t\(.message // "")"' \
++        | sort | column -t -s "$(printf '\t')"
+ 
+-# Build the image and load it into kind-local (kind can't see podman's images, so via an archive)
++# Build the image and load it into the cluster (kind can't see podman's images, so via an archive)
+ [group('k8s')]
+ k8s-load: image
+     mkdir -p reports
++    rm -f reports/calendar-gates.tar # podman save doesn't overwrite an archive
+     podman save -o reports/calendar-gates.tar {{ image }}
+-    kind load image-archive reports/calendar-gates.tar --name local
++    kind load image-archive reports/calendar-gates.tar --name {{ cluster }}
+ 
+-# Install or upgrade the chart on kind-local with the loaded :dev image; rolls back on failure
++# Install or upgrade the chart with the loaded :dev image; rolls back on failure. The policies deny it in calendar-gates: `just k8s-deploy calendar-gates-dev`
+ [group('k8s')]
+-k8s-deploy:
+-    helm upgrade --install calendar-gates {{ chart }} --kube-context kind-local \
+-        -n {{ k8s_ns }} --create-namespace -f {{ chart }}/values-kind.yaml \
++k8s-deploy ns=k8s_ns:
++    helm upgrade --install calendar-gates {{ chart }} --kube-context {{ kube_context }} \
++        -n {{ ns }} --create-namespace -f {{ chart }}/values-kind.yaml \
+         --set-string "podAnnotations.calendar-gates/image-id=$(podman image inspect --format '{{{{.Id}}' {{ image }} | cut -c1-12)" \
+         --reset-values --rollback-on-failure --timeout 2m
+ 
+-# Deploy a published release to kind-local: chart and image from GHCR (after `just release`)
++# Deploy a published release: chart and image from GHCR (after `just release`)
+ [group('k8s')]
+-k8s-deploy-release version:
++k8s-deploy-release version ns=k8s_ns:
+     @# --reset-values: without it, an upgrade with no values reuses the previous release's.
+     helm upgrade --install calendar-gates oci://ghcr.io/gergodrazsdik/charts/calendar-gates \
+-        --version {{ version }} --kube-context kind-local -n {{ k8s_ns }} --create-namespace \
++        --version {{ version }} --kube-context {{ kube_context }} -n {{ ns }} --create-namespace \
+         --reset-values --rollback-on-failure --timeout 3m
+ 
+-# HTTP contract tests against kind-local through a port-forward (localhost:18080)
++# HTTP contract tests through a port-forward (localhost:18080)
+ [group('k8s')]
+-k8s-http:
++k8s-http ns=k8s_ns:
+     #!/usr/bin/env bash
+     set -euo pipefail
+-    kubectl --context kind-local -n {{ k8s_ns }} port-forward svc/calendar-gates 18080:80 >/dev/null &
++    kubectl --context {{ kube_context }} -n {{ ns }} port-forward svc/calendar-gates 18080:80 >/dev/null &
+     forward=$!
+     trap 'kill $forward' EXIT
+     scripts/wait-for-health.sh http://localhost:18080/health 30
+@@ -175,21 +224,21 @@ k8s-http:
+ 
+ # Pods, services and recent events of the deployment
+ [group('k8s')]
+-k8s-status:
+-    kubectl --context kind-local -n {{ k8s_ns }} get all,ingress
+-    kubectl --context kind-local -n {{ k8s_ns }} get events --sort-by=.lastTimestamp | tail -n 10
++k8s-status ns=k8s_ns:
++    kubectl --context {{ kube_context }} -n {{ ns }} get all,ingress
++    kubectl --context {{ kube_context }} -n {{ ns }} get events --sort-by=.lastTimestamp | tail -n 10
+ 
+ # Follow the logs of all pods
+ [group('k8s')]
+-k8s-logs:
+-    stern --context kind-local -n {{ k8s_ns }} calendar-gates
++k8s-logs ns=k8s_ns:
++    stern --context {{ kube_context }} -n {{ ns }} calendar-gates
+ 
+-# Remove the release and its namespace from kind-local
++# Remove the release and its namespace
+ [group('k8s')]
+-[confirm('Uninstall calendar-gates and delete its namespace on kind-local?')]
+-k8s-down:
+-    helm uninstall calendar-gates --kube-context kind-local -n {{ k8s_ns }} --ignore-not-found
+-    kubectl --context kind-local delete namespace {{ k8s_ns }} --ignore-not-found
++[confirm('Uninstall calendar-gates and delete its namespace?')]
++k8s-down ns=k8s_ns:
++    helm uninstall calendar-gates --kube-context {{ kube_context }} -n {{ ns }} --ignore-not-found
++    kubectl --context {{ kube_context }} delete namespace {{ ns }} --ignore-not-found
+ 
+ # The chart part of the lint gate: helm lint and the rendered manifests against the Kubernetes schemas
+ [group('format')]
+@@ -206,6 +255,17 @@ lint-chart:
+         --set image.digest=sha256:0000000000000000000000000000000000000000000000000000000000000000 \
+         | kubeconform -strict -summary -kubernetes-version 1.37.0 -
+ 
++# The admission policies: both kustomize layers render, and the offline kyverno tests pass (the image verification itself runs in release.yml's admission-smoke)
++[group('format')]
++lint-policies:
++    #!/usr/bin/env bash
++    set -euo pipefail
++    want=1.19.1 # as deploy/kyverno and ci.yml's kyverno-cli image
++    got=$(kyverno version 2> /dev/null | awk '/^Version:/ {print $2}')
++    [ "$got" = "$want" ] || { echo "kyverno CLI $want needed, found ${got:-none}" >&2; exit 1; }
++    kubectl --context {{ kube_context }} kustomize deploy/policies > /dev/null
++    kyverno test deploy/policies/tests --remove-color
++
+ # Tag main as vX.Y.Z (signed) and push the tag; release.yml then waits for your approval
+ [group('release')]
+ [confirm('Create and push the signed release tag?')]
+@@ -266,7 +326,7 @@ verify-release version:
+ 
+ # Local equivalent of the deterministic CI gates; run before calling a change done
+ [group('test')]
+-ci: fmt-check lint lint-chart build test
++ci: fmt-check lint lint-chart lint-policies build test
+ 
+ # Build the solution (warnings are errors)
+ [group('dev')]

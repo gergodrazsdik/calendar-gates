@@ -1,0 +1,11 @@
+---
+id: fp-tr-835a
+kind: fp-regression
+checks: [test-review]
+source: 'false positive tr-835a on PR #53 (f797231)'
+description: 'Must not report again: admission-smoke uses $IMAGE, which the job never defines (IMAGE is
+  set in the workflow-level env)'
+base: f53304dab50c08b61f8f3905d46f3563b2034a62
+forbid:
+  - {file: .github/workflows/release.yml, title: \$IMAGE}
+expect: []
