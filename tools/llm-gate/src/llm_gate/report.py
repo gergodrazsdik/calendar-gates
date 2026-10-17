@@ -75,6 +75,15 @@ def render_markdown(record: RunRecord) -> str:
         "",
         f"_{record.reason}_",
     ]
+    if record.omitted:
+        # Say what the review never saw, every time, so a trimmed diff is never a silent one.
+        lines += [
+            "",
+            f"**Not reviewed** ({len(record.omitted)} file(s) over the check's size cap "
+            "for a single file):",
+            "",
+            *(f"- `{_cell(o.path)}` ({o.bytes // 1024} KB)" for o in record.omitted),
+        ]
     if record.result is None:
         return "\n".join(lines) + "\n"
 

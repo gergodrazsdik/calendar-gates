@@ -417,8 +417,13 @@ def run_eval(
     no new case starts once it is used up (cases already running finish)."""
     load_prompt(check.prompt_path)  # fail early on a missing prompt
     selected = [loaded for loaded in cases if check.name in loaded.case.checks]
-    # Evals measure the prompt, not the size cap: a case is never "too large".
-    review_check = replace(check, max_diff_kb=max(check.max_diff_kb, 1024))
+    # Evals measure the prompt, not the size caps: a case is never "too large", and no file in a
+    # case is ever trimmed out of it.
+    review_check = replace(
+        check,
+        max_diff_kb=max(check.max_diff_kb, 1024),
+        max_file_kb=max(check.max_file_kb, 1024),
+    )
     lock = threading.Lock()
     total = 0.0
 

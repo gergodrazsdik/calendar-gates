@@ -380,6 +380,11 @@ def test_only_checks_from_the_default_branch_are_collected(tmp_path: Path) -> No
         ({"verdict": "pass", "exit_code": 1}, "verdict pass with exit code 1"),
         ({"verdict": "fail", "exit_code": 0}, "verdict fail with exit code 0"),
         ({"verdict": "pass", "exit_code": 0, "override_honoured": True}, "override_honoured"),
+        # Blocking checks fail closed, so a passing error needs an honoured override (ADR 0002).
+        (
+            {"verdict": "error", "exit_code": 0, "blocking": True},
+            "a blocking check reports error with exit code 0 and no override",
+        ),
     ],
 )
 def test_verdict_and_exit_code_must_agree(
@@ -390,6 +395,26 @@ def test_verdict_and_exit_code_must_agree(
     ((info, lines),) = collect(tmp_path, jobs={"llm / code-review": conclusion})
     assert info.tamper is True
     assert any(problem in p for p in lines[0]["problems"]), lines[0]["problems"]
+
+
+def test_an_oversized_diff_accepted_by_override_is_a_valid_record(tmp_path: Path) -> None:
+    """verdict `error` with exit 0 is how an accepted-unreviewed diff is recorded (ADR 0002)."""
+    record = gate_run(
+        verdict="error",
+        exit_code=0,
+        blocking=True,
+        override_honoured=True,
+        error="diff too large: 488 KB > max_diff_kb 200 (accepted unreviewed by override)",
+        omitted_files=[{"path": "src/Api/Generated.pb.cs", "bytes": 300_000}],
+    )
+    artifact(tmp_path, "audit-100-1-code-review", audit.dumps(record))
+
+    trusted = audit.OverrideRequest(by="maintainer", reason="generated migration")
+    ((info, lines),) = collect(tmp_path, jobs={"llm / code-review": "success"}, override=trusted)
+
+    assert info.tamper is False
+    assert lines[0]["override_honoured"] is True
+    assert lines[0]["omitted_files"] == [{"path": "src/Api/Generated.pb.cs", "bytes": 300000}]
 
 
 def test_too_many_artifacts_are_one_tamper_event(tmp_path: Path) -> None:

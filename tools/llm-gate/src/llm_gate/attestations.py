@@ -25,6 +25,18 @@ SEVERITIES = ("critical", "high", "medium", "low", "negligible", "unknown")
 NOT_REVIEWED = frozenset({"skipped_no_key", "error"})
 
 
+def _check_state(run: Mapping[str, Any]) -> str:
+    """How a check ended, for the attestation: an override says a human accepted it, and a
+    partial review says files over `max_file_kb` were never seen (ADR 0002)."""
+    verdict = str(run.get("verdict"))
+    if run.get("override_honoured"):
+        verdict = f"{verdict} (overridden)"
+    omitted = run.get("omitted_files") or []
+    if omitted:
+        verdict = f"{verdict}, partial ({len(omitted)} file(s) omitted)"
+    return verdict
+
+
 # --- vuln-scan ---------------------------------------------------------------------------------
 
 
@@ -162,10 +174,7 @@ def llm_review(
             "risk": (triage or {}).get("final_risk")
             or next((r.get("risk") for r in latest.values() if r.get("risk")), None),
             "ai_assisted": (triage or {}).get("ai_assisted"),
-            "checks": {
-                check: "overridden" if run.get("override_honoured") else run.get("verdict")
-                for check, run in sorted(latest.items())
-            },
+            "checks": {check: _check_state(run) for check, run in sorted(latest.items())},
             "overrides": overrides,
         }
         prs.append(entry)
@@ -180,9 +189,10 @@ def llm_review(
             unreviewed.append({"number": number, "reason": reason})
         else:
             skipped = sorted(
-                f"{check}: {run.get('verdict')}"
+                f"{check}: {_check_state(run)}"
                 for check, run in latest.items()
-                if run.get("blocking") and run.get("verdict") in NOT_REVIEWED
+                if run.get("blocking")
+                and (run.get("verdict") in NOT_REVIEWED or run.get("omitted_files"))
             )
             if skipped:
                 unreviewed.append({"number": number, "reason": ", ".join(skipped)})

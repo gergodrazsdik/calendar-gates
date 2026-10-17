@@ -50,6 +50,7 @@ MAX_RECORDS = 20
 MAX_ARTIFACTS = 20  # one per check; checks.yaml has six
 MAX_TOOL_CALLS = 200
 MAX_FINDINGS = 100
+MAX_OMITTED = 100
 
 # --- schema ---------------------------------------------------------------------------------
 
@@ -98,6 +99,13 @@ class _Record(RunContext):
     ts: AwareDatetime = Field(default_factory=_now)
 
 
+class OmittedAudit(_Strict):
+    """A file the review never saw: its own diff was over the check's `max_file_kb`."""
+
+    path: Text
+    bytes: Count
+
+
 class AuditFinding(_Strict):
     """A finding as the log keeps it: the model wrote these strings, so they are scrubbed."""
 
@@ -137,8 +145,11 @@ class GateRun(_Record):
     prompt_sha256: Digest
     config_sha256: Digest
     gate_sha: Sha | None  # the commit the gate tooling ran from (the PR's base in CI)
-    diff_sha256: Digest | None
+    diff_sha256: Digest | None  # of the reviewed diff, after omitted_files were dropped
     diff_bytes: Count
+    # Files over the check's max_file_kb, left out of the review (ADR 0002); the attestation
+    # reports a blocking check that omitted any of them as a partial review.
+    omitted_files: list[OmittedAudit] = Field(default_factory=list, max_length=MAX_OMITTED)
     risk: Risk | None = None  # the PR's triage risk (ADR 0008); None without triage
     blocking: bool
     cache_hit: bool
@@ -422,9 +433,12 @@ def gate_run(
                 result.review.findings if result else [], key=lambda f: -f.severity.rank
             )[:MAX_FINDINGS]
         ],
+        omitted_files=[
+            OmittedAudit(path=o.path, bytes=o.bytes) for o in record.omitted[:MAX_OMITTED]
+        ],
         verdict=_VERDICTS[verdict],
         exit_code=record.exit_code,
-        override_honoured=verdict is Verdict.OVERRIDDEN,
+        override_honoured=record.override_honoured,
         error=record.reason if verdict is Verdict.ERROR else None,
     )
 
@@ -680,10 +694,17 @@ def _record_problems(record: AuditRecord, expected: Expected, check: str | None)
             problems.append("sets fields only the collector may set")
         exits = VERDICT_EXITS[record.verdict]
         if record.override_honoured:
-            exits = frozenset({0}) if record.verdict == "fail" else frozenset()
+            # An override covers blocking findings, or a diff too large to review; both pass with
+            # the reason on record (ADR 0002). No other verdict can carry one.
+            exits = frozenset({0}) if record.verdict in ("fail", "error") else frozenset()
         if record.exit_code not in exits:
             override = " with override_honoured" if record.override_honoured else ""
             problems.append(f"verdict {record.verdict}{override} with exit code {record.exit_code}")
+        # Blocking checks fail closed (ADR 0002), so a passing error needs an honoured override.
+        # A blocking check configured `on_error: pass` would have to be allowed for here.
+        passing_error = record.verdict == "error" and record.exit_code == 0
+        if record.blocking and passing_error and not record.override_honoured:
+            problems.append("a blocking check reports error with exit code 0 and no override")
         prefix = f"{finding_prefix(record.check)}-"
         if any(not f.id.startswith(prefix) for f in record.findings):
             problems.append(f"finding ids not of the form {prefix}xxxx")

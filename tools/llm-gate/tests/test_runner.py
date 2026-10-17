@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import cast
 
 import pytest
 from conftest import FakeEngine, Repo, finding, git, result
@@ -43,6 +44,10 @@ def run(engines: dict[str, FakeEngine], *args: str) -> int:
 def audit_lines(repo: Repo) -> list[dict[str, object]]:
     path = repo.root / ".llm-gate" / "audit.jsonl"
     return [json.loads(line) for line in path.read_text().splitlines()]
+
+
+def omitted_paths(omitted: object) -> list[str]:
+    return [str(o["path"]) for o in cast("list[dict[str, object]]", omitted)]
 
 
 def record(repo: Repo, check: str, engine: str) -> dict[str, object]:
@@ -429,3 +434,57 @@ def test_a_record_that_cannot_be_built_does_not_change_the_verdict(
     assert "audit record not written" in caplog.text
     assert not (gate.root / ".llm-gate" / "audit.jsonl").exists()
     assert record(gate, "code-review", "api")["verdict"] == "fail"
+
+
+def test_a_file_over_max_file_kb_is_left_out_and_named(gate: Repo) -> None:
+    change(gate, "src/Api/Domain/Small.cs", "class Small {}\n")
+    # Over the default max_file_kb (64), while the rest of the diff stays under max_diff_kb.
+    change(gate, "src/Api/Domain/Generated.pb.cs", "x = 1;\n" * 10000)
+    api = FakeEngine("api")
+
+    assert run({"api": api}, "--check", "code-review") == 0
+
+    reviewed = api.requests[0].diff.text
+    assert "class Small {}" in reviewed
+    assert "Generated.pb.cs" not in reviewed
+    data = record(gate, "code-review", "api")
+    assert omitted_paths(data["omitted"]) == ["src/Api/Domain/Generated.pb.cs"]
+    assert data["verdict"] == "pass"
+    gate_run = audit_lines(gate)[0]
+    assert omitted_paths(gate_run["omitted_files"]) == ["src/Api/Domain/Generated.pb.cs"]
+
+
+def test_an_oversized_diff_is_accepted_unreviewed_with_an_override(
+    gate: Repo, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # One file, over both caps, so trimming cannot bring the diff under max_diff_kb.
+    change(gate, text="x" * 2048)
+    monkeypatch.setenv("LLM_GATE_OVERRIDE", "true")
+    monkeypatch.setenv("LLM_GATE_OVERRIDE_REASON", "generated migration, reviewed by hand")
+    monkeypatch.setenv("LLM_GATE_OVERRIDE_BY", "maintainer")
+    api = FakeEngine("api")
+
+    assert run({"api": api}, "--check", "code-review") == 0
+
+    assert api.requests == []  # no tokens spent on a diff nobody reviewed
+    assert "accepted unreviewed by override" in capsys.readouterr().out
+    gate_run, override = audit_lines(gate)
+    assert gate_run["verdict"] == "error"  # the record never claims a review happened
+    assert gate_run["override_honoured"] is True
+    assert override["reason"] == "generated migration, reviewed by hand"
+
+
+def test_an_engine_failure_still_fails_closed_with_an_override(
+    gate: Repo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    change(gate)
+    monkeypatch.setenv("LLM_GATE_OVERRIDE", "true")
+    monkeypatch.setenv("LLM_GATE_OVERRIDE_REASON", "please just merge it")
+    monkeypatch.setenv("LLM_GATE_OVERRIDE_BY", "maintainer")
+    api = FakeEngine("api", EngineError("API down"))
+
+    assert run({"api": api}, "--check", "code-review") == 2
+
+    gate_run = audit_lines(gate)[0]
+    assert gate_run["verdict"] == "error"
+    assert gate_run["override_honoured"] is False

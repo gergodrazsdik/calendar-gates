@@ -33,6 +33,7 @@ class _Defaults(BaseModel):
     engine: EngineName = "api"
     model: str
     max_diff_kb: int = 200
+    max_file_kb: int = 64
     budget_usd: float = 0.50
     max_turns: int = 30
     on_error: OnError = "fail"
@@ -47,6 +48,7 @@ class _CheckSpec(BaseModel):
     model: str | None = None
     paths: list[str] | None = None
     max_diff_kb: int | None = None
+    max_file_kb: int | None = None
     budget_usd: float | None = None
     max_turns: int | None = None
     on_error: OnError | None = None
@@ -132,6 +134,7 @@ class Check:
     model: str
     paths: tuple[str, ...] | None
     max_diff_kb: int
+    max_file_kb: int  # a single file's diff over this is left out of the review (ADR 0002)
     budget_usd: float
     max_turns: int
     on_error: OnError
@@ -250,6 +253,7 @@ def load_gate_config(
             model=spec.model or d.model,
             paths=tuple(spec.paths) if spec.paths else None,
             max_diff_kb=spec.max_diff_kb or d.max_diff_kb,
+            max_file_kb=spec.max_file_kb or d.max_file_kb,
             budget_usd=spec.budget_usd or d.budget_usd,
             max_turns=spec.max_turns or d.max_turns,
             on_error=spec.on_error or d.on_error,
