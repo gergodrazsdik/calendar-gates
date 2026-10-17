@@ -44,13 +44,18 @@ spec:
         type: https://github.com/gergodrazsdik/calendar-gates/attestations/vuln-scan/v1
   # extractPayload() returns the in-toto statement of a GitHub attestation, so the predicate is under
   # .predicate.
+  # Every container kind, not only spec.containers: an unattested image must not slip in as an init
+  # or ephemeral container.
+  variables:
+    - name: allImages
+      expression: images.containers + images.initContainers + images.ephemeralContainers
   validations:
     - expression: >-
-        images.containers.map(image,
+        variables.allImages.map(image,
           verifyAttestationSignatures(image, attestations.provenance, [attestors.release])).all(e, e > 0)
       message: the image has no build provenance signed by release.yml on a release tag
     - expression: >-
-        images.containers.map(image,
+        variables.allImages.map(image,
           verifyAttestationSignatures(image, attestations.vulnscan, [attestors.release]) > 0
           && extractPayload(image, attestations.vulnscan).predicate.results.all(r, r.counts.critical == 0)
         ).all(e, e)

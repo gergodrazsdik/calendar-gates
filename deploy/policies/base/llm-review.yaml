@@ -34,8 +34,13 @@ spec:
     - name: llmreview
       intoto:
         type: https://github.com/gergodrazsdik/calendar-gates/attestations/llm-review/v1
+  # Every container kind, not only spec.containers: an unattested image must not slip in as an init
+  # or ephemeral container.
+  variables:
+    - name: allImages
+      expression: images.containers + images.initContainers + images.ephemeralContainers
   validations:
     - expression: >-
-        images.containers.map(image,
+        variables.allImages.map(image,
           verifyAttestationSignatures(image, attestations.llmreview, [attestors.release])).all(e, e > 0)
       message: the image has no LLM-review attestation signed by release.yml on a release tag

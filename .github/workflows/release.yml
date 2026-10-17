@@ -440,6 +440,21 @@ jobs:
           }
           refused edge "$IMAGE:edge" calendar-gates-release
           refused foreign "$FOREIGN" calendar-gates-images
+          # An unattested image hidden in an init container, next to the attested release.
+          if out=$(kubectl create --dry-run=server -f - 2>&1 <<EOF
+          apiVersion: v1
+          kind: Pod
+          metadata: {name: init-edge, namespace: calendar-gates}
+          spec:
+            initContainers: [{name: sneak, image: "$IMAGE:edge"}]
+            containers: [{name: app, image: "$IMAGE@$DIGEST"}]
+          EOF
+          ); then
+            echo "::error::an edge init container was admitted in calendar-gates"; exit 1
+          fi
+          echo "$out"
+          grep -q "Policy calendar-gates-release failed" <<< "$out" \
+            || { echo "::error::the edge init container was not refused by calendar-gates-release"; exit 1; }
       - name: calendar-gates-dev admits edge and reports it
         run: |
           kubectl -n calendar-gates-dev run edge --image="$IMAGE:edge" --restart=Never
