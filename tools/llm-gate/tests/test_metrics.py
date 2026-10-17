@@ -106,7 +106,8 @@ def test_the_latest_feedback_on_a_finding_wins_by_time() -> None:
     )
     assert marked.fp_by_check == {"code-review": (1, 0, 1)}
 
-    # A record without a usable ts counts as the oldest: any dated verdict wins over it.
+    # A record without a usable ts is outside every reporting window (compute() keeps dated records
+    # only), so it never counts, whatever it says.
     undated = compute(
         [
             run(1, findings=findings),
@@ -131,6 +132,41 @@ def test_overrides_turnaround_and_cost() -> None:
     assert report.turnaround["code-review"] == (120.0, 120.0, 3)
     assert report.cost_total == 0.10
     assert report.cost_by_engine == {"agent / claude-sonnet-5-5": 0.10}
+
+
+def test_ai_assisted_prs_are_compared_with_the_rest() -> None:
+    def triaged(pr_number: int, ai: bool) -> dict[str, Any]:
+        return {
+            "type": "triage",
+            "pr": pr_number,
+            "ts": "2026-10-16T10:00:00Z",
+            "final_risk": "medium",
+            "ai_assisted": ai,
+        }
+
+    records = [
+        run(
+            1,
+            findings=[{"id": "cr-0001", "severity": "high"}, {"id": "cr-0002", "severity": "low"}],
+        ),
+        run(2, findings=[{"id": "cr-0003", "severity": "low"}]),
+        run(3, findings=[{"id": "cr-0004", "severity": "low"}]),  # not triaged: left out
+        triaged(1, True),
+        triaged(2, False),
+        {
+            "type": "feedback",
+            "ts": "2026-10-16T11:00:00Z",
+            "pr": 1,
+            "finding_id": "cr-0001",
+            "kind": "fp",
+        },
+    ]
+    report = compute(records, [pr(1), pr(2), pr(3)])
+
+    assert report.ai_comparison == {"AI-assisted": (1, 2, 1), "not AI-assisted": (1, 1, 0)}
+    text = metrics.render(report, generated=datetime(2026, 10, 20, tzinfo=UTC))
+    assert "| AI-assisted | 1 | 2.0 | 50% |" in text
+    assert "| not AI-assisted | 1 | 1.0 | 0% |" in text
 
 
 def test_triage_and_integrity_counts() -> None:
