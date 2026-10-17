@@ -69,7 +69,7 @@ is required too (see below).
     To change the risk, comment `/llm-risk <level> <reason>`.
 
   The level decides which checks review and which block. At `low`, only code-review and docs-drift
-  review, and both are advisory. At `high`, the blocking checks use the agent engine and the strong
+  review, and both are advisory. At `high`, the blocking checks use the agent engine, with their usual
   model. A check the level doesn't need still reports success with "not needed at risk: <level>",
   so required checks never go missing. The job summary shows why the PR got its level.
 - **api-contract** runs when a PR touches `Endpoints/`, `Domain/`, `Program.cs` or `http/`. The JSON

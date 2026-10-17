@@ -64,5 +64,7 @@ triage:
     high:
       run: all
       blocking: [code-review, security-review]
-      engine: agent # for the blocking checks; advisory ones keep their own
-      model: "${LLM_MODEL_STRONG:-claude-opus-5-5}"
+      # The blocking checks move to the agent engine (it reads the surrounding code) and keep their
+      # own model; advisory checks keep both. Opus was measured on 2026-10-17 and was no better
+      # than Sonnet here, at 3-4x the cost (ADR 0008, docs/WRITEUP.md).
+      engine: agent

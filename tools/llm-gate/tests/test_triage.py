@@ -219,7 +219,7 @@ def test_the_plan_per_level(real: GateConfig, tc: TriageConfig) -> None:
     high = triage.plan_for("high", tc, real.checks)
     assert all(high.values())
     cr, docs = high["code-review"], high["docs-drift"]
-    assert cr is not None and (cr.engine, cr.model) == ("agent", "claude-opus-5-5")
+    assert cr is not None and (cr.engine, cr.model) == ("agent", "claude-sonnet-5-5")
     assert docs is not None and docs.model == "claude-haiku-5-5"  # advisory: unchanged
 
 
