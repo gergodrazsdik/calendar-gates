@@ -106,6 +106,18 @@ def test_the_latest_feedback_on_a_finding_wins_by_time() -> None:
     )
     assert marked.fp_by_check == {"code-review": (1, 0, 1)}
 
+    # A record without a usable ts counts as the oldest: any dated verdict wins over it.
+    undated = compute(
+        [
+            run(1, findings=findings),
+            feedback("ack", "2026-10-16T09:00:00Z"),
+            feedback("fp", ""),
+            feedback("fp", "not a time"),
+        ],
+        [pr(1)],
+    )
+    assert undated.fp_by_check == {"code-review": (0, 1, 1)}
+
 
 def test_overrides_turnaround_and_cost() -> None:
     records = [
