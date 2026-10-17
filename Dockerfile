@@ -30,6 +30,9 @@ LABEL org.opencontainers.image.title="calendar-gates" \
       org.opencontainers.image.source="https://github.com/gergodrazsdik/calendar-gates"
 WORKDIR /app
 COPY --from=build /app ./
+# The image's appsettings never change, so don't watch them: each watcher takes an inotify
+# instance, and a host running several kind clusters runs out (docs/adr/0010-admission-control.md).
+ENV DOTNET_hostBuilder__reloadConfigOnChange=false
 USER app
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "CalendarGates.Api.dll"]

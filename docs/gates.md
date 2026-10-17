@@ -22,7 +22,7 @@ is required too (see below).
 | `image` | `just image` | Docker build fails | Build output in the job log | none |
 | `http-tests` | `just image http-docker` | An `http/calendar.http` handler assertion fails against the built container | The **http test results** check run names the request; container logs are printed on failure | none |
 | `grype` | `just image scan` | A **high** or **critical** vulnerability in the image | Update the package or base image (Dependabot `docker`/`nuget`) | `ignore:` entry in `.grype.yaml` with a reason and an expiry date, called out in the PR |
-| `k8s-smoke` | `just k8s-load k8s-deploy k8s-http` (kind-local) | The chart does not install on a fresh kind cluster, a pod never becomes ready, or a `.http` test fails through the port-forward | The job summary lists pods, recent events (probe failures, image errors) and pod logs | none |
+| `k8s-smoke` | `just k8s-load`, `just k8s-deploy calendar-gates-dev`, `just k8s-http calendar-gates-dev` (or `just cluster=local k8s-load k8s-deploy k8s-http`) | The chart does not install on a fresh kind cluster, a pod never becomes ready, or a `.http` test fails through the port-forward | The job summary lists pods, recent events (probe failures, image errors) and pod logs | none |
 | `llm / <check>` (`llm-review.yml`) | `just llm <check>` | A **blocking** check (`code-review`: high, `security-review`: medium) has a finding at or above its threshold, or fails closed on an error | Fix the finding, or argue it in the PR | Label `llm-override` **plus** a `/llm-override <reason>` comment by whoever added it (findings still reported, the override is recorded); thresholds in `tools/llm-gate/checks.yaml` |
 | `llm-eval` (`llm-eval.yml`) | `just eval` | The PR changes a review prompt or `tools/llm-gate/` and scores worse than `evals/baseline.json` beyond `evals/thresholds.yaml` (recall, false blocks, flips, cost), or the eval doesn't finish within its budget | Fix the prompt or code; or, if the new scores are the intended trade-off, update the baseline in the same PR (`just eval-baseline`) and say why | `evals/thresholds.yaml` (changing it weakens the gate: say so) |
 | `gates` | n/a | Any gate it needs did not succeed (failed, cancelled or skipped) | Fix that gate | none |
@@ -134,9 +134,14 @@ tag `vX.Y.Z`. The workflow then:
    its version tags (`X.Y.Z`, `X.Y`; nothing is rebuilt), pushes the Helm chart with the digest
    pinned in `image.digest` to `oci://ghcr.io/gergodrazsdik/charts`, and drafts the GitHub Release
    with the SBOM, the chart and an "LLM review" section listing any unreviewed or unverified PRs.
-7. **smoke**: runs the digest, checks `/api/version` reports `X.Y.Z`, runs the contract tests, and
-   only then publishes the release. A failed smoke leaves a draft; re-running the workflow
-   refreshes it.
+7. **admission-smoke** ([ADR 0010](adr/0010-admission-control.md)): on a throwaway kind cluster,
+   installs Kyverno and the policies from `deploy/policies`. It checks that the published chart is
+   admitted in `calendar-gates` and runs the release digest. It checks that the `edge` image (no
+   release attestations) and a foreign image are denied, each by the policy that should deny them.
+   And it checks that `calendar-gates-dev` admits `edge` and reports it as a failure.
+8. **smoke**: runs the digest, checks `/api/version` reports `X.Y.Z`, runs the contract tests,
+   and only after that, and after `admission-smoke`, publishes the release. A failed smoke leaves
+   a draft; re-running the workflow refreshes it.
 
 A failed scan leaves only the candidate tag: no version tags, no chart, no release.
 
@@ -144,6 +149,23 @@ Check the supply chain afterwards with `just verify-release X.Y.Z`: it verifies 
 attestations, signed by `release.yml` for that tag, and prints the vulnerability counts and the
 review gaps. Deploy it with `just k8s-deploy-release X.Y.Z`. Tags can't be moved or deleted
 (`release-tags` ruleset), so a bad release is fixed with a new version.
+
+## Admission control (the project cluster)
+
+Kyverno 1.19.1 on `kind-calendar-gates` (`just k8s-up k8s-policy-up`,
+[ADR 0010](adr/0010-admission-control.md)) enforces three policies.
+
+| Policy | `calendar-gates` | `calendar-gates-dev` | Fails when |
+|---|---|---|---|
+| `calendar-gates-images` | Deny | Audit | An image isn't `ghcr.io/gergodrazsdik/calendar-gates` by digest |
+| `calendar-gates-release` | Deny | Audit | There's no build provenance or vulnerability scan signed by `release.yml` on a `v*` tag, or the scan lists a critical finding |
+| `calendar-gates-llm-review` | Audit | Audit | There's no LLM-review attestation (to become Deny after a few releases) |
+
+- **Fix a denial:** deploy a release (`just k8s-deploy-release X.Y.Z`). A local build goes to
+  `calendar-gates-dev` (`just k8s-deploy calendar-gates-dev`).
+- **See the findings:** `just k8s-policy-report [namespace]` lists the Audit findings.
+- **Test offline:** `just lint-policies` runs the policy tests that need no registry; it's part of
+  `just ci` and the `lint` job.
 
 ## Hooks are not gates
 

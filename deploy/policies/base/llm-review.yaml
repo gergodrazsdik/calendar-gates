@@ -1,0 +1,41 @@
+# The release's LLM-review attestation (ADR 0009) must be there. Audit for now; switch to Deny
+# after a few releases have carried it (docs/adr/0010-admission-control.md).
+apiVersion: policies.kyverno.io/v1
+kind: ImageValidatingPolicy
+metadata:
+  name: calendar-gates-llm-review
+spec:
+  validationActions: [Audit]
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: calendar-gates
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  # A cold check fetches every attestation and the Sigstore trust root; 10 s (the default) isn't
+  # always enough. Results are cached for an hour.
+  webhookConfiguration:
+    timeoutSeconds: 30
+  matchImageReferences:
+    - glob: "ghcr.io/gergodrazsdik/calendar-gates*"
+  attestors:
+    - name: release
+      cosign:
+        keyless:
+          identities:
+            - issuer: https://token.actions.githubusercontent.com
+              # A regex can't be wrapped safely.
+              # yamllint disable-line rule:line-length
+              subjectRegExp: '^https://github\.com/gergodrazsdik/calendar-gates/\.github/workflows/release\.yml@refs/tags/v[0-9].*$'
+  attestations:
+    - name: llmreview
+      intoto:
+        type: https://github.com/gergodrazsdik/calendar-gates/attestations/llm-review/v1
+  validations:
+    - expression: >-
+        images.containers.map(image,
+          verifyAttestationSignatures(image, attestations.llmreview, [attestors.release])).all(e, e > 0)
+      message: the image has no LLM-review attestation signed by release.yml on a release tag

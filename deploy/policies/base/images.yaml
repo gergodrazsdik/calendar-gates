@@ -1,0 +1,33 @@
+# Admission control for the `calendar-gates` namespace (docs/adr/0010-admission-control.md).
+# Only this project's images, referenced by digest. Kyverno's image policies rewrite verified tags
+# to digests before validation, so the check applies to what actually runs.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: calendar-gates-images
+spec:
+  validationActions: [Deny]
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: calendar-gates
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  variables:
+    - name: images
+      expression: >-
+        object.spec.containers.map(c, c.image)
+        + (has(object.spec.initContainers) ? object.spec.initContainers.map(c, c.image) : [])
+        + (has(object.spec.ephemeralContainers) ? object.spec.ephemeralContainers.map(c, c.image) : [])
+    - name: pinned
+      expression: >-
+        variables.images.filter(i,
+          !i.matches('^ghcr\\.io/gergodrazsdik/calendar-gates(:[^@/]+)?@sha256:[0-9a-f]{64}$'))
+  validations:
+    - expression: size(variables.pinned) == 0
+      messageExpression: >-
+        'only ghcr.io/gergodrazsdik/calendar-gates images by digest may run here, not: '
+        + variables.pinned.join(', ')

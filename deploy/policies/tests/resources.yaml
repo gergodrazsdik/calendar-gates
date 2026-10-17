@@ -1,0 +1,55 @@
+# Pods for kyverno test (kyverno-test.yaml): what calendar-gates-images admits and refuses.
+# Image references with a digest are longer than the line limit and can't be wrapped.
+# yamllint disable rule:line-length
+apiVersion: v1
+kind: Pod
+metadata:
+  name: release-by-digest
+  namespace: calendar-gates
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: release-tag-and-digest
+  namespace: calendar-gates
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/gergodrazsdik/calendar-gates:0.3.0@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: release-by-tag
+  namespace: calendar-gates
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/gergodrazsdik/calendar-gates:0.3.0
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: lookalike-repository
+  namespace: calendar-gates
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/gergodrazsdik/calendar-gates-evil@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: foreign-init-container
+  namespace: calendar-gates
+spec:
+  initContainers:
+    - name: setup
+      image: docker.io/library/busybox@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  containers:
+    - name: app
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5

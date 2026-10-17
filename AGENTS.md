@@ -13,7 +13,8 @@ adding things from later phases.
 | `src/CalendarGates.Api/` | Minimal API: `Program.cs`, `Endpoints/` (one static class per feature), `Domain/` (pure calculators) |
 | `tests/CalendarGates.UnitTests/`, `tests/CalendarGates.IntegrationTests/` | TUnit tests (calculators; API via `TUnit.AspNetCore`) |
 | `http/` | `.http` contract tests run by `ijhttp` (`http-client.env.json`; the private env file is gitignored) |
-| `Dockerfile`, `deploy/helm/calendar-gates/` | Container image and Helm chart (kind-local, CI smoke) |
+| `Dockerfile`, `deploy/helm/calendar-gates/` | Container image and Helm chart (kind clusters, CI smoke) |
+| `deploy/kind/`, `deploy/kyverno/`, `deploy/policies/` | The project's kind cluster, Kyverno (pinned) and the admission policies ([ADR 0010](docs/adr/0010-admission-control.md)) |
 | `tools/llm-gate/` | Python (uv) LLM review gate on the Claude SDKs; policy in `checks.yaml` |
 | `.claude/commands/` | Review prompts, shared by interactive Claude Code and the CI LLM gate |
 | `.github/` | Workflows, composite action, rulesets (as JSON), Dependabot |
@@ -30,7 +31,12 @@ that needs them, so the list is the truth, not this file.
 - Local tools: `dotnet tool restore` (CSharpier, MinVer CLI from `.config/dotnet-tools.json`).
 - Python: `uv run ...` inside `tools/llm-gate/`, never pip.
 - Containers: `docker` is podman locally; containers publish on host port **8081** (kind-local owns 8080).
-- Kubernetes: always `--context kind-local` / `--kube-context kind-local`.
+- Kubernetes: two clusters, and always an explicit context. `kind-calendar-gates` is the
+  project's own cluster with Kyverno, and the `k8s-*` recipes' default. Its kubeconfig is
+  `~/.local/state/calendar-gates/kubeconfig`, so `export KUBECONFIG=` that, or use the recipes.
+  `kind-local` (`--context kind-local`, `just cluster=local …`) is the machine's shared
+  cluster, with no project components. Running both costs memory and inotify instances;
+  `kind-local stop` is fine while working here.
 
 ## Conventions
 
@@ -78,9 +84,15 @@ Details, fixes and overrides: `docs/gates.md`.
    `tools/llm-gate/evals/cases` against `evals/baseline.json` ([ADR 0006](docs/adr/0006-llm-eval-gate.md)).
    Locally: `just eval` (spends API credits; a PR pays only for the checks it changes),
    `just eval-baseline` to update the baseline in a PR. Required, on its own (not part of `gates`).
-9. `k8s-smoke`: Helm install on a throwaway kind cluster + ijhttp. Locally on kind-local:
-   `just k8s-load k8s-deploy k8s-http` (port-forward, [ADR 0003](docs/adr/0003-kind-access.md)).
+9. `k8s-smoke`: Helm install on a throwaway kind cluster + ijhttp. Locally, the dev image runs in
+   `calendar-gates-dev` (the policies deny it in `calendar-gates`): `just k8s-load`, then
+   `just k8s-deploy calendar-gates-dev` and `just k8s-http calendar-gates-dev`. On kind-local:
+   `just cluster=local k8s-load k8s-deploy k8s-http` (port-forward, [ADR 0003](docs/adr/0003-kind-access.md)).
 10. `gates`: aggregator over the `ci.yml` gates.
+11. Admission (releases, [ADR 0010](docs/adr/0010-admission-control.md)): Kyverno admits only
+    attested release images in `calendar-gates` and audits `calendar-gates-dev`.
+    `release.yml`'s `admission-smoke` proves it on every release. Locally: `just k8s-up
+    k8s-policy-up`, `just k8s-policy-report`; offline tests: `just lint-policies`.
 
 ## Don'ts
 

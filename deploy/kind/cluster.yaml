@@ -1,0 +1,11 @@
+# The project's own kind cluster (docs/adr/0010-admission-control.md): `just k8s-up`, then
+# `just k8s-policy-up`. Kyverno's webhooks act cluster-wide, so they don't go into kind-local
+# (ADR 0003). One node, no host port mappings: access is a port-forward, as on kind-local.
+# Kubernetes 1.35: the newest version Kyverno 1.19 supports (1.33 to 1.35); kind v0.33.0's image.
+# release.yml's admission-smoke creates its cluster from this file too.
+apiVersion: kind.x-k8s.io/v1alpha4
+kind: Cluster
+name: calendar-gates
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.35.8@sha256:07b2536e30b803ed61d1677a79df6115f798ce64c80f9e22f6ed45afd09323c0

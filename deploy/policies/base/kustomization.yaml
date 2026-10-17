@@ -1,0 +1,8 @@
+# `calendar-gates`: the policies deny (docs/adr/0010-admission-control.md). `../dev` audits.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - images.yaml
+  - release.yaml
+  - llm-review.yaml
