@@ -62,6 +62,7 @@ class Report:
     fp_by_check: dict[str, tuple[int, int, int]] = field(default_factory=dict)  # fp, ack, findings
     fp_by_severity: dict[str, tuple[int, int]] = field(default_factory=dict)  # fp, findings
     override_rate: tuple[int, int] = (0, 0)  # PRs overridden, PRs with blocking findings
+    unreviewed_overrides: int = 0  # PRs where an override accepted a diff too large to review
     cost_total: float = 0.0
     cost_by_check: dict[str, float] = field(default_factory=dict)
     cost_by_engine: dict[str, float] = field(default_factory=dict)
@@ -155,6 +156,15 @@ def compute(
     blocked = {r.get("pr") for r in runs if r.get("blocking") and r.get("verdict") == "fail"}
     overridden = {r.get("pr") for r in runs if r.get("override_honoured")}
     report.override_rate = (len(overridden & blocked), len(blocked))
+    # Kept apart on purpose: accepting findings a reviewer reported is not the same as accepting a
+    # diff nobody reviewed (ADR 0002).
+    report.unreviewed_overrides = len(
+        {
+            r.get("pr")
+            for r in runs
+            if r.get("override_honoured") and r.get("blocking") and r.get("verdict") == "error"
+        }
+    )
 
     # Cost: only reviews that were paid for (cache hits record no cost).
     per_pr: dict[Any, float] = defaultdict(float)
@@ -288,6 +298,7 @@ def render(report: Report, *, generated: datetime) -> str:
         "",
         f"PRs with blocking findings: {blocked}; overridden: {overridden} "
         f"(**{_pct(_ratio(overridden, blocked))}**).",
+        f"PRs accepted unreviewed (a diff over the size cap): **{report.unreviewed_overrides}**.",
         "",
         "### Cost",
         "",

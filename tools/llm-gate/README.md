@@ -4,6 +4,11 @@ The LLM review gate of calendar-gates. Claude reviews the branch's diff with a p
 `.claude/commands/llm-<check>.md`; llm-gate turns the findings into a verdict from their severities
 and the check's policy in `checks.yaml`. The model never decides pass or fail.
 
+A generated file (`trimmable_paths`) whose own diff is over the check's `max_file_kb` is left out of
+the review and reported as not reviewed, while any other file stays in whatever its size; a
+blocking check needs an honoured override before it reviews a diff with anything missing; if what remains is still over `max_diff_kb`, a blocking check fails closed unless the
+PR carries an honoured `llm-override`, which accepts the diff unreviewed ([ADR 0002](../../docs/adr/0002-llm-gate-policy.md)).
+
 ```
 llm-gate list    [--json] [--blocking]
 llm-gate run     --check <name> [--engine api|agent|both] [--base origin/main] [--out .llm-gate]

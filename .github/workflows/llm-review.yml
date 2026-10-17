@@ -299,8 +299,13 @@ jobs:
           cat "$RUNNER_TEMP/review.md" >> "$GITHUB_STEP_SUMMARY"
           # No result file means llm-gate itself failed; report that as an error with its exit code.
           verdict=$(jq -r .verdict .llm-gate/results/"$CHECK".*.json 2> /dev/null | head -n 1 || true)
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          echo "verdict=${verdict:-error}" >> "$GITHUB_OUTPUT"
+          overridden=$(jq -r '.override_honoured // false' .llm-gate/results/"$CHECK".*.json \
+            2> /dev/null | head -n 1 || true)
+          {
+            echo "status=$status"
+            echo "verdict=${verdict:-error}"
+            echo "overridden=${overridden:-false}"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: steps.review.outcome == 'success'
@@ -346,6 +351,7 @@ jobs:
         env:
           STATUS: ${{ steps.review.outputs.status }}
           VERDICT: ${{ steps.review.outputs.verdict }}
+          OVERRIDDEN: ${{ steps.review.outputs.overridden }}
         run: |
           title="llm / $CHECK"
           case "$VERDICT" in
@@ -354,7 +360,11 @@ jobs:
             fail)
               echo "::error title=$title::Blocking findings; see the PR comment or the job summary." ;;
             error)
-              level=$([ "$STATUS" = 0 ] && echo warning || echo error)
-              echo "::$level title=$title::The review could not run; see the job summary." ;;
+              if [ "$OVERRIDDEN" = true ]; then
+                echo "::warning title=$title unreviewed::Over the size cap; accepted by llm-override."
+              else
+                level=$([ "$STATUS" = 0 ] && echo warning || echo error)
+                echo "::$level title=$title::The review could not run; see the job summary."
+              fi ;;
           esac
           exit "$STATUS"

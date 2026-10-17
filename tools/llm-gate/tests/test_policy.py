@@ -4,7 +4,14 @@ import pytest
 from conftest import finding, make_check, result
 
 from llm_gate.models import Severity
-from llm_gate.policy import EXIT_ERROR, EXIT_FINDINGS, EXIT_PASS, Verdict, decide
+from llm_gate.policy import (
+    EXIT_ERROR,
+    EXIT_FINDINGS,
+    EXIT_PASS,
+    ErrorKind,
+    Verdict,
+    decide,
+)
 
 
 @pytest.mark.parametrize("override", [False, True])
@@ -70,10 +77,57 @@ def test_errors_follow_on_error(tmp_path: Path, mode: str, on_error: str, exit_c
     assert decision.reason.startswith("API down")
 
 
-def test_override_does_not_hide_errors(tmp_path: Path) -> None:
+def test_override_does_not_hide_an_engine_failure(tmp_path: Path) -> None:
+    """A broken or refusing gate is not an approval: only the size cap is overridable."""
     decision = decide(make_check(tmp_path), error="API down", override=True)
 
-    assert decision.exit_code == EXIT_ERROR
+    assert (decision.verdict, decision.exit_code) == (Verdict.ERROR, EXIT_ERROR)
+    assert decision.override_honoured is False
+
+
+@pytest.mark.parametrize(
+    ("kind", "override", "exit_code", "honoured"),
+    [
+        (ErrorKind.TOO_LARGE, True, EXIT_PASS, True),  # accepted unreviewed, with a reason
+        (ErrorKind.TOO_LARGE, False, EXIT_ERROR, False),
+        (ErrorKind.ENGINE, True, EXIT_ERROR, False),  # the gate broke; re-run it
+        (ErrorKind.ENGINE, False, EXIT_ERROR, False),
+    ],
+)
+def test_only_a_size_error_is_overridable(
+    tmp_path: Path, kind: ErrorKind, override: bool, exit_code: int, honoured: bool
+) -> None:
+    decision = decide(
+        make_check(tmp_path), error="diff too large: 488 KB", error_kind=kind, override=override
+    )
+
+    # The verdict stays `error` either way: nothing was reviewed.
+    assert decision.verdict is Verdict.ERROR
+    assert decision.exit_code == exit_code
+    assert decision.override_honoured is honoured
+    if honoured:
+        assert "accepted unreviewed by override" in decision.reason
+
+
+@pytest.mark.parametrize("kind", list(ErrorKind))
+def test_an_advisory_check_passes_on_any_error_without_an_override(
+    tmp_path: Path, kind: ErrorKind
+) -> None:
+    check = make_check(tmp_path, mode="advisory", fail_on=None)
+
+    decision = decide(check, error="whatever", error_kind=kind)
+
+    assert (decision.verdict, decision.exit_code) == (Verdict.ERROR, EXIT_PASS)
+    assert decision.override_honoured is False
+
+
+def test_an_honoured_override_of_findings_is_recorded(tmp_path: Path) -> None:
+    decision = decide(
+        make_check(tmp_path), result=result(finding(Severity.CRITICAL)), override=True
+    )
+
+    assert (decision.verdict, decision.exit_code) == (Verdict.OVERRIDDEN, EXIT_PASS)
+    assert decision.override_honoured is True
 
 
 def test_not_applicable_passes(tmp_path: Path) -> None:

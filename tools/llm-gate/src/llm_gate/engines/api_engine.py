@@ -89,7 +89,7 @@ class ApiEngine:
             self._client,
             model=request.check.model,
             system=render(request.prompt, DIFF_REFERENCE),
-            user=diff_block(request.diff.base, request.diff.text),
+            user=diff_block(request.diff.base, request.diff.text, request.diff.omitted),
             output_format=Review,
             what="review",
         )

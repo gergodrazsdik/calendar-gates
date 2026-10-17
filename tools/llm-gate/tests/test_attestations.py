@@ -145,7 +145,8 @@ def test_the_latest_run_on_the_merged_head_counts(tmp_path: Path) -> None:
     predicate = attestations.llm_review([commit(1)], log, range_from="v0.2.0", range_to="v0.3.0")
 
     (pr,) = predicate["prs"]
-    assert pr["checks"] == {"code-review": "pass", "security-review": "overridden"}
+    # The verdict stays in the label: "overridden" alone read as if nothing had failed.
+    assert pr["checks"] == {"code-review": "pass", "security-review": "fail (overridden)"}
     assert (pr["risk"], pr["ai_assisted"]) == ("high", True)
     assert pr["overrides"][0]["by"] == "alice"
     assert REDACTED in pr["overrides"][0]["reason"]
@@ -285,3 +286,33 @@ def test_override_reasons_are_quoted_in_the_notes_and_the_log_start_is_a_time(
         [commit(2, merged_at="2026-10-17T11:59:59+02:00")], log, range_from=None, range_to="v1"
     )
     assert early["unreviewed"][0]["reason"] == "merged before the audit log existed"
+
+
+def test_a_partial_review_and_an_accepted_unreviewed_diff_are_both_listed(tmp_path: Path) -> None:
+    """Whatever the review didn't see reaches the attestation (ADR 0002): files over the per-file
+    cap, and a whole diff a human accepted unreviewed."""
+    log = write_log(
+        tmp_path,
+        gate_run(
+            1,
+            "code-review",
+            "pass",
+            omitted_files=[{"path": "src/Api/Generated.pb.cs", "bytes": 300_000}],
+        ),
+        gate_run(1, "security-review", "error", override_honoured=True),
+    )
+
+    predicate = attestations.llm_review([commit(1)], log, range_from=None, range_to="v1.0.0")
+
+    (pr,) = predicate["prs"]
+    assert pr["checks"] == {
+        "code-review": "pass, partial (1 file(s) omitted)",
+        "security-review": "error (overridden)",
+    }
+    assert predicate["unreviewed"] == [
+        {
+            "number": 1,
+            "reason": "code-review: pass, partial (1 file(s) omitted), "
+            "security-review: error (overridden)",
+        }
+    ]

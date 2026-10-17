@@ -249,3 +249,18 @@ def test_load_records_skips_broken_lines(tmp_path: Path) -> None:
     events.mkdir(parents=True)
     (events / "a.jsonl").write_text(json.dumps(run(1)) + "\nnot json\n\n")
     assert len(metrics.load_records(tmp_path)) == 1
+
+
+def test_an_unreviewed_override_is_counted_apart_from_overridden_findings() -> None:
+    """Accepting findings a reviewer reported is not the same as accepting a diff nobody
+    reviewed (ADR 0002), so the two never share a number."""
+    records = [
+        run(1, verdict="fail", override_honoured=True),  # findings accepted
+        run(2, verdict="error", override_honoured=True),  # diff over the size cap, unreviewed
+        run(3, verdict="error"),  # the gate broke: no override
+    ]
+
+    report = compute(records, [pr(1), pr(2), pr(3)])
+
+    assert report.override_rate == (1, 1)  # only PR 1 had blocking findings
+    assert report.unreviewed_overrides == 1  # PR 2

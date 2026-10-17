@@ -8,10 +8,10 @@ from pydantic import BaseModel
 
 from .cache import Cache, cache_key
 from .config import Check
-from .diff import Diff, touches
+from .diff import Diff, OmittedFile, touches
 from .engines import Engine, EngineError, ReviewRequest
 from .models import EngineResult, Finding, Severity
-from .policy import Decision, decide
+from .policy import Decision, ErrorKind, decide
 from .prompts import load_prompt
 
 log = logging.getLogger(__name__)
@@ -33,6 +33,8 @@ class RunRecord(BaseModel):
     blocking: list[Finding] = []
     diff_files: int = 0
     diff_bytes: int = 0
+    omitted: list[OmittedFile] = []  # files over max_file_kb, left out of the reviewed diff
+    override_honoured: bool = False  # a human accepted findings, or an unreviewable diff
     risk: str | None = None  # the PR's triage risk, when the run had one
 
     @staticmethod
@@ -57,6 +59,7 @@ def run_check(
     result: EngineResult | None = None
     cached = False
     error: str | None = None
+    error_kind = ErrorKind.ENGINE
     not_applicable: str | None = None
 
     if not_needed is not None:
@@ -65,8 +68,20 @@ def run_check(
         not_applicable = f"no changes against {diff.base}"
     elif check.paths and not touches(diff.files, check.paths):
         not_applicable = f"the change touches none of {', '.join(check.paths)}"
+    elif check.blocking and diff.omitted and not override:
+        # Trimming is a hole in a blocking review, so a human has to accept it with a reason: the
+        # size cap decides what *may* be left out, never that it passes unseen (ADR 0002).
+        error_kind = ErrorKind.TOO_LARGE
+        names = ", ".join(o.path for o in diff.omitted)
+        error = (
+            f"{len(diff.omitted)} file(s) over max_file_kb {check.max_file_kb} "
+            f"({names}); a blocking check needs an llm-override to review the rest"
+        )
     elif diff.size_bytes > check.max_diff_kb * 1024:
-        # Reported per policy instead of spending tokens (gate drill 10).
+        # Reported per policy instead of spending tokens (gate drill 10). Overridable, unlike an
+        # engine failure: the diff is simply too big to review, which a human can accept with a
+        # reason (ADR 0002). `cli.py` has already dropped the files over max_file_kb.
+        error_kind = ErrorKind.TOO_LARGE
         error = f"diff too large: {diff.size_bytes // 1024} KB > max_diff_kb {check.max_diff_kb}"
     else:
         prompt = load_prompt(check.prompt_path)
@@ -97,9 +112,11 @@ def run_check(
         check,
         result=result,
         error=error,
+        error_kind=error_kind,
         not_applicable=not_applicable,
         not_needed=not_needed,
         override=override,
+        partial=bool(diff.omitted) and check.blocking,
     )
     return RunRecord(
         check=check.name,
@@ -115,6 +132,8 @@ def run_check(
         blocking=list(decision.blocking),
         diff_files=len(diff.files),
         diff_bytes=diff.size_bytes,
+        omitted=list(diff.omitted),
+        override_honoured=decision.override_honoured,
     )
 
 
