@@ -82,6 +82,7 @@ def make_check(tmp_path: Path, **overrides: object) -> Check:
         paths=None,
         max_diff_kb=200,
         max_file_kb=64,
+        trimmable_paths=("**/*.pb.cs", "**/Migrations/**"),
         budget_usd=0.5,
         max_turns=30,
         on_error="fail",

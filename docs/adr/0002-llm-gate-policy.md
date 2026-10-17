@@ -21,12 +21,14 @@ truncated output, and the gate has to say what happens then.
   `max_diff_kb` fails the check (exit 2) unless the check sets `on_error: pass`.
 - A human can override blocking findings with the `llm-override` PR label (write access needed).
   The findings are still reported.
-- **Amended 2026-10-18: a diff over the size cap is overridable; other errors are not.** A file
-  whose own diff is over `max_file_kb` (64 by default) is left out of what the model sees, and
-  named in the PR comment, the audit record and the release attestation. Generated code (gRPC
-  stubs, EF Core migrations, SQL seed data) would otherwise crowd the hand-written part of a
-  change out of `max_diff_kb`, or push the whole diff over it, and a PR carrying such a file had
-  no way through the gate but editing the gate. If the trimmed diff is still over `max_diff_kb`,
+- **Amended 2026-10-18: a diff over the size cap is overridable; other errors are not.** A
+  **generated** file whose own diff is over `max_file_kb` (64 by default) is left out of what the
+  model sees, and named in the PR comment, the audit record and the release attestation, with the
+  list given to the reviewer as well. Generated code (gRPC stubs, EF Core migrations, SQL seed
+  data) would otherwise crowd the hand-written part of a change out of `max_diff_kb`, or push the
+  whole diff over it, and a PR carrying such a file had no way through the gate but editing the
+  gate. Only paths on `trimmable_paths` are ever dropped: a file nobody generated stays under
+  review however big it is, so padding one past the cap cannot hide it from a blocking check. If the trimmed diff is still over `max_diff_kb`,
   the `llm-override` label plus its `/llm-override <reason>` comment accepts it **unreviewed**:
   the verdict stays `error`, the exit code becomes 0, and the record carries
   `override_honoured`. An API error, refusal, truncated output or a crash stays non-overridable:

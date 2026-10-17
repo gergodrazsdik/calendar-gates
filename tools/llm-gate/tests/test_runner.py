@@ -439,7 +439,7 @@ def test_a_record_that_cannot_be_built_does_not_change_the_verdict(
 def test_a_file_over_max_file_kb_is_left_out_and_named(gate: Repo) -> None:
     change(gate, "src/Api/Domain/Small.cs", "class Small {}\n")
     # Over the default max_file_kb (64), while the rest of the diff stays under max_diff_kb.
-    change(gate, "src/Api/Domain/Generated.pb.cs", "x = 1;\n" * 10000)
+    change(gate, "src/Api/Grpc/Generated.pb.cs", "x = 1;\n" * 10000)
     api = FakeEngine("api")
 
     assert run({"api": api}, "--check", "code-review") == 0
@@ -448,10 +448,10 @@ def test_a_file_over_max_file_kb_is_left_out_and_named(gate: Repo) -> None:
     assert "class Small {}" in reviewed
     assert "Generated.pb.cs" not in reviewed
     data = record(gate, "code-review", "api")
-    assert omitted_paths(data["omitted"]) == ["src/Api/Domain/Generated.pb.cs"]
+    assert omitted_paths(data["omitted"]) == ["src/Api/Grpc/Generated.pb.cs"]
     assert data["verdict"] == "pass"
     gate_run = audit_lines(gate)[0]
-    assert omitted_paths(gate_run["omitted_files"]) == ["src/Api/Domain/Generated.pb.cs"]
+    assert omitted_paths(gate_run["omitted_files"]) == ["src/Api/Grpc/Generated.pb.cs"]
 
 
 def test_an_oversized_diff_is_accepted_unreviewed_with_an_override(
@@ -488,3 +488,32 @@ def test_an_engine_failure_still_fails_closed_with_an_override(
     gate_run = audit_lines(gate)[0]
     assert gate_run["verdict"] == "error"
     assert gate_run["override_honoured"] is False
+
+
+def test_padding_a_hand_written_file_cannot_hide_it_from_a_blocking_check(gate: Repo) -> None:
+    """A file not on trimmable_paths stays in the diff, so an oversized one fails closed (or
+    needs an override) instead of passing with the file unseen."""
+    change(gate, "src/Api/Program.cs", "// backdoor\n" + "// pad\n" * 400)
+    api = FakeEngine("api")
+
+    assert run({"api": api}, "--check", "code-review") == 2  # max_diff_kb is 1
+
+    assert api.requests == []
+    data = record(gate, "code-review", "api")
+    assert data["omitted"] == []
+    assert "diff too large" in str(data["reason"])
+
+
+def test_the_reviewer_is_told_which_files_it_did_not_see(gate: Repo) -> None:
+    change(gate, "src/Api/Domain/Small.cs", "class Small {}\n")
+    change(gate, "src/Api/Grpc/Service.pb.cs", "x = 1;\n" * 10000)
+    api = FakeEngine("api")
+
+    assert run({"api": api}, "--check", "code-review") == 0
+
+    from llm_gate.prompts import diff_block
+
+    request = api.requests[0]
+    block = diff_block(request.diff.base, request.diff.text, request.diff.omitted)
+    assert "<omitted-for-size>" in block
+    assert "src/Api/Grpc/Service.pb.cs" in block

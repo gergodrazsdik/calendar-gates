@@ -11,10 +11,12 @@ defaults:
   engine: api
   model: ${LLM_MODEL:-claude-sonnet-5-5}
   max_diff_kb: 200
-  # One file's diff over this is left out of the review and named in the comment, the audit record
-  # and the release attestation: generated code (gRPC stubs, EF migrations, SQL seed data) must not
-  # crowd the hand-written part of a change out of max_diff_kb (ADR 0002).
+  # A *generated* file whose own diff is over this is left out of the review and named in the
+  # comment, the audit record and the release attestation, so machine-written bulk doesn't crowd
+  # the hand-written part of a change out of max_diff_kb (ADR 0002). Only trimmable_paths are ever
+  # dropped: padding a hand-written file past the cap must not hide it from a blocking check.
   max_file_kb: 64
+  trimmable_paths: ["**/*.pb.cs", "**/*_pb2.py", "**/Migrations/**", "**/*.seed.sql", "**/testdata/**"]
   budget_usd: 0.50 # agent engine hard cap per run
   max_turns: 30 # agent engine
   on_error: fail # blocking checks fail closed

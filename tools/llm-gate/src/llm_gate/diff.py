@@ -21,6 +21,18 @@ EXCLUDES = (
 )
 
 
+# Only these may be trimmed when a single file's diff is over `max_file_kb`: generated code, where
+# the bulk is machine-written and reviewing it costs the whole size cap. Everything else stays in
+# the diff whatever its size, so no one can hide a hand-written change by padding it past the cap;
+# an oversized diff then needs a recorded override instead (ADR 0002).
+TRIMMABLE = (
+    "**/*.pb.cs",  # gRPC / protobuf stubs
+    "**/*_pb2.py",
+    "**/Migrations/**",  # EF Core migrations
+    "**/*.seed.sql",  # seed data
+    "**/testdata/**",
+)
+
 # A file's diff starts here. `--no-ext-diff` keeps git's own format, so this is the only boundary.
 _FILE_HEADER = re.compile(r"^diff --git a/(.*) b/(.*)$", re.MULTILINE)
 
@@ -88,25 +100,29 @@ def split_file_diffs(text: str) -> tuple[tuple[str, str], ...]:
     return tuple(chunks)
 
 
-def trim_large_files(diff: Diff, max_file_kb: int) -> Diff:
-    """Drop the files whose own diff is over `max_file_kb` from the text the model sees.
+def trim_large_files(diff: Diff, max_file_kb: int, trimmable: Iterable[str] = TRIMMABLE) -> Diff:
+    """Drop generated files whose own diff is over `max_file_kb` from the text the model sees.
 
     Generated code (gRPC stubs, EF migrations, SQL seed data) would otherwise crowd the
-    hand-written part of the change out of the size cap, or push the whole diff over it. The
+    hand-written part of the change out of the size cap, or push the whole diff over it. Only
+    paths matching `trimmable` are ever dropped: a file nobody generated stays under review
+    however big it is, so padding one past the cap cannot hide it from a blocking check. The
     omission is reported in the PR comment, the audit record and the release attestation
     (ADR 0002), never silent.
     """
     limit = max_file_kb * 1024
+    patterns = tuple(trimmable)
     chunks = split_file_diffs(diff.text)
-    if not chunks or all(len(c.encode("utf-8")) <= limit for _, c in chunks):
-        return diff
     kept, omitted = [], []
     for path, chunk in chunks:
         size = len(chunk.encode("utf-8"))
-        if size > limit:
+        generated = any(PurePosixPath(path).full_match(pattern) for pattern in patterns)
+        if size > limit and generated:
             omitted.append(OmittedFile(path=path, bytes=size))
         else:
             kept.append(chunk)
+    if not omitted:
+        return diff
     return replace(diff, text="".join(kept), omitted=tuple(omitted))
 
 

@@ -97,10 +97,11 @@ is required too (see below).
   honoured only with an unedited `/llm-override <reason>` comment by whoever added the label last,
   written since the label was last removed. Comment first, then add the label, or just comment
   `/llm-override <reason>`: the feedback workflow adds the label and re-runs the review. Without one, the job warns "override not honoured" and the findings fail as usual.
-- **Oversized diffs** ([ADR 0002](adr/0002-llm-gate-policy.md), amended 2026-10-18): a file whose
-  own diff is over `max_file_kb` (64) is left out of the review and named in the comment, the
-  audit record and the release attestation, so generated code doesn't crowd out the hand-written
-  part of a change. If the rest is still over `max_diff_kb` (200), the review can't run; an
+- **Oversized diffs** ([ADR 0002](adr/0002-llm-gate-policy.md), amended 2026-10-18): a generated
+  file (`trimmable_paths` in `checks.yaml`) whose own diff is over `max_file_kb` (64) is left out
+  of the review and named in the comment, the audit record and the release attestation, so
+  generated code doesn't crowd out the hand-written part of a change. Any other file stays under
+  review whatever its size. If the rest is still over `max_diff_kb` (200), the review can't run; an
   override then accepts the diff unreviewed, and the attestation lists the PR under `unreviewed`.
   The verdict stays `error`, and the metrics count it apart from overridden findings.
 - **Feedback commands** ([ADR 0007](adr/0007-feedback-commands.md)): collaborators comment

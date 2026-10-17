@@ -86,7 +86,7 @@ def test_split_file_diffs_cuts_one_chunk_per_file(repo: Repo) -> None:
 
 def test_trim_large_files_drops_only_the_files_over_the_cap(repo: Repo) -> None:
     repo.write("src/Api/Small.cs", "class Small {}\n")
-    repo.write("src/Api/Generated.pb.cs", "// generated\n" + "x = 1;\n" * 4000)
+    repo.write("src/Api/Generated.pb.cs", "// generated\n" + "x = 1;\n" * 4000)  # TRIMMABLE
     repo.commit("hand-written next to generated")
     diff = merge_base_diff(repo.root, "main")
 
@@ -116,3 +116,39 @@ def test_trim_large_files_returns_the_diff_unchanged_when_nothing_is_over(repo: 
     diff = merge_base_diff(repo.root, "main")
 
     assert trim_large_files(diff, max_file_kb=64) is diff
+
+
+def test_a_hand_written_file_over_the_cap_is_never_trimmed(repo: Repo) -> None:
+    """The bypass this closes: padding a file past the cap must not hide it from a review."""
+    repo.write("src/Api/Program.cs", "// backdoor\n" + "// pad\n" * 4000)
+    repo.commit("a big hand-written change")
+    diff = merge_base_diff(repo.root, "main")
+
+    trimmed = trim_large_files(diff, max_file_kb=4)
+
+    assert trimmed is diff  # nothing dropped
+    assert "// backdoor" in trimmed.text
+    assert trimmed.omitted == ()
+
+
+def test_only_generated_paths_are_trimmable(repo: Repo) -> None:
+    repo.write("src/Api/Grpc/Service.pb.cs", "// generated\n" + "x = 1;\n" * 4000)
+    repo.write("src/Api/Migrations/20261018_Init.cs", "// migration\n" + "y = 2;\n" * 4000)
+    repo.write("src/Api/Big.cs", "// hand-written\n" + "z = 3;\n" * 4000)
+    repo.commit("generated and hand-written, all over the cap")
+
+    trimmed = trim_large_files(merge_base_diff(repo.root, "main"), max_file_kb=4)
+
+    assert [o.path for o in trimmed.omitted] == [
+        "src/Api/Grpc/Service.pb.cs",
+        "src/Api/Migrations/20261018_Init.cs",
+    ]
+    assert "// hand-written" in trimmed.text
+
+
+def test_the_trimmable_list_can_be_narrowed(repo: Repo) -> None:
+    repo.write("src/Api/Grpc/Service.pb.cs", "// generated\n" + "x = 1;\n" * 4000)
+    repo.commit("generated")
+    diff = merge_base_diff(repo.root, "main")
+
+    assert trim_large_files(diff, 4, trimmable=["**/Migrations/**"]) is diff
