@@ -183,7 +183,16 @@ k8s-policy-up:
     (cd "$dir" && sha256sum -c --quiet) < deploy/kyverno/chart.sha256
     helm upgrade --install kyverno "$dir/$file" --kube-context {{ kube_context }} -n kyverno --create-namespace \
         -f deploy/kyverno/values.yaml --wait --timeout 5m
-    kubectl --context {{ kube_context }} apply -k deploy/policies
+    # `--wait` returns when Kyverno is Ready, not when its admission webhook is serving: applying
+    # the policies right after it can fail with "connection refused" from the policy-validation
+    # webhook (v0.3.4's release failed twice on exactly that). Wait for the endpoint, then retry.
+    kubectl --context {{ kube_context }} -n kyverno wait --timeout=2m \
+        --for=jsonpath='{.subsets[*].addresses[0].ip}' endpoints/kyverno-svc
+    for attempt in $(seq 30); do
+        kubectl --context {{ kube_context }} apply -k deploy/policies && break
+        [ "$attempt" = 30 ] && { echo "the policies never applied" >&2; exit 1; }
+        sleep 4
+    done
     # Kyverno reports readiness per policy; without this wait a deploy right after this recipe can
     # be admitted before the webhook is live. The condition lives under status.conditionStatus,
     # not status.conditions, so `--for=condition=Ready` never matches (it timed out for every
