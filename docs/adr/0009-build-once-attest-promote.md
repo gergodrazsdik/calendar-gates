@@ -94,7 +94,11 @@ verifiable outside GitHub.
   accepted. Two things now sit where a tag can't reach them: `just verify-release` (from `main`)
   re-checks the tag's signature through the API, requires its commit to be an ancestor of
   `origin/main`, and passes `--source-digest` so an attestation for another commit fails; and the
-  `release-tags` ruleset adds a `creation` rule, so only the admin role can create a `v*` tag.
+  `release-tags` ruleset adds a `creation` rule, so only the admin role can create a `v*` tag
+  (`bypass_actors: [{actor_type: RepositoryRole, actor_id: 5}]`; GitHub's REST docs don't publish
+  the role ids and the API returns only numbers, so: **5 is Repository admin**, read back from the
+  ruleset UI after applying it on 2026-10-18. A wrong id refuses the tag push at the next
+  release).
   **What's left:** an admin, and therefore any agent holding admin credentials, can still create
   such a tag; nothing in the cluster can check ancestry, so that check is the human step.
 - **v0.1.0 and v0.2.0 carry provenance only.** `verify-release` fails for them on the other three
