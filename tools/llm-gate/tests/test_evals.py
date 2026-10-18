@@ -351,9 +351,11 @@ def test_without_a_baseline_the_comparison_fails_instead_of_passing_vacuously(
 
     assert run(eval_repo, reviewer(), "--repeats", "1", "--compare") == 1
 
-    out = capsys.readouterr().out
-    assert "baseline" in out
-    assert "an entry for" in out  # the row says what is missing
+    # The row itself, not just the words somewhere in the report (tr-4185 on #72).
+    rows = [line for line in capsys.readouterr().out.splitlines() if "an entry for" in line]
+    assert len(rows) == 1
+    assert rows[0].startswith("| baseline ")
+    assert "api/claude-test-model" in rows[0]
 
 
 # --- fp-regression cases from the audit log ---
