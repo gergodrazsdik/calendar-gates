@@ -162,6 +162,10 @@ class GateRun(_Record):
     usage: TokenUsage = Field(default_factory=TokenUsage)
     cost_usd: Annotated[float, Field(ge=0)] | None = None
     tool_calls: list[ToolCall] = Field(default_factory=list, max_length=MAX_TOOL_CALLS)
+    # Reads the gate refused because they reached outside the reviewed checkout (F003). A count as
+    # well as the flags on `tool_calls`, because that list is truncated and because a number has no
+    # free text to withhold: a refusal stays visible even on a run whose text is held back.
+    denied_reads: Count = 0
     findings: list[AuditFinding] = Field(default_factory=list, max_length=MAX_FINDINGS)
     verdict: GateVerdict
     exit_code: Annotated[int, Field(ge=0, le=2)]  # the job's exit code; compared with the job
@@ -311,6 +315,17 @@ def summarise_tool_input(tool: str, tool_input: Mapping[str, Any], root: Path | 
     return clip(redact(text), MAX_SUMMARY)  # redact first: a cut can't hide half a secret
 
 
+def _kept_calls(calls: Sequence[ToolCall]) -> list[ToolCall]:
+    """The calls that fit the record, refusals first in line. A plain head slice would let a review
+    that issued two hundred ordinary reads before the interesting one leave no refusal at all."""
+    if len(calls) <= MAX_TOOL_CALLS:
+        return list(calls)
+    denied = [i for i, call in enumerate(calls) if call.denied][:MAX_TOOL_CALLS]
+    allowed = [i for i, call in enumerate(calls) if not call.denied]
+    keep = sorted(denied + allowed[: MAX_TOOL_CALLS - len(denied)])
+    return [calls[i] for i in keep]  # chronological order among the ones kept
+
+
 # --- building records (untrusted side) ---------------------------------------------------------
 
 
@@ -426,7 +441,8 @@ def gate_run(
         cost_usd=result.usage.cost_usd if result and not record.cached else None,
         # Clamped to the schema's limits: a finished review must never fail to be recorded
         # because the model returned line 0 or a long list (the most severe findings are kept).
-        tool_calls=result.tool_calls[:MAX_TOOL_CALLS] if result and not record.cached else [],
+        tool_calls=_kept_calls(result.tool_calls) if result and not record.cached else [],
+        denied_reads=result.denied_reads if result and not record.cached else 0,
         findings=[
             AuditFinding(
                 id=finding_id(record.check, f),

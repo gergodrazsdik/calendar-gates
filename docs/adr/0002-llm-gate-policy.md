@@ -44,10 +44,21 @@ truncated output, and the gate has to say what happens then.
   unreviewed overrides apart from overridden findings.
 - Prompts are files in `.claude/commands/llm-<check>.md`, shared with interactive Claude Code, and
   treat the diff as untrusted data. They are reviewed like code.
+- **Amended 2026-10-18 (F003, F029): what the review *writes* is untrusted too.** The rendered
+  review goes to a public PR comment and a public job summary, and a review can be steered by the
+  files it reviews, so the summary, titles, details and suggestions are redacted (the audit log's
+  patterns) and stripped of the markup that makes text fetch something — links, images, tags, bare
+  URL schemes — before they are published. Paths and categories are restricted to a plain charset
+  instead of redacted, because the finding id is a hash of the raw finding and the SARIF rule id
+  has to stay stable; `/llm-fp <id>` keeps resolving. Detail and suggestion stay multi-line prose
+  rather than a one-line code span (the treatment the triage summary gets): the paragraph a person
+  reads to judge a finding is what the gate is for. Reads the gate refused are named in the comment
+  too, so a review that was blinded is never a silent one.
 - Two engines sit behind one interface: the Messages API (diff inline, one request) and the Claude
-  Agent SDK (the same prompt with read-only tools in the repository; originally run as a slash
-  command, superseded by [ADR 0004](0004-gate-tooling-from-base-branch.md)). The check chooses one;
-  `--engine both` and `llm-compare` exist to compare them.
+  Agent SDK (the same prompt with read-only tools **fenced to the repository under review**;
+  originally run as a slash command, superseded by
+  [ADR 0004](0004-gate-tooling-from-base-branch.md)). The check chooses one; `--engine both` and
+  `llm-compare` exist to compare them.
 - Results are cached by check, engine, model, prompt and diff, so re-running a PR without changes
   costs nothing.
 - **Amended 2026-10-18: only unreviewable files are excluded.** `diff.EXCLUDES` dropped

@@ -100,13 +100,16 @@ def _known_tool(name: str) -> str:
 
 class ToolCall(BaseModel):
     """One tool call of the agent engine, as logged by its PreToolUse hook. `input` is a short,
-    redacted summary (audit.summarise_tool_input), never the full tool input."""
+    redacted summary (audit.summarise_tool_input), never the full tool input. `denied` is set when
+    the hook refused the call because it reached outside the reviewed checkout (F003); the flag
+    carries no free text, so it survives the collector's withholding of a modified run's text."""
 
     model_config = ConfigDict(extra="forbid")
 
     tool: Annotated[str, AfterValidator(_known_tool)]
     input: Summary
     ts: AwareDatetime
+    denied: bool = False
 
 
 class EngineResult(BaseModel):
@@ -116,3 +119,6 @@ class EngineResult(BaseModel):
     duration_ms: int
     usage: Usage = Field(default_factory=Usage)
     tool_calls: list[ToolCall] = Field(default_factory=list)
+    # Reads refused because they reached outside the checkout: the hook's denials plus the ones the
+    # CLI's own fence reported. A count, because the tool-call list is truncated for the audit log.
+    denied_reads: Annotated[int, Field(ge=0)] = 0

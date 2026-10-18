@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .redact import clip, redact
+from .redact import clip, inert, redact
 
 VULN_SCAN_TYPE = "https://github.com/gergodrazsdik/calendar-gates/attestations/vuln-scan/v1"
 LLM_REVIEW_TYPE = "https://github.com/gergodrazsdik/calendar-gates/attestations/llm-review/v1"
@@ -110,12 +110,6 @@ def _parse(value: object) -> datetime | None:
         return _utc(str(value)) if value else None
     except ValueError:
         return None
-
-
-def _inert(text: object) -> str:
-    """Free text from the audit log for the release notes: one line, in a code span."""
-    flat = " ".join(str(text).split()).replace("`", "'")
-    return f"`{flat}`"
 
 
 def _utc(value: str) -> datetime:
@@ -236,7 +230,7 @@ def render_notes(predicate: Mapping[str, Any]) -> str:
     overridden = [pr for pr in prs if pr["overrides"]]
     for pr in overridden:
         for o in pr["overrides"]:
-            lines.append(f"- #{pr['number']} overridden by @{o['by']}: {_inert(o['reason'])}")
+            lines.append(f"- #{pr['number']} overridden by @{o['by']}: {inert(o['reason'])}")
     if overridden:
         lines.append("")
     for key, title in (("unreviewed", "Unreviewed"), ("unverified", "Unverified")):

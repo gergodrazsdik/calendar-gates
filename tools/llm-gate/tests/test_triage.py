@@ -802,12 +802,14 @@ def test_numstat_from_git_sees_a_rename(repo: Any) -> None:
 
 
 def test_the_job_summary_quotes_model_and_comment_text_inertly() -> None:
-    from llm_gate.cli import _inert
+    from llm_gate.redact import inert
 
-    assert _inert("see ![x](https://evil.example/a.png) `code`\nnext line") == (
-        "`see ![x](https://evil.example/a.png) 'code' next line`"
+    # One code span, one line, and nothing that still fetches a URL: the image markup and the
+    # scheme are defanged now, which is the same helper the rendered review uses (F029).
+    assert inert("see ![x](https://evil.example/a.png) `code`\nnext line") == (
+        "`see !\\[x\\](https[:]//evil.example/a.png) 'code' next line`"
     )
-    assert len(_inert("a" * 1000)) < 210
+    assert len(inert("a" * 1000)) < 210
 
 
 def sdk_client(text: str, stop_reason: str = "end_turn") -> Any:

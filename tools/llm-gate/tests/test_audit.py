@@ -152,6 +152,11 @@ def test_tool_input_summaries_are_relative_short_and_redacted(tmp_path: Path) ->
     grep = audit.summarise_tool_input("Grep", {"pattern": "ghp_" + "A" * 36}, tmp_path)
     assert grep == f"pattern={REDACTED}"
 
+    glob = audit.summarise_tool_input(
+        "Glob", {"pattern": "**/*.cs", "path": f"{tmp_path}/src"}, tmp_path
+    )
+    assert glob == "pattern=**/*.cs path=src"
+
     long = audit.summarise_tool_input("Other", {"q": "x" * 1000}, None)
     assert len(long) == MAX_SUMMARY
     assert long.endswith("…")
@@ -232,8 +237,13 @@ def test_free_text_is_kept_when_the_workflow_is_unchanged_and_withheld_otherwise
         id="cr-0000", severity=Severity.HIGH, category="off-by-one", file="a.cs", line=1, title="t"
     )
     call = {"tool": "Read", "input": "file_path=a.cs", "ts": T}
+    refused = {"tool": "Read", "input": "file_path=/proc/self/environ", "ts": T, "denied": True}
     artifact(
-        tmp_path, "audit-100-1-code-review", audit.dumps(gate_run(findings=[f], tool_calls=[call]))
+        tmp_path,
+        "audit-100-1-code-review",
+        audit.dumps(
+            gate_run(findings=[f], tool_calls=[call, refused], denied_reads=1),
+        ),
     )
 
     ((_, kept),) = collect(tmp_path)
@@ -245,6 +255,10 @@ def test_free_text_is_kept_when_the_workflow_is_unchanged_and_withheld_otherwise
     assert withheld[0]["findings"][0]["id"] == "cr-0000"  # the structure stays
     assert withheld[0]["findings"][0]["severity"] == "high"
     assert withheld[0]["tool_calls"][0] == {**kept[0]["tool_calls"][0], "input": ""}
+    # A refused read is a fact about the run, not text from it: the flag and the count stay even
+    # when the free text goes (F003).
+    assert withheld[0]["tool_calls"][1]["denied"] is True
+    assert withheld[0]["denied_reads"] == 1
 
 
 def test_a_run_has_a_byte_budget(tmp_path: Path) -> None:
@@ -844,3 +858,45 @@ def test_a_partial_review_the_collector_found_an_override_for_is_valid(tmp_path:
     assert info.tamper is False
     assert lines[0]["verdict"] == "pass"
     assert lines[0]["omitted_files"][0]["path"] == "src/Api/Grpc/Service.pb.cs"
+
+
+def test_a_refused_read_survives_the_tool_call_limit(tmp_path: Path) -> None:
+    """A review that issues two hundred ordinary reads before the interesting one must not be able
+    to push the refusal off the record (F003)."""
+    from conftest import make_check, result
+
+    from llm_gate.models import ToolCall
+    from llm_gate.runner import RunRecord
+
+    calls = [
+        ToolCall(tool="Read", input=f"file_path=src/A{n}.cs", ts=T)
+        for n in range(audit.MAX_TOOL_CALLS + 5)
+    ]
+    calls.append(ToolCall(tool="Read", input="file_path=/proc/self/environ", ts=T, denied=True))
+    engine_result = result()
+    engine_result = engine_result.model_copy(update={"tool_calls": calls, "denied_reads": 1})
+    record = RunRecord(
+        check="code-review",
+        mode="blocking",
+        fail_on=Severity.HIGH,
+        engine="agent",
+        model="claude-test-model",
+        verdict="pass",
+        exit_code=0,
+        reason="x",
+        result=engine_result,
+    )
+
+    entry = audit.gate_run(
+        record,
+        check=make_check(tmp_path),
+        context=audit.RunContext(),
+        gate=audit.GateInfo(None, "1" * 64, ".claude/commands/llm-code-review.md", "0" * 64),
+        diff_text="",
+        started_at=T,
+        finished_at=T,
+    )
+
+    assert len(entry.tool_calls) == audit.MAX_TOOL_CALLS
+    assert [c.input for c in entry.tool_calls if c.denied] == ["file_path=/proc/self/environ"]
+    assert entry.denied_reads == 1

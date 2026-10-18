@@ -29,7 +29,7 @@ from .config import (
 from .diff import DiffError, git, merge_base_diff, repo_root, trim_large_files
 from .engines import Engine
 from .policy import EXIT_ERROR
-from .redact import clip, redact
+from .redact import inert
 from .report import render_markdown, render_sarif
 from .runner import RunRecord, read_records, run_check, write_record
 
@@ -421,13 +421,6 @@ def cmd_run(
     return records[primary].exit_code
 
 
-def _inert(text: str, limit: int = 200) -> str:
-    """Model- or comment-written text for the job summary: redacted, capped, one line, and in a
-    code span, so it can't add links, images or markup."""
-    flat = " ".join(clip(redact(text), limit).split()).replace("`", "'")
-    return f"`{flat}`"
-
-
 def cmd_triage(args: argparse.Namespace, gate_config: GateConfig, *, root: Path, out: Path) -> int:
     """Writes the triage record to <out>/audit.jsonl and <out>/triage.md; prints the decision as
     JSON (`risk`, `ai_assisted`, `checks_plan`) for the workflow."""
@@ -500,10 +493,10 @@ def cmd_triage(args: argparse.Namespace, gate_config: GateConfig, *, root: Path,
     lines = [f"### Triage: risk **{decision.final}** ({decision.source})", ""]
     lines += [f"- rules: **{floor.risk}**"] + [f"  - {reason}" for reason in floor.reasons]
     if model is not None:
-        got = f"**{model.risk}**" if model.risk else f"none ({_inert(model.error or '')})"
-        lines += [f"- model `{model.model}`: {got}"] + [f"  - {_inert(r)}" for r in model.reasons]
+        got = f"**{model.risk}**" if model.risk else f"none ({inert(model.error or '')})"
+        lines += [f"- model `{model.model}`: {got}"] + [f"  - {inert(r)}" for r in model.reasons]
     if manual is not None:
-        lines.append(f"- manual: **{manual.to}** by @{manual.by}: {_inert(manual.reason)}")
+        lines.append(f"- manual: **{manual.to}** by @{manual.by}: {inert(manual.reason)}")
     lines.append(f"- AI-assisted: {', '.join(detection.matched) or 'no markers'}")
     lines.append(f"- checks that run: {', '.join(plan)}")
     (out / "triage.md").write_text("\n".join(lines) + "\n", encoding="utf-8")

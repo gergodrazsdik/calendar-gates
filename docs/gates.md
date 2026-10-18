@@ -105,8 +105,13 @@ is required too (see below).
   move); the PR head (`src/`) is only the diff and read-only context, so a PR
   can't soften the prompt, the policy or the code that reviews it. The agent engine loads nothing from
   the reviewed repository (`setting_sources=[]`: no `CLAUDE.md`, rules, commands, skills, hooks,
-  settings or MCP servers) and gets the prompt as text with the diff inline. A gate change takes
-  effect for the PRs after it merges. **Remaining hole**: the workflow file itself comes from the PR
+  settings or MCP servers) and gets the prompt as text with the diff inline. Since 2026-10-18 it may
+  also only *read* the reviewed checkout: its own process holds the API key, so the file tools are
+  fenced to `src/` (the CLI's `blockReadsOutsideWorkingDirectories` plus a path-scoped `Read(./**)`
+  rule, with an in-process hook as a backstop), and a refused read is counted in the record and
+  named in the PR comment (F003). Everything the model writes is redacted and stripped of link,
+  image and tag markup before it is published, as the audit log's text already was (F029). A gate
+  change takes effect for the PRs after it merges. **Remaining hole**: the workflow file itself comes from the PR
   on `pull_request`, so a PR can edit `llm-review.yml`; v2 marks such runs (`workflow_modified`,
   Phase 14) and triage rates them high (ADR 0008); a team repository would also require CODEOWNERS
   review for `tools/llm-gate/`, `.claude/` and `.github/`. Fork code never runs with the key: `pull_request`

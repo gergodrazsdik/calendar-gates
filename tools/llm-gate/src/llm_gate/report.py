@@ -1,10 +1,19 @@
-"""Render run records as Markdown (job summary, sticky PR comment) and SARIF (code scanning)."""
+"""Render run records as Markdown (job summary, sticky PR comment) and SARIF (code scanning).
 
+Everything the model wrote is published here, so it goes through `redact.safe_text` on the way:
+these sinks are a public PR comment and a public job summary, and a review can be steered by the
+text in the files it reviews (F003, F029). Ids, paths and categories are *not* redacted — the id is
+a hash of the raw finding and the path and category are structure, not prose — they are restricted
+to a plain charset instead, so they can't carry markup either.
+"""
+
+import re
 from collections.abc import Iterable
 from typing import Any
 
 from .models import Finding, Severity, finding_id
 from .policy import Verdict
+from .redact import clip, safe_text
 from .runner import RunRecord
 
 ICONS = {
@@ -36,12 +45,37 @@ def marker(check: str) -> str:
     return f"<!-- llm-gate:{check} -->"
 
 
-def _cell(text: str) -> str:
-    return text.replace("|", "\\|").replace("\n", " ")
+def prose(text: str, limit: int = 2000) -> str:
+    """A paragraph of model-written text for a public sink: safe, and with a line that starts like
+    a table row defused. The comment's rows carry the finding ids that `/llm-fp` resolves, and a
+    detail used to be able to add a line that looked like another finding's row."""
+    return re.sub(r"(?m)^(\s*)\|", r"\1\\|", safe_text(text, limit))
+
+
+def cell(text: str) -> str:
+    """One table cell of model-written text: safe, and without the two characters that would end
+    the cell or the row."""
+    return safe_text(text, 300).replace("|", "\\|").replace("\n", " ")
+
+
+# A path and a kebab-case category, and nothing that reads as markup. Redaction is wrong for these:
+# the generic `key=value` secret pattern would eat a path like `config/token-store.cs`, and the
+# category is a SARIF rule id that has to stay stable.
+_PLAIN_PATH = re.compile(r"[^A-Za-z0-9 ._/+#@-]")
+_PLAIN_SLUG = re.compile(r"[^a-z0-9-]")
+
+
+def plain_path(text: str) -> str:
+    return clip(_PLAIN_PATH.sub("_", text), 200) or "?"
+
+
+def plain_slug(text: str) -> str:
+    return clip(_PLAIN_SLUG.sub("-", text.lower()), 40) or "other"
 
 
 def _location(finding: Finding) -> str:
-    return f"{finding.file}:{finding.line}" if finding.line else finding.file
+    where = plain_path(finding.file)
+    return f"{where}:{finding.line}" if finding.line else where
 
 
 def _stats(record: RunRecord) -> str:
@@ -73,7 +107,8 @@ def render_markdown(record: RunRecord) -> str:
         "",
         _stats(record),
         "",
-        f"_{record.reason}_",
+        # The reason can carry an engine error or a model-chosen file name.
+        f"_{cell(record.reason)}_",
     ]
     if record.omitted:
         # Say what the review never saw, every time, so a trimmed diff is never a silent one.
@@ -82,13 +117,20 @@ def render_markdown(record: RunRecord) -> str:
             f"**Not reviewed** ({len(record.omitted)} file(s) over the check's size cap "
             "for a single file):",
             "",
-            *(f"- `{_cell(o.path)}` ({o.bytes // 1024} KB)" for o in record.omitted),
+            *(f"- `{plain_path(o.path)}` ({o.bytes // 1024} KB)" for o in record.omitted),
+        ]
+    if record.result and record.result.denied_reads:
+        # The reviewer tried to read outside the checkout; a blinded review is never a silent one.
+        lines += [
+            "",
+            f"**{record.result.denied_reads} read(s) outside the repository were refused** "
+            "(the reviewer may only read the code under review).",
         ]
     if record.result is None:
         return "\n".join(lines) + "\n"
 
     review = record.result.review
-    lines += ["", f"> {_cell(review.summary)}"]
+    lines += ["", f"> {cell(review.summary)}"]
     if not review.findings:
         lines += ["", "No findings."]
         return "\n".join(lines) + "\n"
@@ -101,15 +143,17 @@ def render_markdown(record: RunRecord) -> str:
         flag = " **(blocking)**" if (f.file, f.line, f.title) in blocking else ""
         lines.append(
             f"| {SEVERITY_ICONS[f.severity]} {f.severity}{flag} | `{finding_id(record.check, f)}` "
-            f"| `{_cell(_location(f))}` | {_cell(f.title)} |"
+            f"| `{_location(f)}` | {cell(f.title)} |"
         )
     lines += ["", "<details><summary>Details</summary>", ""]
     for number, f in enumerate(findings, start=1):
-        meta = f"`{finding_id(record.check, f)}` · `{_location(f)}` · {f.severity} · {f.category}"
-        lines += [f"#### {number}. {f.title}", "", meta]
-        lines += ["", f.detail]
+        where = f"`{finding_id(record.check, f)}` · `{_location(f)}`"
+        meta = f"{where} · {f.severity} · `{plain_slug(f.category)}`"
+        # The id comes from the raw finding, so `/llm-fp <id>` still resolves against the audit log.
+        lines += [f"#### {number}. {cell(f.title)}", "", meta]
+        lines += ["", prose(f.detail)]
         if f.suggestion:
-            lines += ["", f"**Suggestion:** {f.suggestion}"]
+            lines += ["", f"**Suggestion:** {prose(f.suggestion)}"]
         lines.append("")
     lines.append("</details>")
     return "\n".join(lines) + "\n"
@@ -123,7 +167,7 @@ def render_sarif(records: Iterable[RunRecord]) -> dict[str, Any]:
         if record.result is None:
             continue
         for f in record.result.review.findings:
-            rule_id = f"{record.check}/{f.category}"
+            rule_id = f"{record.check}/{plain_slug(f.category)}"
             rules.setdefault(
                 rule_id,
                 {
@@ -132,12 +176,12 @@ def render_sarif(records: Iterable[RunRecord]) -> dict[str, Any]:
                 },
             )
             region: dict[str, Any] = {"startLine": f.line} if f.line and f.line > 0 else {}
-            location: dict[str, Any] = {"artifactLocation": {"uri": f.file}}
+            location: dict[str, Any] = {"artifactLocation": {"uri": plain_path(f.file)}}
             if region:
                 location["region"] = region
-            message = f"{f.title}\n\n{f.detail}"
+            message = f"{safe_text(f.title, 300)}\n\n{safe_text(f.detail)}"
             if f.suggestion:
-                message += f"\n\nSuggestion: {f.suggestion}"
+                message += f"\n\nSuggestion: {safe_text(f.suggestion)}"
             results.append(
                 {
                     "ruleId": rule_id,
