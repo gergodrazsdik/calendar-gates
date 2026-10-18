@@ -16,10 +16,11 @@ The level then decides which checks run, which block, and with what engine and m
 import hashlib
 import json
 import logging
+import re
 import subprocess
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 
@@ -181,8 +182,11 @@ class TriageAssessment(BaseModel):
     risk: Literal["low", "medium", "high"] = Field(
         description="Risk level from the rubric in the instructions"
     )
+    # No max_length: the API doesn't enforce maxItems (transform_schema only mentions it in the
+    # description), so a cap here would turn a verbose model into a failed triage. Callers take
+    # the first three.
     reasons: list[str] = Field(
-        description="At most three short reasons for the level, each one line", max_length=10
+        description="At most three short reasons for the level, each one line"
     )
 
 
@@ -281,34 +285,69 @@ class ManualRisk:
     by: str
     reason: str
     ts: datetime
+    comment_id: int | None = None  # the `/llm-risk` comment, from the record's file name
+
+
+# How far a record's `ts` may run ahead of this machine's clock before it is ignored. Records are
+# written by a workflow, so a few minutes of skew is normal; a year is not.
+TS_SKEW = timedelta(minutes=10)
+
+
+def risk_overrides(audit_dir: Path | None, pr: int | None) -> list[ManualRisk]:
+    """Every usable `/llm-risk` record for the PR, oldest first.
+
+    `llm-feedback.yml` writes these after checking the commenter's role, and the collector refuses
+    them from a PR's own artifact (`audit.ARTIFACT_TYPES`). Anyone with `contents: write` can still
+    append a file to the branch (ADR 0005), so this is deliberately defensive: a line that isn't a
+    JSON object, or a record whose fields don't fit, is skipped rather than fatal (a bare `[]` used
+    to crash triage for every PR), and a `ts` in the future is ignored so a forged record can't
+    outrank every genuine one. The collector checks each record against the comment it came from
+    and flags the ones that don't match (`audit.verified_risk_overrides`).
+    """
+    if audit_dir is None or pr is None:
+        return []
+    cutoff = datetime.now(UTC) + TS_SKEW
+    found: list[ManualRisk] = []
+    for path in sorted(audit_dir.glob("events/**/*.jsonl")):
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(record, dict):
+                continue
+            if record.get("type") != "risk_override" or record.get("pr") != pr:
+                continue
+            to, by, reason = record.get("to"), record.get("by"), record.get("reason")
+            if to not in RISKS or not isinstance(by, str) or not isinstance(reason, str):
+                continue
+            try:
+                ts = datetime.fromisoformat(str(record.get("ts")))
+            except ValueError:
+                continue
+            if ts.tzinfo is None or ts > cutoff:
+                continue
+            found.append(ManualRisk(to, by, reason, ts, comment_id=_comment_id(path)))
+    found.sort(key=lambda m: m.ts)
+    return found
+
+
+def _comment_id(path: Path) -> int | None:
+    """The comment a record came from: llm-feedback.yml writes `feedback-<comment_id>.jsonl`."""
+    match = re.fullmatch(r"feedback-(\d+)", path.stem)
+    return int(match[1]) if match else None
 
 
 def latest_risk_override(
     audit_dir: Path | None, pr: int | None, *, before: datetime | None = None
 ) -> ManualRisk | None:
-    """The PR's latest `/llm-risk` from the audit log (written before `before`, if given). Only
-    llm-feedback.yml writes these records (after checking the commenter's role), and the collector
-    never accepts them from a PR's workflow (audit.ARTIFACT_TYPES), so the log is the trusted
-    source. Labels never are."""
-    if audit_dir is None or pr is None:
-        return None
-    latest: ManualRisk | None = None
-    for path in sorted(audit_dir.glob("events/**/*.jsonl")):
-        for line in path.read_text(encoding="utf-8").splitlines():
-            try:
-                record = json.loads(line)
-                ts = datetime.fromisoformat(str(record.get("ts")))
-            except ValueError:
-                continue
-            if record.get("type") != "risk_override" or record.get("pr") != pr:
-                continue
-            to = record.get("to")
-            if to not in RISKS or (before is not None and ts > before):
-                continue
-            found = ManualRisk(to, str(record.get("by")), str(record.get("reason")), ts)
-            if latest is None or found.ts >= latest.ts:
-                latest = found
-    return latest
+    """The PR's latest `/llm-risk` (written before `before`, if given)."""
+    usable = [m for m in risk_overrides(audit_dir, pr) if before is None or m.ts <= before]
+    return usable[-1] if usable else None
 
 
 @dataclass(frozen=True)

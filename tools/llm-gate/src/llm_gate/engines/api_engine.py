@@ -4,7 +4,7 @@ import time
 from typing import Any
 
 import anthropic
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from ..models import EngineResult, Review, Usage
 from ..prompts import DIFF_REFERENCE, diff_block, render
@@ -22,6 +22,16 @@ PRICES_PER_MTOK = {
 # Models with server-side refusal fallbacks (`fallbacks: "default"`); Haiku has none.
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 FALLBACK_MODELS = {"claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5"}
+
+
+def _first_error(error: ValidationError) -> str:
+    """One short line from a pydantic error: its own message carries the whole input."""
+    items = error.errors(include_input=False, include_url=False, include_context=False)
+    if not items:
+        return "no detail"
+    first = items[0]
+    where = ".".join(str(part) for part in first["loc"]) or "output"
+    return f"{where}: {first['type']} ({len(items)} error(s))"
 
 
 def estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float | None:
@@ -63,6 +73,12 @@ def structured_call[T: BaseModel](
         raise EngineError(f"cannot reach the Claude API: {error}") from error
     except anthropic.AnthropicError as error:  # e.g. no credentials configured
         raise EngineError(f"Claude API client error: {error}") from error
+    except ValidationError as error:
+        # `parse` validates the model's text against output_format inside the call, so output that
+        # doesn't fit the schema (too many items, or JSON cut off at max_tokens) arrives as a
+        # pydantic error. It is a failed call like any other: the caller decides (a blocking check
+        # fails closed, triage keeps the rules' floor), never an exception out of here.
+        raise EngineError(f"the {what} did not match the schema: {_first_error(error)}") from error
 
     if response.stop_reason == "refusal":
         category = response.stop_details.category if response.stop_details else None

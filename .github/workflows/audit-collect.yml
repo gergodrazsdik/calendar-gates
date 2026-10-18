@@ -71,13 +71,21 @@ jobs:
           WORK="$RUNNER_TEMP/audit"
           mkdir -p "$WORK/artifacts"
           prefix="audit-$RUN_ID-$RUN_ATTEMPT-"
+          # Also the triage artifact of every attempt: "Re-run failed jobs" doesn't re-run a
+          # successful triage job, so this attempt may have none and the collector then reuses the
+          # latest earlier one (ADR 0008). Only triage is reusable; other attempts' artifacts are
+          # still checked against this attempt and flagged.
+          triage="audit-$RUN_ID-"
           count=$(gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/artifacts" \
-            --jq "[.artifacts[] | select(.name | startswith(\"$prefix\"))] | length" \
+            --jq "[.artifacts[] | select((.name | startswith(\"$prefix\"))
+                   or (.name | startswith(\"$triage\")) and (.name | endswith(\"-triage\")))]
+                  | length" \
             | jq -s add)
           echo "count=$count" >> "$GITHUB_OUTPUT"
           if [ "${count:-0}" -gt 0 ]; then
             # gh extracts each artifact into its own directory and refuses zip paths that escape it.
-            gh run download "$RUN_ID" -R "$REPO" -p "$prefix*" -D "$WORK/artifacts"
+            gh run download "$RUN_ID" -R "$REPO" -p "$prefix*" -p "$triage*-triage" \
+              -D "$WORK/artifacts"
           fi
 
       - name: Gather what the collector checks against

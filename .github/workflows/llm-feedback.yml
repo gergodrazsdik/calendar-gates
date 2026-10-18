@@ -73,7 +73,7 @@ jobs:
             --event "$GITHUB_EVENT_PATH" --audit-dir "$RUNNER_TEMP/audit-log" \
             --permission "$ROLE" --out "$RUNNER_TEMP/out" > "$RUNNER_TEMP/actions.json"
           jq -r '"path=\(.path)", "reaction=\(.reaction // "")", "label=\(.label // "")",
-            "rerun=\(.rerun)", "mark_check=\(.mark.check // "")",
+            "rerun=\(.rerun)", "command=\(.message)", "mark_check=\(.mark.check // "")",
             "mark_finding=\(.mark.finding_id // "")", "mark_by=\(.mark.by // "")"' \
             "$RUNNER_TEMP/actions.json" >> "$GITHUB_OUTPUT"
           jq -r '"llm-feedback: \(.message) (recorded: \(.recorded))"' "$RUNNER_TEMP/actions.json" \
@@ -143,11 +143,13 @@ jobs:
 
       # Labels added with GITHUB_TOKEN start no workflows, so the review is re-run explicitly. Its
       # override step reads the labels from the API, and triage reads /llm-risk from audit-log;
-      # the results come from its cache.
+      # the results come from its cache. A run still in flight is waited for, because it has
+      # already read both (F044, docs/v2-review-findings.md).
       - name: Re-run llm-review
         if: steps.handle.outputs.rerun == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          COMMAND: ${{ steps.handle.outputs.command }}
         run: |
           head=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)
           read -r run status < <(gh api \
@@ -155,9 +157,27 @@ jobs:
             --jq '.workflow_runs[0] | "\(.id) \(.status)"')
           if [ -z "${run:-}" ] || [ "$run" = null ]; then
             echo "::notice title=llm-feedback::No llm-review run for $head yet; the label is set."
-          elif [ "$status" != completed ]; then
-            echo "::notice title=llm-feedback::llm-review is still running; it reads the label itself."
-          else
-            gh api -X POST "repos/$REPO/actions/runs/$run/rerun" --silent
-            echo "re-ran llm-review run $run"
+            exit 0
           fi
+          # A run in flight has already read what this command changes: triage read /llm-risk from
+          # audit-log when it started, and each llm job read the labels before reviewing. Waiting
+          # for it and re-running is the only way the command reaches the review (F044); the
+          # rerun API refuses a run that is still going.
+          waited=0
+          while [ "$status" != completed ] && [ "$waited" -lt 420 ]; do
+            sleep 15
+            waited=$((waited + 15))
+            status=$(gh api "repos/$REPO/actions/runs/$run" --jq .status)
+          done
+          if [ "$status" != completed ]; then
+            {
+              echo "\`/llm-$COMMAND\` is recorded, but llm-review run $run was still going"
+              echo "after 7 minutes, so that review does not include it. Re-run llm-review, or"
+              echo "push a commit, to apply it."
+            } > "$RUNNER_TEMP/late.md"
+            gh pr comment "$PR" --body-file "$RUNNER_TEMP/late.md"
+            echo "::warning title=llm-feedback::run $run still $status after ${waited}s; told the PR."
+            exit 0
+          fi
+          gh api -X POST "repos/$REPO/actions/runs/$run/rerun" --silent
+          echo "re-ran llm-review run $run after ${waited}s"

@@ -16,7 +16,7 @@ import json
 import re
 import uuid
 from collections.abc import Collection, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Annotated, Any, Final, Literal, cast
@@ -190,6 +190,10 @@ class Triage(_Record):
     cache_hit: bool = False
     error: Text | None = None
     checks_plan: list[CheckName] = Field(max_length=20)
+    # Only the collector sets this; an artifact that sets it is rejected. It says the record came
+    # from an earlier attempt of the same run, because "Re-run failed jobs" doesn't re-run a
+    # successful triage job (ADR 0008).
+    reused_from_attempt: Count | None = None
 
 
 class Override(_Record):
@@ -710,8 +714,11 @@ def _record_problems(record: AuditRecord, expected: Expected, check: str | None)
             problems.append(f"finding ids not of the form {prefix}xxxx")
     if isinstance(record, Override) and check is not None and record.checks != [check]:
         problems.append(f"an override in the artifact for {check!r} must name only that check")
-    if isinstance(record, Triage) and check is not None and check != TRIAGE_ARTIFACT:
-        problems.append(f"a triage record in the artifact for {check!r}")
+    if isinstance(record, Triage):
+        if check is not None and check != TRIAGE_ARTIFACT:
+            problems.append(f"a triage record in the artifact for {check!r}")
+        if record.reused_from_attempt is not None:
+            problems.append("sets fields only the collector may set")
     return problems
 
 
@@ -739,11 +746,16 @@ def _triage_problems(
     records: Sequence[AuditRecord],
     expected: TriageExpected | None,
     jobs: Mapping[str, str | None],
+    *,
+    reused: bool = False,
 ) -> list[str]:
     triages = [r for r in records if isinstance(r, Triage)]
     if len(triages) != 1 or len(records) != 1:
         return ["the triage artifact must hold exactly one triage record"]
-    if jobs.get(TRIAGE_ARTIFACT) != "success":
+    # A reused record comes from an attempt whose jobs aren't in `jobs` (this attempt didn't run
+    # triage at all), so its own attempt's conclusion can't be read here. Everything else about it
+    # is still checked, including against the collector's own recomputation below.
+    if not reused and jobs.get(TRIAGE_ARTIFACT) != "success":
         return [f"the triage job concluded {jobs.get(TRIAGE_ARTIFACT)}, so it can't be checked"]
     t = triages[0]
     if expected is None:
@@ -801,6 +813,39 @@ class Collected:
     tamper: bool
 
 
+def _with_reused_triage(
+    directories: Sequence[Path], expected: Expected
+) -> tuple[list[Path], int | None]:
+    """The artifacts to collect, and the attempt a reused triage artifact came from.
+
+    GitHub's "Re-run failed jobs" starts a new attempt for the failed jobs only, so a successful
+    `triage` job is not re-run and the new attempt has no triage artifact: every gate_run that
+    carries a risk would then be rejected ("the run has no triage record") and recorded as a
+    tamper event. When that is the case, the latest earlier attempt's triage artifact is collected
+    instead, validated against its own attempt and marked `reused_from_attempt`. Only triage is
+    reusable, because only triage is not re-run; any other artifact keeps being checked against
+    the current attempt, so a stray one is still flagged.
+    """
+    earlier: list[tuple[int, Path]] = []
+    for path in directories:
+        match = _ARTIFACT_NAME.fullmatch(path.name)
+        if (
+            match is not None
+            and int(match["run_id"]) == expected.workflow_run_id
+            and match["check"] == TRIAGE_ARTIFACT
+            and int(match["attempt"]) < expected.run_attempt
+        ):
+            earlier.append((int(match["attempt"]), path))
+    current = f"audit-{expected.workflow_run_id}-{expected.run_attempt}-{TRIAGE_ARTIFACT}"
+    if not earlier or any(p.name == current for p in directories):
+        # Nothing to reuse, or this attempt ran triage itself: leave every artifact to the usual
+        # checks, including earlier ones, which are flagged by name as before.
+        return list(directories), None
+    attempt, chosen = max(earlier)
+    others = {path for _, path in earlier} - {chosen}
+    return [p for p in directories if p not in others], attempt
+
+
 def collect(
     artifacts: Path,
     *,
@@ -831,6 +876,7 @@ def collect(
         _write(out / target, [_tamper(expected, "(all)", [problem])])
         return [Collected(target.as_posix(), "(all)", 1, tamper=True)]
 
+    directories, reused_attempt = _with_reused_triage(directories, expected)
     # The triage artifact first: every gate_run of the run is checked against it.
     directories.sort(key=lambda p: (not p.name.endswith(f"-{TRIAGE_ARTIFACT}"), p.name))
     run_triage: _RunTriage = "absent"
@@ -841,10 +887,18 @@ def collect(
         safe_name = name if match else "(invalid name)"  # never echo an arbitrary name
         problems: list[str] = []
         records: list[AuditRecord] = []
+        # A reused triage artifact is checked against its own attempt; everything else against
+        # the attempt that triggered the collection.
+        reused = reused_attempt is not None and name.endswith(
+            f"-{reused_attempt}-{TRIAGE_ARTIFACT}"
+        )
+        want_expected = expected
+        if reused and reused_attempt is not None:
+            want_expected = replace(expected, run_attempt=reused_attempt)
         if (
             match is None
             or int(match["run_id"]) != expected.workflow_run_id
-            or int(match["attempt"]) != expected.run_attempt
+            or int(match["attempt"]) != want_expected.run_attempt
         ):
             check = f"invalid-{index}"
             want = f"audit-{expected.workflow_run_id}-{expected.run_attempt}-<check>"
@@ -861,14 +915,16 @@ def collect(
                 if files != [AUDIT_FILE]:
                     problems.append(f"expected only {AUDIT_FILE}, found {len(files)} file(s)")
                 else:
-                    records, problems = validate_file(directory / AUDIT_FILE, expected, check)
+                    records, problems = validate_file(directory / AUDIT_FILE, want_expected, check)
             except Exception as error:  # one bad artifact must not stop the rest
                 problems.append(f"the collector could not process it ({type(error).__name__})")
 
         finished: list[AuditRecord] = []
         if check == TRIAGE_ARTIFACT:
             if not problems:
-                problems += _triage_problems(records, triage, jobs)
+                problems += _triage_problems(records, triage, jobs, reused=reused)
+            if not problems and isinstance(records[0], Triage) and reused:
+                records = [records[0].model_copy(update={"reused_from_attempt": reused_attempt})]
             run_triage = (
                 records[0] if not problems and isinstance(records[0], Triage) else "invalid"
             )

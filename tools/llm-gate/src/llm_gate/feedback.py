@@ -16,7 +16,7 @@ names an unknown finding, becomes one `feedback_rejected` record.
 
 import json
 import re
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -24,7 +24,7 @@ from typing import Any, Literal
 
 from pydantic import ValidationError
 
-from . import audit
+from . import audit, triage
 from .redact import clip, redact
 
 PREFIX = "/llm-"
@@ -70,6 +70,53 @@ def parse_command(body: str) -> Command | Rejection:
             return Rejection("risk", "bad_arguments")
         return Command("risk", level=level, reason=reason.strip())
     return Rejection("unknown", "unknown_command")
+
+
+def verified_risk_overrides(
+    records: Sequence[triage.ManualRisk],
+    comments: Sequence[Mapping[str, Any]],
+    *,
+    writers: Collection[str],
+) -> tuple[list[triage.ManualRisk], list[str]]:
+    """The `/llm-risk` records that match a real comment, and why the others don't.
+
+    Only the collector can do this: it fetches the PR's comments and the logins with write access
+    itself (`override-writers.sh`), the way `audit.find_override` checks an override's reason. A
+    record counts when the comment it names still exists on this PR, is unedited, was written by
+    the login in the record, that login may write, and its first line is the same `/llm-risk
+    <level>`. Anything else is reported, so a record appended straight to the branch (ADR 0005)
+    cannot quietly lower a PR's risk.
+    """
+    by_id = {c.get("id"): c for c in comments if isinstance(c.get("id"), int)}
+    verified: list[triage.ManualRisk] = []
+    problems: list[str] = []
+
+    def reject(record: triage.ManualRisk, why: str) -> None:
+        where = f"comment {record.comment_id}" if record.comment_id else "a record with no comment"
+        problems.append(f"/llm-risk {record.to} from {where}: {why}")
+
+    for record in records:
+        comment = by_id.get(record.comment_id) if record.comment_id is not None else None
+        if comment is None:
+            reject(record, "no such comment on this PR")
+            continue
+        author = (comment.get("user") or {}).get("login")
+        if author != record.by:
+            reject(record, "written by someone else")
+            continue
+        if record.by not in writers:
+            reject(record, f"{record.by} has no write access")
+            continue
+        created, updated = comment.get("created_at"), comment.get("updated_at")
+        if not created or created != updated:
+            reject(record, "the comment was edited after it was written")
+            continue
+        parsed = parse_command(str(comment.get("body") or ""))
+        if not isinstance(parsed, Command) or parsed.name != "risk" or parsed.level != record.to:
+            reject(record, "the comment does not ask for that level")
+            continue
+        verified.append(record)
+    return verified, problems
 
 
 @dataclass
