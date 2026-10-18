@@ -185,8 +185,11 @@ k8s-policy-up:
         -f deploy/kyverno/values.yaml --wait --timeout 5m
     kubectl --context {{ kube_context }} apply -k deploy/policies
     # Kyverno reports readiness per policy; without this wait a deploy right after this recipe can
-    # be admitted before the webhook is live.
-    kubectl --context {{ kube_context }} wait --for=condition=Ready --timeout=2m \
+    # be admitted before the webhook is live. The condition lives under status.conditionStatus,
+    # not status.conditions, so `--for=condition=Ready` never matches (it timed out for every
+    # policy when this was first written, while the install itself was fine).
+    kubectl --context {{ kube_context }} wait --timeout=2m \
+        --for=jsonpath='{.status.conditionStatus.ready}'=true \
         validatingpolicies,imagevalidatingpolicies --all
     kubectl --context {{ kube_context }} get validatingpolicies,imagevalidatingpolicies
 
