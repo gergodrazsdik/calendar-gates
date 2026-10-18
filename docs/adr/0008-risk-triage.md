@@ -87,6 +87,15 @@ all of the policy.
   an edit to the description between the run and the collection can show up as a mismatch on the
   AI flag. Runs from workflows older than triage have no triage record. Their records are accepted
   with no risk, and a record that claims a risk without a triage record is flagged.
+- **The writers list covers every command** (2026-10-18). The collector accepts a `/llm-risk`
+  record only from someone with write access, and it got that list from
+  `scripts/override-writers.sh`, which listed the authors of **`/llm-override`** comments only. A
+  PR that used `/llm-risk` without an override therefore had an empty list, its record was refused,
+  and its whole run became tamper events: v0.3.2's attestation shows that for #68 (one triage
+  record rejected, then the six check records that depend on it). The script now lists the authors
+  of any `/llm-*` command; `find_override` is unaffected, because it still requires an unedited
+  `/llm-override <reason>` comment from the person. `tools/llm-gate/tests/test_scripts.py` pins it
+  with a stubbed `gh`, which is also what F070 asked for.
 - **A lowering is tied to its head** (2026-10-18). `/llm-risk low` used to decide every later
   push to the PR: the record carried no head, and a manual level won outright, so code pushed
   after the person had looked went unreviewed, at a level where nothing blocks. The record now
