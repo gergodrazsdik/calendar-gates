@@ -314,6 +314,21 @@ verify-release version:
     image="oci://ghcr.io/$repo:$version"
     tmp=$(mktemp -d)
     trap 'rm -rf "$tmp"' EXIT
+    # release.yml runs from the tagged commit, so its own "annotated, signed, on main" checks are
+    # steps that commit supplies. These run from main's justfile instead, where a tag can't reach
+    # them, and bind the attestations to a commit that is actually on main (ADR 0009).
+    read -r type sha < <(gh api "repos/$repo/git/ref/tags/v$version" \
+        --jq '"\(.object.type) \(.object.sha)"')
+    [ "$type" = tag ] || { echo "v$version is a lightweight tag, not annotated and signed" >&2; exit 1; }
+    read -r verified reason commit < <(gh api "repos/$repo/git/tags/$sha" \
+        --jq '"\(.verification.verified) \(.verification.reason) \(.object.sha)"')
+    [ "$verified" = true ] || { echo "the signature of v$version is not verified ($reason)" >&2; exit 1; }
+    git fetch --quiet origin main
+    git merge-base --is-ancestor "$commit" origin/main || {
+        echo "v$version points at $commit, which is not an ancestor of origin/main" >&2
+        echo "a release tag on an unmerged commit mints the release identity: do not trust it" >&2
+        exit 1; }
+    echo "tag v$version: annotated, signed, and on main at ${commit::7}"
     types=(
         provenance=https://slsa.dev/provenance/v1
         sbom=https://spdx.dev/Document/v2.3
@@ -323,8 +338,10 @@ verify-release version:
     for entry in "${types[@]}"; do
         name=${entry%%=*}
         # --signer-workflow and --source-ref: signed by release.yml, run for this very tag.
+        # --source-digest: for that commit, so an attestation made for another one fails here.
         gh attestation verify "$image" --owner gergodrazsdik \
             --signer-workflow "$repo/.github/workflows/release.yml" --source-ref "refs/tags/v$version" \
+            --source-digest "$commit" \
             --predicate-type "${entry#*=}" --format json > "$tmp/$name.json"
         echo "verified: $name"
     done

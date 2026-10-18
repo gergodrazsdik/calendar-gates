@@ -87,5 +87,15 @@ verifiable outside GitHub.
 - **Any edit to the workflow can drop attestations.** A PR that changes `release.yml` is high risk
   in triage and reviewed like any other workflow change. The attestations name the workflow
   that signed them, and `verify-release` checks that name.
+- **Amended 2026-10-18: a tag is bound to a commit on `main` outside the workflow.** The `verify`
+  job's "annotated, signed, on main" checks are steps of `release.yml`, which runs **from the
+  tagged commit**, so a tag on an unmerged commit whose copy drops them produced attestations with
+  the genuine release identity (`release.yml@refs/tags/vX`) that Kyverno and `verify-release` both
+  accepted. Two things now sit where a tag can't reach them: `just verify-release` (from `main`)
+  re-checks the tag's signature through the API, requires its commit to be an ancestor of
+  `origin/main`, and passes `--source-digest` so an attestation for another commit fails; and the
+  `release-tags` ruleset adds a `creation` rule, so only the admin role can create a `v*` tag.
+  **What's left:** an admin, and therefore any agent holding admin credentials, can still create
+  such a tag; nothing in the cluster can check ancestry, so that check is the human step.
 - **v0.1.0 and v0.2.0 carry provenance only.** `verify-release` fails for them on the other three
   types.

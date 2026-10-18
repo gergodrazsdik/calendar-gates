@@ -173,9 +173,12 @@ tag `vX.Y.Z`. The workflow then:
 
 A failed scan leaves only the candidate tag: no version tags, no chart, no release.
 
-Check the supply chain afterwards with `just verify-release X.Y.Z`: it verifies all four
-attestations, signed by `release.yml` for that tag, and prints the vulnerability counts and the
-review gaps. Deploy it with `just k8s-deploy-release X.Y.Z`. Tags can't be moved or deleted
+Check the supply chain afterwards with `just verify-release X.Y.Z`. It runs from `main`, so a
+tagged commit can't weaken it: the tag must be annotated with a signature GitHub verifies, its
+commit must be an **ancestor of `main`**, and all four attestations must be signed by
+`release.yml` for that tag **and that commit** (`--source-digest`). It then prints the
+vulnerability counts and the review gaps. Run it before trusting a release you didn't make
+yourself ([ADR 0009](adr/0009-build-once-attest-promote.md)). Deploy it with `just k8s-deploy-release X.Y.Z`. Tags can't be moved or deleted
 (`release-tags` ruleset), so a bad release is fixed with a new version.
 
 ## Admission control (the project cluster)

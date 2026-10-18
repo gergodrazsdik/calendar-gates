@@ -127,6 +127,7 @@ nothing):
 | AI markers are self-declared | They only *raise* the triage risk. Leaving them out gets a lighter review, and AGENTS.md forbids that | Nothing proves a commit wasn't AI-assisted; it's a transparency signal |
 | Lowering the risk | The model may only raise it; `/llm-risk` needs write access, a reason, and is recorded; the collector rechecks the floor | A collaborator can lower it on purpose, visibly |
 | An unattested image in the cluster | Kyverno checks every container kind, including init containers and `kubectl debug`'s ephemeral ones; `admission-smoke` proves it each release | Kyverno fails closed: when it's down, nothing starts in `calendar-gates` |
+| A release tag on a commit that was never reviewed | `release.yml`'s "annotated, signed, on main" checks come from the **tagged commit**, so they were no protection at all: the tag's own copy could drop them and still sign with the real release identity. `just verify-release` now runs from `main`, requires the tag's commit to be an ancestor of `main`, and binds every attestation to it with `--source-digest`; the `release-tags` ruleset only lets the admin role create a `v*` tag ([ADR 0009](adr/0009-build-once-attest-promote.md)) | An admin, so any agent with admin credentials, can still mint the release identity. Nothing in the cluster can check ancestry, so the verification is a human step. Found by this repository's own review (`docs/v2-review-findings.md` F043), not by the gates |
 
 ## 5. What didn't work, and what I changed after measuring
 
