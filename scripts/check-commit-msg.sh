@@ -8,14 +8,18 @@ types='build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test'
 pattern="^($types)(\([a-z0-9._/-]+\))?!?: [^ ].*$"
 max_length=100
 
+title=false
 if [[ ${1:-} == --title ]]; then
+    title=true
     header=${2:?usage: check-commit-msg.sh --title "<title>"}
 else
     header=$(head -n 1 "${1:?usage: check-commit-msg.sh <message-file>}")
 fi
 
 # Leave git's own messages alone: merges, reverts, and fixup!/squash! for later autosquash.
-if [[ $header =~ ^(Merge |Revert \"|fixup! |squash! |amend! ) ]]; then
+# A PR title gets no such pass: it becomes the squash commit on main, where "Merge ..." or
+# "fixup! ..." is exactly what the gate is there to stop.
+if [[ $title == false && $header =~ ^(Merge |Revert \"|fixup! |squash! |amend! ) ]]; then
     exit 0
 fi
 

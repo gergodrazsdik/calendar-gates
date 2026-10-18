@@ -12,6 +12,12 @@ pre-commit:
       glob: "*.py"
       run: uv run ruff format {staged_files} && uv run ruff check --fix {staged_files}
       stage_fixed: true
+    # scripts/*.py are outside the llm-gate project but the lint gate checks them, with the
+    # version pinned in ci.yml and the `lint` recipe.
+    - name: ruff-scripts
+      glob: "scripts/*.py"
+      run: uvx ruff@0.16.10 format {staged_files} && uvx ruff@0.16.10 check --fix {staged_files}
+      stage_fixed: true
     - name: workflows
       glob: ".github/workflows/*.yml"
       run: actionlint {staged_files}

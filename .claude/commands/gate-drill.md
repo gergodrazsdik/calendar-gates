@@ -3,8 +3,8 @@ description: Set up a gate drill (docs/PLAN.md Phase 12, docs/PLAN-v2.md) on its
 argument-hint: <drill number>
 ---
 
-Set up gate drill $ARGUMENTS from the "Gate drills" table in `docs/PLAN.md` (Phase 12), or for
-drills 13 and up, the drill table in `docs/PLAN-v2.md`.
+Set up gate drill $ARGUMENTS from the "Gate drills" table in `docs/PLAN.md` (Phase 12, drills 1 to
+13), or for drills 14 and up, the drill table in `docs/PLAN-v2.md`.
 
 1. Read the drill's row. If the gate it targets doesn't exist yet (its phase isn't done), say so
    and stop.

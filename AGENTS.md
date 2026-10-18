@@ -3,8 +3,11 @@
 A learning playground for **GitHub Actions CI with merge gates**. The ASP.NET Core minimal API
 about dates is deliberately small; the gates are the product. Not production software.
 
-The full plan, phase by phase, is in `docs/PLAN.md`. Check which phase is in progress before
-adding things from later phases.
+The full plan, phase by phase, is in `docs/PLAN.md` (Phases 1-12, drills 1-13) and
+`docs/PLAN-v2.md` (Phases 13-21, drills 14-23, with a Status section listing the deviations).
+Check which phase is in progress before adding things from later phases.
+`docs/v2-review-findings.md` holds the whole-codebase review of 2026-10-17 and what has been
+fixed since.
 
 ## Layout
 
@@ -18,13 +21,15 @@ adding things from later phases.
 | `tools/llm-gate/` | Python (uv) LLM review gate on the Claude SDKs; policy in `checks.yaml` |
 | `.claude/commands/` | Review prompts, shared by interactive Claude Code and the CI LLM gate |
 | `.github/` | Workflows, composite action, rulesets (as JSON), Dependabot |
-| `audit-log` branch | Audit records of the LLM gate, written only by `audit-collect.yml` (ADR 0005) |
-| `docs/` | `PLAN.md`, `gates.md`, `adr/` |
+| `audit-log` branch | Audit records of the LLM gate, written only by `audit-collect.yml` and `llm-feedback.yml` (ADR 0005) |
+| `docs/` | `PLAN.md`, `PLAN-v2.md`, `gates.md`, `metrics.md`, `WRITEUP.md`, `v2-review-findings.md`, `adr/` |
 
 ## Commands
 
-Use `just`; `just` with no arguments lists the recipes. `just ci` runs the local equivalent of
-every deterministic gate: run it before calling a change done. Recipes arrive with the phase
+Use `just`; `just` with no arguments lists the recipes. `just ci` runs the deterministic gates that
+need no container or cluster (`pr-title`, `format`, `lint`, `build-test`): run it before calling a
+change done. `http-tests`, `grype` and `k8s-smoke` have their own recipes (`just image`,
+`just http`, `just k8s-*`). Recipes arrive with the phase
 that needs them, so the list is the truth, not this file.
 
 - .NET SDK is pinned in `global.json` (10.0.x). `dotnet test` runs on Microsoft.Testing.Platform.

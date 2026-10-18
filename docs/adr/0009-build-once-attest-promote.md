@@ -22,8 +22,10 @@ A release also said nothing about how its changes were reviewed. The LLM gate's 
 3. **build:** builds the image once and pushes it by digest only.
 4. **scan:** scans that digest.
 5. **attest:** attests on that digest.
-6. **publish:** after approval, promotes the digest to the version tags.
-7. **smoke:** runs the digest, then publishes the release.
+6. **publish:** after approval, promotes the digest to the version tags and pushes the chart.
+7. **admission-smoke** ([ADR 0010](0010-admission-control.md)): proves Kyverno admits the released
+   digest and denies an unattested image, on a throwaway cluster.
+8. **smoke:** runs the digest, then publishes the release.
 
 - **Build once.** The multi-arch image is built once, without the Actions cache, and pushed as
   `candidate-vX.Y.Z`. The planned tag was `sha-<short>`, but `ci.yml`'s edge images already use

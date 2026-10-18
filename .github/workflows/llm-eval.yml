@@ -5,8 +5,9 @@
 # tested. The eval job therefore gets the API key but only a read-only token; the comment job runs
 # the base branch's script with the write token and none of the PR's code. Fork PRs get no secrets.
 #
-# Runs on every PR (no `paths:` filter) so it can become a required check; unrelated PRs pass as
-# "not applicable" in seconds. It also runs on pushes to main that touch the gate: a PR can restore
+# Runs on every PR (no `paths:` filter) because it is a required check on main, with its own
+# context rather than through `gates`; unrelated PRs pass as "not applicable" in seconds. It also
+# runs on pushes to main that touch the gate: a PR can restore
 # caches only from its own branch or from main, so main's run keeps a cache every PR starts from,
 # and a PR pays only for the checks it changes.
 name: llm-eval
