@@ -318,3 +318,37 @@ def test_a_partial_review_and_an_accepted_unreviewed_diff_are_both_listed(tmp_pa
             "security-review: error (overridden)",
         }
     ]
+
+
+def test_a_planned_blocking_check_with_no_record_is_unreviewed(tmp_path: Path) -> None:
+    """A failed artifact upload, or a collector that gave up mid-write, used to look like a clean
+    release: the check was simply absent from the predicate (F027)."""
+    log = write_log(
+        tmp_path,
+        {
+            "type": "triage",
+            "ts": "2026-10-17T09:00:00Z",
+            "pr": 1,
+            "head_sha": HEAD,
+            "final_risk": "high",
+            "checks_plan": ["code-review", "security-review", "docs-drift"],
+        },
+        gate_run(1, "code-review", "pass"),
+        gate_run(1, "docs-drift", "pass"),
+    )
+    blocking = {
+        "low": frozenset(),
+        "medium": frozenset(),
+        "high": frozenset({"code-review", "security-review"}),
+    }
+
+    predicate = attestations.llm_review(
+        [commit(1)], log, range_from=None, range_to="v1.0.0", blocking=blocking
+    )
+
+    assert predicate["unreviewed"] == [{"number": 1, "reason": "security-review: no record"}]
+    # Without the levels, the attestation reports only what it has, as before.
+    without = attestations.llm_review([commit(1)], log, range_from=None, range_to="v1.0.0")
+    assert without["unreviewed"] == []
+    # An advisory check the plan named is not a gap.
+    assert "docs-drift" in predicate["prs"][0]["checks"]

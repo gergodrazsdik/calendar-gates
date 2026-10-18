@@ -31,13 +31,13 @@ A review of the whole repository at `43ec3c2` (2026-10-17), after PLAN-v2 was wr
 | accepted | 0 | 0 | 0 | 2 | 1 | 3 |
 | rejected | 0 | 0 | 0 | 0 | 11 | 11 |
 
-**Fixed so far: 74 of 119** (3 partial, 41 open, 1 unverifiable). By severity:
+**Fixed so far: 82 of 119** (3 partial, 33 open, 1 unverifiable). By severity:
 
 | Status | critical | high | medium | low | info | total |
 |---|---|---|---|---|---|---|
-| ✅ fixed | 0 | 2 | 15 | 38 | 19 | 74 |
+| ✅ fixed | 0 | 2 | 15 | 45 | 20 | 82 |
 | 🟡 partial | 0 | 0 | 1 | 2 | 0 | 3 |
-| open | 0 | 0 | 0 | 34 | 7 | 41 |
+| open | 0 | 0 | 0 | 27 | 6 | 33 |
 | ⚪ unverifiable | 0 | 0 | 1 | 0 | 0 | 1 |
 
 Each fix names the PR that made it. The status column is maintained by hand as fixes land; the verdicts and severities below are the review's own and are not revised.
@@ -118,7 +118,14 @@ exactly the bypass it describes, so it was not built. What is confirmed without 
 `http-tests` and `k8s-smoke` hold `checks: write` while running PR code. Moving test reporting to
 a job that runs no PR code removes the question.
 
-**Since the review (2026-10-18).** Fourteen things changed under this document:
+**Since the review (2026-10-18).** Fifteen things changed under this document:
+- **#78** took the open items that still affected whether the gate can be talked around or its
+  records can be wrong: an override by label needed no write access (F007), the gates' own
+  configuration was rated medium (F021), a `checks.yaml` merging mid-review turned that run into
+  tampering (F022), a command for an uncollected run became a permanent rejection (F026), a
+  missing blocking record read as a clean release (F027), re-running the collector a day later
+  duplicated every file (F039), `not_needed` records claimed to be blocking (F040), and the
+  collector's token spanned the step that parses PR-written artifacts (F075).
 - **#77** closed the last medium and its twin: the agent reviewer's reads are fenced to the
   checkout, refusals are counted in the record and named in the comment (F003), and everything the
   model writes is redacted and stripped of link, image and tag markup before it is published
@@ -200,17 +207,11 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F081](#f081) | ✅ fixed | medium | medium | C | A malformed or empty ?year= on /api/friday13 gets a 400 without `errors` in Production and a 500 in Development, not the 400 ValidationProblem | small | S:C/medium M:C/medium I:C/medium |
 | [F084](#f084) | ✅ fixed | medium | medium | C | "A failed smoke leaves a draft; re-running the workflow refreshes it" no longer holds under build-once releases | trivial | S:C/medium M:C/medium I:C/medium |
 | [F003](#f003) | ✅ fixed | medium | high | A | The agent reviewer's file reads are not fenced to the reviewed checkout, and its output is published unredacted | small | S:P/medium M:C/medium I:C/low |
-| [F007](#f007) | open | low | medium | A | An override by label skips the write-role check that `/llm-override` enforces | trivial | S:C/low M:C/low I:C/low |
 | [F009](#f009) | open | low | medium | A | llm-eval scores security-review only on the API engine, but high-risk PRs (most of them) review it on the agent engine | small | S:C/low M:C/medium I:C/low |
 | [F018](#f018) | open | low | medium | A | The triage eval lets any one triage case fail in every repeat, tr-008 included; 4 of its 10 cases can't fail at all | small | S:C/low M:C/low I:C/low |
-| [F021](#f021) | open | low | low | A | Triage rates gate configuration outside .github/ and tools/llm-gate/ at the default medium | trivial | S:C/low M:C/low I:C/low |
-| [F022](#f022) | open | low | low | A | The collector rechecks a run's triage against the default branch's checks.yaml at collection time, not the config the run used | small | S:C/low M:C/low I:C/low |
 | [F023](#f023) | open | low | low | A | api-contract's paths filter misses files that change the HTTP contract outside Endpoints/, Domain/, Program.cs and http/ | trivial | S:C/low M:C/low I:C/low |
 | [F024](#f024) | open | low | low | A | A PR that changes only http/calendar.http is rated low, where api-contract doesn't run, so its http/** filter never fires for such PRs | trivial | S:C/low M:C/low I:C/low |
-| [F026](#f026) | open | low | low | A | /llm-fp and /llm-ack on a finding from the current run are rejected as unknown_finding until audit-collect has written that run | small | S:C/low M:C/low I:C/low |
-| [F027](#f027) | open | low | low | A | The llm-review attestation doesn't list a PR whose merged head is missing a record for a blocking check | small | S:C/low M:C/low I:C/low |
 | [F032](#f032) | open | low | low | A | The collector's paths for keyless PRs (skipped_no_key) and for a missing triage expectation are untested | small | S:C/low M:C/low I:C/low |
-| [F039](#f039) | open | low | low | A | Audit file paths use the date of collection, so re-running audit-collect or llm-feedback on another day writes duplicates | small | S:C/low M:C/low I:C/low |
 | [F045](#f045) | open | low | medium | B | The allow rules for just, uv run, dotnet and gh run auto-approve arbitrary and irreversible commands, which makes the deny list ineffective | small | S:C/low M:C/low I:C/low |
 | [F046](#f046) | open | low | medium | B | Ephemeral containers are tested nowhere: removing them from the images policy leaves every test green | trivial | S:C/low M:C/medium I:C/low |
 | [F053](#f053) | open | low | low | B | Re-runs keep the original event's updated_at as pr_event_at, so the turnaround metric includes the time people took to trigger the re-run | trivial | S:C/low M:C/low I:C/low |
@@ -221,7 +222,6 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F072](#f072) | open | low | low | B | pr-title isn't re-checked when the title is edited, so the check can stay green on a title that isn't a Conventional Commit | small | S:C/low M:C/low I:C/low |
 | [F073](#f073) | open | low | low | B | Records are dropped when an llm-review run completes after its PR was merged | trivial | S:C/low M:C/low I:C/low |
 | [F074](#f074) | open | low | low | B | The consistency check validates the main.json file, not the live ruleset, and ignores job-level if: | small | S:C/low M:C/low I:C/low |
-| [F075](#f075) | open | low | low | B | GH_TOKEN with contents: write is set for the whole collect job, including the step that parses untrusted artifacts | trivial | S:C/low M:C/low I:C/info |
 | [F076](#f076) | open | low | low | B | Dependabot's uv updates for tools/llm-gate will stall at the fixed exclude-newer date in pyproject.toml | small | S:C/low M:C/low I:P/low |
 | [F083](#f083) | open | low | medium | C | The coverage metric doesn't count triage's not_needed verdict as a decision, so every merged low-risk PR shows as not covered | small | S:C/low M:C/medium I:C/low |
 | [F085](#f085) | open | low | medium | C | The workdays range guard near year 9999 (start year above 9989) has no test | trivial | S:C/low M:C/low I:C/low |
@@ -274,8 +274,14 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F069](#f069) | ✅ fixed | low | low | B | No test exercises the admission rule 'no critical vulnerabilities' | medium | S:A/info M:C/low I:C/low |
 | [F037](#f037) | ✅ fixed | low | low | A | docs-drift has no eval case, and test-review has only an fp-regression case | medium | S:C/low M:C/low I:C/low |
 | [F029](#f029) | ✅ fixed | low | low | A | Model-written review text reaches the PR comment and job summary without redaction or markup neutralisation | small | S:C/low M:C/low I:C/low |
+| [F007](#f007) | ✅ fixed | low | medium | A | An override by label skips the write-role check that `/llm-override` enforces | trivial | S:C/low M:C/low I:C/low |
+| [F021](#f021) | ✅ fixed | low | low | A | Triage rates gate configuration outside .github/ and tools/llm-gate/ at the default medium | trivial | S:C/low M:C/low I:C/low |
+| [F022](#f022) | ✅ fixed | low | low | A | The collector rechecks a run's triage against the default branch's checks.yaml at collection time, not the config the run used | small | S:C/low M:C/low I:C/low |
+| [F026](#f026) | ✅ fixed | low | low | A | /llm-fp and /llm-ack on a finding from the current run are rejected as unknown_finding until audit-collect has written that run | small | S:C/low M:C/low I:C/low |
+| [F027](#f027) | ✅ fixed | low | low | A | The llm-review attestation doesn't list a PR whose merged head is missing a record for a blocking check | small | S:C/low M:C/low I:C/low |
+| [F039](#f039) | ✅ fixed | low | low | A | Audit file paths use the date of collection, so re-running audit-collect or llm-feedback on another day writes duplicates | small | S:C/low M:C/low I:C/low |
+| [F075](#f075) | ✅ fixed | low | low | B | GH_TOKEN with contents: write is set for the whole collect job, including the step that parses untrusted artifacts | trivial | S:C/low M:C/low I:C/info |
 | [F028](#f028) | open | info | low | A | eval add-from-fp looks up a 16-bit finding id across every PR and takes the last match | trivial | S:C/info M:C/low I:C/info |
-| [F040](#f040) | open | info | info | A | gate_run records for checks that triage didn't need carry the configured blocking flag, not the effective one | trivial | S:C/info M:C/info I:C/info |
 | [F080](#f080) | open | info | info | B | Tool versions pinned inside run: steps and with: inputs aren't covered by Dependabot | medium | S:C/info M:C/info I:C/info |
 | [F110](#f110) | open | info | low | C | Friday-the-13th lists are compared ignoring order | trivial | S:C/info M:C/info I:C/info |
 | [F112](#f112) | open | info | low | C | CurrentWeekUsesTodayInUtc can't tell UTC from local time | trivial | S:C/info M:C/low I:C/info |
@@ -300,6 +306,7 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F130](#f130) | ✅ fixed | info | info | C | AGENTS.md says `just ci` runs "every deterministic gate"; http-tests, grype and k8s-smoke aren't in it | trivial | S:C/info M:C/info I:C/low |
 | [F131](#f131) | ✅ fixed | info | info | C | The workflow-review prompt attributes workflow rules to AGENTS.md; they live in docs/PLAN.md | trivial | S:C/info M:C/info I:C/info |
 | [F132](#f132) | ✅ fixed | info | info | C | No doc or recipe explains how to create the Gate health issue and set GATE_HEALTH_ISSUE | trivial | S:C/info M:C/info I:C/info |
+| [F040](#f040) | ✅ fixed | info | info | A | gate_run records for checks that triage didn't need carry the configured blocking flag, not the effective one | trivial | S:C/info M:C/info I:C/info |
 | [F050](#f050) | ⚪ unverifiable | medium | medium | B | Required checks are pinned to the GitHub Actions app, not to the jobs that produce them, while three PR jobs hold checks: write next to PR-controlled code | small | S:P/medium M:P/low I:P/medium |
 
 ## Confirmed
@@ -847,7 +854,7 @@ The sentence dates from v1 (#7, 2026-10-15). Back then `publish` rebuilt and re-
 
 **An override by label skips the write-role check that `/llm-override` enforces**
 
-- **Status:** open
+- **Status:** ✅ fixed — #78: both override paths require the write-role list, and no label is honoured without it
 - **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `tools/llm-gate/src/llm_gate/audit.py:524` · **area:** llm-gate and review prompts
 - **Reported by:** `sec-04` (medium, high confidence), `cr-gate-11` (low, high confidence)
@@ -937,7 +944,7 @@ risk_accuracy is computed over 10 cases x 3 repeats, with a 1.00 baseline and ma
 
 **Triage rates gate configuration outside .github/ and tools/llm-gate/ at the default medium**
 
-- **Status:** open
+- **Status:** ✅ fixed — #78: a high rule for the deterministic gates' own configuration (.grype.yaml, justfile, lefthook.yml, .editorconfig, global.json, uv.toml, .config/**, Directory.Build.props)
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `tools/llm-gate/checks.yaml:47` · **area:** llm-gate and review prompts
 - **Reported by:** `cr-gate-14` (low, high confidence), `sec-10` (low, high confidence), `cr-ops-20` (info, high confidence)
@@ -978,7 +985,7 @@ scripts/** is rated high because CI runs it (check-commit-msg.sh is the pr-title
 
 **The collector rechecks a run's triage against the default branch's checks.yaml at collection time, not the config the run used**
 
-- **Status:** open
+- **Status:** ✅ fixed — #78: the collector recomputes from the checks.yaml the run used, read at its gate_sha once that commit is an ancestor of the trunk and the file matches config_sha256
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/cli.py:600` · **area:** llm-gate and review prompts
 - **Reported by:** `api-18` (low, medium confidence), `wr-17` (low, medium confidence)
@@ -1081,7 +1088,7 @@ Every llm job reads the override. Whenever an override was honoured and the chec
 
 **/llm-fp and /llm-ack on a finding from the current run are rejected as unknown_finding until audit-collect has written that run**
 
-- **Status:** open
+- **Status:** ✅ fixed — #78: a command for an uncollected run gets 👀 and an answer, and writes nothing
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/feedback.py:187` · **area:** llm-gate and review prompts
 - **Reported by:** `api-17` (low, medium confidence)
@@ -1104,7 +1111,7 @@ Every llm job reads the override. Whenever an override was honoured and the chec
 
 **The llm-review attestation doesn't list a PR whose merged head is missing a record for a blocking check**
 
-- **Status:** open
+- **Status:** ✅ fixed — #78: a planned blocking check with no record is listed as unreviewed
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/attestations.py:182` · **area:** llm-gate and review prompts
 - **Reported by:** `cr-gate-09` (low, high confidence)
@@ -1197,7 +1204,7 @@ No case names docs-drift, and llm-eval takes its check list from the cases, so d
 
 **Audit file paths use the date of collection, so re-running audit-collect or llm-feedback on another day writes duplicates**
 
-- **Status:** open
+- **Status:** ✅ fixed — #78: the folder comes from the triggering run's start and the comment's created_at, so a re-run hits the same path
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/cli.py:581` · **area:** llm-gate and review prompts
 - **Reported by:** `wr-14` (low, high confidence)
@@ -1514,7 +1521,7 @@ lint compares .github/rulesets/main.json with the workflows and checks.yaml, but
 
 **GH_TOKEN with contents: write is set for the whole collect job, including the step that parses untrusted artifacts**
 
-- **Status:** open
+- **Status:** ✅ fixed — #78: GH_TOKEN is set on the four steps that call the API, not on the job
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `.github/workflows/audit-collect.yml:34` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `wr-16` (low, high confidence)
@@ -2800,7 +2807,7 @@ A finding id is the check prefix plus 4 hex digits of a hash, so there are 65,53
 
 **gate_run records for checks that triage didn't need carry the configured blocking flag, not the effective one**
 
-- **Status:** open
+- **Status:** ✅ fixed — #78: a not_needed record says blocking: false
 - **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `tools/llm-gate/src/llm_gate/cli.py:305` · **area:** llm-gate and review prompts
 - **Reported by:** `api-23` (info, high confidence)

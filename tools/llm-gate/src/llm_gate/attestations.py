@@ -11,7 +11,7 @@ which are scrubbed like everything else in the audit log. They hold no PR titles
 """
 
 import json
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -131,10 +131,16 @@ def llm_review(
     *,
     range_from: str | None,
     range_to: str,
+    blocking: Mapping[str, Collection[str]] | None = None,
 ) -> dict[str, Any]:
     """`commits`: the release's commits on main, oldest first, each `{commit, pr, head_sha,
     merged_at}` (the PR that merged it, that PR's final head and merge time, or nulls for a commit
-    without a PR)."""
+    without a PR).
+
+    `blocking`: the checks that block at each risk level (`checks.yaml`'s levels). With it, a PR
+    whose triage record planned a blocking check that has **no record at all** is listed as
+    unreviewed instead of appearing with that check quietly absent, which is what a failed artifact
+    upload or a collector that gave up mid-write looks like (F027)."""
     records = _records(audit_dir)
     stamps = [t for r in records if (t := _parse(r.get("ts"))) is not None]
     log_start = min(stamps, default=None)  # compared as times, not strings
@@ -182,14 +188,24 @@ def llm_review(
                 reason += " (earlier heads were reviewed)"
             unreviewed.append({"number": number, "reason": reason})
         else:
-            skipped = sorted(
+            skipped = [
                 f"{check}: {_check_state(run)}"
                 for check, run in latest.items()
                 if run.get("blocking")
                 and (run.get("verdict") in NOT_REVIEWED or run.get("omitted_files"))
-            )
+            ]
+            # What the run was supposed to do, from its own triage record: a planned blocking check
+            # with no record is a gap the attestation has to name (F027).
+            planned = [str(c) for c in (triage or {}).get("checks_plan") or []]
+            level = str((triage or {}).get("final_risk") or "")
+            should_block = set((blocking or {}).get(level) or ())
+            skipped += [
+                f"{check}: no record"
+                for check in planned
+                if check in should_block and check not in latest
+            ]
             if skipped:
-                unreviewed.append({"number": number, "reason": ", ".join(skipped)})
+                unreviewed.append({"number": number, "reason": ", ".join(sorted(skipped))})
         problems = []
         if any(r.get("workflow_modified") for r in latest.values()):
             problems.append("workflow_modified")

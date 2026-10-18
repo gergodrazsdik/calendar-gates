@@ -67,6 +67,19 @@ all of the policy.
 
 ## Consequences
 
+- **Amended 2026-10-18 (F021): the deterministic gates' own configuration is rated high.**
+  `.grype.yaml`, `.yamllint.yaml`, `.editorconfig`, `lefthook.yml`, `justfile`, `global.json`,
+  `uv.toml`, `.config/**` and `Directory.Build.props` decide what `lint`, `format`, `grype` and
+  `build-test` accept, and used to fall through to `default_risk: medium` — so a PR adding a grype
+  ignore got the cheap engine and no `workflow-review`, while the same change under `.github/`
+  got the full set.
+- **Amended 2026-10-18 (F022): a run is judged by the `checks.yaml` it used.** The collector
+  recomputed the floor and the plans from the default branch's config *at collection time*, so a
+  change to `triage.rules` or a level's plan that merged while a review was in flight made that
+  run's records inconsistent with the recomputation and the whole run became `tamper_suspected`.
+  It now reads the config at the run's own `gate_sha`, but only after proving that commit is an
+  ancestor of the trunk and that the file there hashes to the `config_sha256` the records carry;
+  anything else falls back to the current config, as before.
 - **The markers are self-declared.** `AGENTS.md` asks agents to add trailers, and Claude Code adds
   them by default, but nothing proves a commit wasn't AI-assisted. The markers are a transparency
   signal for triage and the metrics, not enforcement.
