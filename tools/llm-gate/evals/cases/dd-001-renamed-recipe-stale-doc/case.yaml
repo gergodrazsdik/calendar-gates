@@ -1,0 +1,13 @@
+---
+id: dd-001-renamed-recipe-stale-doc
+kind: bug
+checks: [docs-drift]
+source: written for the evals (F037)
+description: The audit-pull recipe is renamed to audit-fetch; docs/gates.md, edited in the same diff,
+  still tells the reader to run `just audit-pull`.
+base: 02b65a82747c5410b4d3dd73baa4998e4914bd20
+expect:
+  - file: docs/gates.md
+    lines: [147, 147]
+    min_severity: medium
+    category: stale-docs

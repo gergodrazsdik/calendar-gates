@@ -58,6 +58,12 @@ the drift shows up in verdict accuracy, which allows a drop of 0.10.
   uses `\$IMAGE`), because the model rewords titles and renames categories between runs. Then
   confirm that the finding really was wrong: drill 19's first marked "false positive" was a
   correct finding.
+Case ids carry the check they were written for: `cr` code-review, `sr` security-review, `ac`
+api-contract, `wr` workflow-review, `dd` docs-drift, `te` test-review, `tr` triage, plus `clean-`
+and `fp-`. **Every check `llm-eval` can run needs at least one case with an expected finding**: the
+run's check list comes from the cases, so a check no case names is not evaluated at all, and one
+whose only case is an `fp-regression` has no recall to lose (F037).
+
 - **triage** ([ADR 0008](../../../docs/adr/0008-risk-triage.md)): `checks: [triage]`,
   `expect_risk: low|medium|high`, optionally `ai_assisted: true`. The rules' floor comes from the
   patch, then the triage model (`.claude/commands/llm-triage.md`) may raise it. Scored as risk
