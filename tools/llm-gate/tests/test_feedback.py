@@ -300,3 +300,31 @@ def test_collaborators_without_write_access_are_not_heard(
     actions = handle("/llm-override trust me", audit_dir, permission=permission)
     assert not actions.recorded and actions.label is None and not actions.rerun
     assert record(actions)["code"] == "not_a_collaborator"
+
+
+def test_an_ack_is_recorded_as_an_ack_and_marks_nothing(audit_dir: Path) -> None:
+    """The happy path of `/llm-ack` went through `handle` nowhere: only the unknown-finding case
+    did, and a mutation recording acks as `fp` survived the suite (F035)."""
+    actions = handle("/llm-ack cr-1705", audit_dir)
+
+    assert actions.recorded
+    assert actions.reaction == "+1"
+    assert actions.mark is None  # only /llm-fp marks the sticky comment
+    assert actions.label is None
+    assert not actions.rerun
+    r = record(actions)
+    assert (r["type"], r["kind"], r["finding_id"]) == ("feedback", "ack", "cr-1705")
+    assert r["check"] == "code-review"  # the check the finding came from, found in the log
+
+
+def test_a_writers_malformed_command_is_rejected_with_a_reason(audit_dir: Path) -> None:
+    """`/llm-fp` needs a reason. From someone with write access this reaches the rejection path
+    that nothing exercised; a mutation returning no record there survived (F035)."""
+    actions = handle("/llm-fp cr-1705", audit_dir)  # no reason
+
+    assert not actions.recorded
+    assert actions.reaction == "confused"
+    assert actions.path.startswith("events/")
+    assert "feedback-" in actions.path  # a writer's rejection is filed per comment, not per person
+    r = record(actions)
+    assert (r["type"], r["command"], r["code"]) == ("feedback_rejected", "fp", "bad_arguments")

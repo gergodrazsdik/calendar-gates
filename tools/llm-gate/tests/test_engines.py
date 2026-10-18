@@ -72,7 +72,8 @@ def test_api_engine_request_and_result(tmp_path: Path) -> None:
     assert call["messages"][0]["content"].startswith('<diff base="origin/main">\ndiff --git')
     assert (call["betas"], call["fallbacks"]) == ([FALLBACK_BETA], "default")
     assert out.review == REVIEW
-    assert out.usage.cost_usd == pytest.approx(estimate_cost("claude-sonnet-5-5", 1000, 200))
+    # The literal price, so this can't pass by agreeing with a broken estimate_cost (F036).
+    assert out.usage.cost_usd == pytest.approx((1000 * 2.00 + 200 * 10.00) / 1_000_000)
     assert out.usage.cost_estimated
 
 
@@ -240,3 +241,29 @@ def test_agent_engine_logs_tool_calls_through_its_pre_tool_use_hook(tmp_path: Pa
         ("Grep", "pattern=[REDACTED] path=."),
     ]
     assert all(c.ts.tzinfo is not None for c in out.tool_calls)
+
+
+@pytest.mark.parametrize(
+    ("model", "input_tokens", "output_tokens", "expected"),
+    [
+        # Sonnet: $2.00 per Mtok in, $10.00 out. The literal arithmetic, not estimate_cost's own
+        # output: the old assertion compared the engine's number with this function, so swapped
+        # input and output prices would have passed (F036).
+        ("claude-sonnet-5-5", 1_000, 200, (1_000 * 2.00 + 200 * 10.00) / 1_000_000),
+        ("claude-haiku-5-5", 1_000_000, 0, 0.10),
+        ("claude-opus-5-5", 0, 1_000_000, 20.00),
+        # Input and output are not interchangeable: 1 Mtok out costs 5x 1 Mtok in on Sonnet.
+        ("claude-sonnet-5-5", 1_000_000, 0, 2.00),
+        ("claude-sonnet-5-5", 0, 1_000_000, 10.00),
+    ],
+)
+def test_cost_is_the_price_table_times_the_tokens(
+    model: str, input_tokens: int, output_tokens: int, expected: float
+) -> None:
+    assert estimate_cost(model, input_tokens, output_tokens) == pytest.approx(expected)
+
+
+def test_an_unknown_model_has_no_estimate() -> None:
+    """No guess for a model the table doesn't price: the metrics and the eval budget would be
+    quietly wrong instead of visibly absent."""
+    assert estimate_cost("claude-not-a-model", 1000, 200) is None

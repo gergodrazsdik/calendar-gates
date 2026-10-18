@@ -152,9 +152,36 @@ class _IndentedDumper(yaml.SafeDumper):
         super().increase_indent(flow, False)
 
 
+class _BlockMap(dict[str, Any]):
+    """A mapping the dumper writes as a block, whatever `default_flow_style` says."""
+
+
+_IndentedDumper.add_representer(
+    _BlockMap,
+    lambda dumper, data: dumper.represent_mapping("tag:yaml.org,2002:map", data, flow_style=False),
+)
+
+
+def _wrap_long(entries: list[Any]) -> list[Any]:
+    """Flow mappings that would run past yamllint's line limit, as blocks.
+
+    A `forbid` rule's title is a regex, often a long one (`add-from-fp` writes the escaped title of
+    a real finding), and PyYAML keeps a flow mapping on one line however wide it gets (F019). Only
+    the long entries change shape, so every other committed case keeps its canonical form.
+    """
+    wrapped = []
+    for entry in entries:
+        inline = yaml.dump(entry, default_flow_style=True, width=10_000).strip()
+        wrapped.append(_BlockMap(entry) if len(inline) > 90 else entry)
+    return wrapped
+
+
 def dump_case(case: Case) -> str:
     data = case.model_dump(mode="json", exclude_defaults=True)
     data.setdefault("expect", [])
+    for key in ("forbid", "expect"):
+        if isinstance(data.get(key), list):
+            data[key] = _wrap_long(data[key])
     text: str = yaml.dump(
         data,
         Dumper=_IndentedDumper,
@@ -225,8 +252,12 @@ def forbidden_hit(finding: Finding, forbidden: Forbidden) -> bool:
         return False
     if forbidden.category is not None and finding.category != forbidden.category:
         return False
-    if forbidden.title is not None and not re.search(forbidden.title, finding.title, re.IGNORECASE):
-        return False
+    if forbidden.title is not None:
+        # Title and detail: the same mistake comes back worded differently, and it is often the
+        # detail that carries it ("IMAGE is never set" in the body, a bland title above it, F019).
+        text = f"{finding.title}\n{finding.detail}"
+        if not re.search(forbidden.title, text, re.IGNORECASE):
+            return False
     if forbidden.lines is None:
         return True
     low, high = forbidden.lines
@@ -344,7 +375,12 @@ class Metrics(BaseModel):
     # Triage runs only (check "triage"): final risk == expect_risk, and results below the rules'
     # floor (a hard failure: the model may only raise).
     risk_accuracy: float | None = None
-    floor_violations: int = 0
+    # The model's own answer below the rules' floor, per repeat. `floor_violations` used to be
+    # computed from final_risk(), which takes the higher of the two, so it could never be non-zero
+    # and the "hard assertion" it stood for was true by construction (F030). The invariant is a
+    # unit test now; this number says how often the model was talked below the floor, which is the
+    # injection signal worth watching.
+    model_below_floor: int = 0
 
 
 def metrics(results: Sequence[CaseResult], repeats: int) -> Metrics:
@@ -526,7 +562,9 @@ def run_triage_eval(
                     verdict=final,
                     exit_code=0 if final == case.expect_risk else 1,
                     found=[],
-                    forbidden_hits=int(triage.rank(final) < triage.rank(floor.risk)),
+                    forbidden_hits=int(
+                        model.risk is not None and triage.rank(model.risk) < triage.rank(floor.risk)
+                    ),
                     below_threshold=0,
                     findings=0,
                     cost_usd=model.cost_usd,
@@ -558,7 +596,7 @@ def run_triage_eval(
             "verdict_accuracy": None,
             "fp_regressions": 0,
             "risk_accuracy": _ratio(sum(1 for a in attempts if a.exit_code == 0), len(attempts)),
-            "floor_violations": sum(a.forbidden_hits for a in attempts),
+            "model_below_floor": sum(a.forbidden_hits for a in attempts),
         }
     )
     return EvalRun(
@@ -670,11 +708,13 @@ def compare(run: EvalRun, baseline: Mapping[str, Any], thresholds: Thresholds) -
         delta_row("risk_accuracy", new.risk_accuracy, thresholds.max_risk_accuracy_drop, -1)
         rows.append(
             Comparison(
-                metric="floor_violations",
-                baseline=old.get("floor_violations"),
-                current=float(new.floor_violations),
-                limit="0",
-                ok=new.floor_violations == 0,
+                metric="model_below_floor",
+                baseline=old.get("model_below_floor"),
+                current=float(new.model_below_floor),
+                # Reported, not gated: the floor wins whatever the model says (a unit test pins
+                # that), so this is a signal about the model, not a verdict about the PR (F030).
+                limit="-",
+                ok=True,
             )
         )
     else:
@@ -800,7 +840,7 @@ def render_comparison(run: EvalRun, rows: Sequence[Comparison]) -> str:
             "usd"
             if row.metric == "cost_usd"
             else "int"
-            if row.metric in ("fp_regressions", "floor_violations")
+            if row.metric in ("fp_regressions", "model_below_floor")
             else "ratio"
         )
         lines.append(

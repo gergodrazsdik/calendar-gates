@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -94,20 +95,34 @@ def test_every_committed_case_is_valid_and_applies_to_its_base() -> None:
     cases = evals.load_cases(REAL_CASES)
     assert len(cases) >= 20
     root = Path(git(REAL_CASES, "rev-parse", "--show-toplevel").strip())
+    missing: list[str] = []
     for loaded in cases:
         exists = subprocess.run(
             ["git", "cat-file", "-e", f"{loaded.case.base}^{{commit}}"], cwd=root, check=False
         )
         if exists.returncode != 0:
-            pytest.skip(f"{loaded.case.base[:12]} not in this clone (shallow checkout)")
+            # In CI this is a failure: the lint job checks out the full history for exactly this
+            # test, and one missing base used to skip the whole thing (F017). Locally a shallow
+            # clone is a fair reason to skip, but only the cases it affects.
+            missing.append(f"{loaded.case.id}: base {loaded.case.base[:12]} not in this clone")
+            continue
         evals.case_diff(loaded)
         with evals.workspace(root, loaded) as tree:
             for path in evals.patch_files(loaded.patch):
                 assert (tree / path).exists(), f"{loaded.case.id}: {path} missing after apply"
         for expectation in loaded.case.expect:
             assert expectation.file in evals.patch_files(loaded.patch), loaded.case.id
+        # A forbid rule naming a file the patch doesn't touch can never match, so the case would
+        # pass for the wrong reason for ever (F019).
+        for rule in loaded.case.forbid:
+            assert rule.file in evals.patch_files(loaded.patch), f"{loaded.case.id}: {rule.file}"
         # Canonical form (what add-from-fp writes), so yamllint and the dumper agree.
         assert (loaded.directory / "case.yaml").read_text() == evals.dump_case(loaded.case)
+
+    if missing and os.environ.get("CI"):
+        pytest.fail("; ".join(missing))
+    if missing:
+        pytest.skip("; ".join(missing))
 
 
 def test_cases_are_validated(eval_repo: Repo) -> None:
