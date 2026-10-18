@@ -179,23 +179,32 @@ tag `vX.Y.Z`. The workflow then:
    **LLM review** (every PR since the previous release with its gate verdicts on the merged head,
    plus the unreviewed and unverified ones, from `audit-log`). Each one is a permanent entry in the
    public Rekor log; that's why only releases are attested.
-6. **publish**: waits for approval in the `release` environment, then gives the attested digest
-   its version tags (`X.Y.Z`, `X.Y`; nothing is rebuilt), pushes the Helm chart with the digest
-   pinned in `image.digest` to `oci://ghcr.io/gergodrazsdik/charts`, and drafts the GitHub Release
-   with the SBOM, the chart and an "LLM review" section listing any unreviewed or unverified PRs.
+6. **approve**: waits for approval in the `release` environment and then does one thing — attests
+   the approval on the digest (`release-approved/v1`), which is what admission requires and what
+   lets the next two jobs run. Nothing public is created here (amended 2026-10-18, F071).
 7. **admission-smoke** ([ADR 0010](adr/0010-admission-control.md)): on a throwaway kind cluster,
-   installs Kyverno and the policies from `deploy/policies`. It checks that the published chart is
-   admitted in `calendar-gates` and runs the release digest. It checks that the `edge` image (no
-   release attestations) and a foreign image are denied, each by the policy that should deny them.
-   And it checks that `calendar-gates-dev` admits `edge` and reports it as a failure.
-8. **smoke**: runs the digest, checks `/api/version` reports `X.Y.Z`, runs the contract tests,
-   and only after that, and after `admission-smoke`, publishes the release. A failed smoke leaves the draft as it is.
-   **Don't re-run the whole workflow to fix it** ([ADR 0009](adr/0009-build-once-attest-promote.md)):
-   a full re-run builds new bytes, writes four more permanent Rekor entries, and then `publish`
-   refuses to move an existing `X.Y.Z`, which burns the version. Re-run the failed job, or fix the
-   cause and release the next patch version.
+   installs Kyverno and the policies from `deploy/policies`. It packages the chart with the digest
+   pinned in `image.digest`, installs **that tarball** in `calendar-gates` and checks the pods run
+   the release digest. It checks that the `edge` image (no release attestations) and a foreign
+   image are denied, each by the policy that should deny them. And it checks that
+   `calendar-gates-dev` admits `edge` and reports it as a failure. The tarball it installed is
+   handed to `promote` as an artifact, so the chart that is published is the one that was tested.
+8. **smoke**: runs the digest, checks `/api/version` reports `X.Y.Z` and runs the contract tests.
+   Runs beside `admission-smoke`; neither needs anything public to exist.
+9. **promote**: only after both pass, and everything public happens here — the version tags
+   (`X.Y.Z`, `X.Y`; nothing is rebuilt), the chart to `oci://ghcr.io/gergodrazsdik/charts`, and the
+   GitHub Release with the SBOM, the chart and an "LLM review" section listing any unreviewed or
+   unverified PRs. There is no second approval pause: `promote` has no environment of its own and
+   can only run because `approve` passed.
 
-A failed scan leaves only the candidate tag: no version tags, no chart, no release.
+   **A failed smoke or admission test now leaves nothing public**, so re-running the whole workflow
+   is safe: it builds new bytes, re-attests and promotes those. Once `promote` has pushed `X.Y.Z`
+   the version is taken, and a failed `promote` is fixed by re-running **that job**
+   ([ADR 0009](adr/0009-build-once-attest-promote.md)) — a full re-run would build new bytes that
+   `promote` then refuses to put under the existing version.
+
+A failed scan, smoke or admission test leaves only the candidate tag: no version tags, no chart,
+no release.
 
 Check the supply chain afterwards with `just verify-release X.Y.Z`. It runs from `main`, so a
 tagged commit can't weaken it: the tag must be annotated with a signature GitHub verifies, its

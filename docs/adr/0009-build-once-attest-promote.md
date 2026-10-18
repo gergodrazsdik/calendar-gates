@@ -22,12 +22,16 @@ A release also said nothing about how its changes were reviewed. The LLM gate's 
 3. **build:** builds the image once and pushes it by digest only.
 4. **scan:** scans that digest.
 5. **attest:** attests on that digest.
-6. **publish:** after approval, promotes the digest to the version tags, attests the approval
-   (`release-approved/v1`, the one attestation that can't exist before the gate) and pushes the
-   chart.
-7. **admission-smoke** ([ADR 0010](0010-admission-control.md)): proves Kyverno admits the released
-   digest and denies an unattested image, on a throwaway cluster.
-8. **smoke:** runs the digest, then publishes the release.
+6. **approve:** the gated job. It attests the approval (`release-approved/v1`, the one attestation
+   that can't exist before the gate) and publishes nothing.
+7. **admission-smoke** ([ADR 0010](0010-admission-control.md)): proves Kyverno admits the release
+   digest and denies an unattested image, on a throwaway cluster. It packages the chart and
+   installs that tarball, and hands it on as an artifact.
+8. **smoke:** runs the digest, checks `/api/version` and the contract tests. Runs beside
+   admission-smoke; neither needs anything public to exist.
+9. **promote:** only after both pass. The version tags (`X.Y.Z`, `X.Y`), the chart tarball the
+   admission tests installed, and the GitHub Release — everything public, in one job
+   (**amended 2026-10-18**, F071).
 
 - **Build once.** The multi-arch image is built once, without the Actions cache, and pushed as
   `candidate-vX.Y.Z`. The planned tag was `sha-<short>`, but `ci.yml`'s edge images already use
@@ -53,8 +57,10 @@ A release also said nothing about how its changes were reviewed. The LLM gate's 
     The release notes print the same lists. The range starts at the previous **final** release
     for a final version, and at the previous release of any kind for a prerelease. PRs that only
     reached an `-rc` tag therefore still count for the final release.
-- **Promote after approval.** `publish` (the `release` environment) gives the attested digest
-  `X.Y.Z` and `X.Y` with `buildx imagetools create`, and checks that both tags resolve to it.
+- **Promote after approval *and* after the tests.** `promote` gives the attested digest `X.Y.Z`
+  and `X.Y` with `buildx imagetools create`, and checks that both tags resolve to it. It has no
+  `environment:` of its own — it can only run because the gated `approve` passed, and the approval
+  is attested on the digest — so a release pauses for a person once, not twice.
   An existing `X.Y.Z` is never moved. A full re-run builds new bytes, so `publish` fails rather
   than move the version tag to them, and the fix is a new version, as for git tags.
   It pushes the chart with `image.digest` pinned, so a released chart can only pull the attested
@@ -84,8 +90,16 @@ verifiable outside GitHub.
   triage record's `checks_plan` says what was supposed to run, and the levels in `checks.yaml` say
   which of those block, so a missing one is named (`security-review: no record`).
 
-- **A failed scan leaves only the candidate tag.** No version tags, chart or release appear.
-  Approval comes after the scan and the attestations, so the reviewer approves known bytes.
+- **A failed scan, smoke or admission test leaves only the candidate tag.** No version tags, chart
+  or release appear. Approval comes after the scan and the attestations, so the reviewer approves
+  known bytes; the tests that used to run *after* publishing now run before it, so a failure no
+  longer burns the version or leaves `X.Y` pointing at bytes that failed (F071, 2026-10-18). The
+  cost is that a re-run after a failed test builds new bytes and writes four more Rekor entries,
+  which is the same trade-off the scan already had.
+- **What a re-run means now.** After a failed `smoke` or `admission-smoke`, nothing public exists,
+  so re-running the whole workflow is safe: it builds new bytes, re-attests and promotes those. The
+  old warning applies only once `promote` has pushed `X.Y.Z` — from then on the version is taken,
+  and a failed `promote` is fixed by re-running *that job*, not the workflow.
 - **The vulnerability attestation is true when it was made.** A CVE published later doesn't show
   up in it. A rescan is a new grype run, not a re-check of the attestation.
 - **The LLM-review attestation is only as good as the audit log.** It summarises what the collector

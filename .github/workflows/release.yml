@@ -1,11 +1,14 @@
 # Release pipeline (docs/PLAN.md Phase 11, ADR 0009). `just release X.Y.Z` pushes a signed tag
 # vX.Y.Z; this workflow verifies it and re-runs the tests, then builds the multi-arch image **once**
 # and pushes it by digest (tag `candidate-vX.Y.Z` only), scans that digest, and attests provenance,
-# SBOM, the vulnerability scan and the LLM review of the release's PRs on it. Only after approval
-# in the `release` environment does the digest get its version tags (`X.Y.Z`, `X.Y`) and a chart
-# pinned to it; then `admission-smoke` proves Kyverno admits those bytes and denies an unattested
-# image (ADR 0010), and the GitHub Release goes public after the contract tests passed on them.
-# Attestations are signed keyless and logged in the public Rekor log: releases only (ADR 0009).
+# SBOM, the vulnerability scan and the LLM review of the release's PRs on it. Approval in the
+# `release` environment records itself as an attestation and publishes nothing; then
+# `admission-smoke` proves Kyverno admits those bytes and denies an unattested image (ADR 0010)
+# while `smoke` runs the digest and the contract tests against it. Only when both pass does
+# `promote` give the digest its version tags (`X.Y.Z`, `X.Y`), push the chart the admission tests
+# installed, and publish the GitHub Release — so a failed test leaves nothing public behind and the
+# version isn't burnt (F071). Attestations are signed keyless and logged in the public Rekor log:
+# releases only (ADR 0009).
 name: release
 
 on:
@@ -283,56 +286,30 @@ jobs:
           retention-days: 90
 
   # Pauses for approval: the `release` environment has a required reviewer and only allows v* tags.
-  # Nothing is built here: the attested digest gets its version tags.
-  publish:
-    name: publish
+  # Nothing public happens here. The approval is recorded as an attestation on the digest, which is
+  # what admission requires (ADR 0010) and what lets the later jobs run at all; the version tags,
+  # the chart and the GitHub Release come after the smoke tests pass (F071).
+  approve:
+    name: approve
     needs: [verify, build, attest]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: release
     permissions:
-      contents: write # draft GitHub Release
-      packages: write # version tags and chart on ghcr.io
+      contents: read
+      packages: write # the attestation is pushed next to the image
       id-token: write # keyless signing of the approval attestation
       attestations: write # the repository's attestation store
       artifact-metadata: write # storage records for the pushed attestation
     env:
       VERSION: ${{ needs.verify.outputs.version }}
-      TAG: ${{ github.ref_name }}
       DIGEST: ${{ needs.build.outputs.digest }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: release-files
-          path: ${{ runner.temp }}/out
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Promote the attested digest to the version tags
-        run: |
-          # X.Y.Z is never moved: a re-run that built new bytes must not take over the version.
-          if existing=$(docker buildx imagetools inspect "$IMAGE:$VERSION" \
-              --format '{{.Manifest.Digest}}' 2> /dev/null); then
-            if [ "$existing" != "$DIGEST" ]; then
-              echo "::error::$IMAGE:$VERSION is already $existing; this run built $DIGEST. Release a new version."
-              exit 1
-            fi
-          fi
-          tags=(-t "$IMAGE:$VERSION")
-          # X.Y only for final versions, as docker/metadata-action's semver patterns did.
-          [[ $VERSION == *-* ]] || tags+=(-t "$IMAGE:${VERSION%.*}")
-          docker buildx imagetools create "${tags[@]}" "$IMAGE@$DIGEST"
-          for tag in "${tags[@]}"; do
-            [ "$tag" = -t ] && continue
-            got=$(docker buildx imagetools inspect "$tag" --format '{{.Manifest.Digest}}')
-            [ "$got" = "$DIGEST" ] || { echo "::error::$tag is $got, not $DIGEST"; exit 1; }
-          done
       # The one attestation that can only exist after a person approved this job's environment, so
       # admission can tell an approved release from a candidate that was built, scanned and
       # attested and then rejected (F048, ADR 0010). The other four are made in `attest`, before
@@ -351,55 +328,21 @@ jobs:
              "run": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}"}
           # yamllint enable rule:line-length
           push-to-registry: true
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
-        with:
-          version: v4.2.2
-      - name: Package and push the Helm chart, pinned to the digest
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ACTOR: ${{ github.actor }}
+      - name: Summary
         run: |
-          yq -i ".image.digest = \"$DIGEST\"" deploy/helm/calendar-gates/values.yaml
-          helm package deploy/helm/calendar-gates --version "$VERSION" --app-version "$VERSION" -d dist
-          helm registry login ghcr.io -u "$ACTOR" --password-stdin <<< "$GH_TOKEN"
-          helm push "dist/calendar-gates-$VERSION.tgz" "$CHART_REPO"
-      - name: Draft the GitHub Release (published by the smoke job)
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-        run: |
-          assets=("$RUNNER_TEMP/out/sbom.spdx.json" "dist/calendar-gates-$VERSION.tgz")
           {
-            echo "Image: \`$IMAGE:$VERSION\` (\`$DIGEST\`). Verify: \`just verify-release $VERSION\`."
-            echo
-            cat "$RUNNER_TEMP/out/release-notes.md"
-          } > "$RUNNER_TEMP/notes.md"
-          if gh release view "$TAG" -R "$REPO" > /dev/null 2>&1; then
-            # A re-run after a failed smoke: the draft exists, refresh its assets and notes (the
-            # generated changelog is added again, as --generate-notes does on create).
-            gh release upload "$TAG" -R "$REPO" --clobber "${assets[@]}"
-            { echo; gh api -X POST "repos/$REPO/releases/generate-notes" -f tag_name="$TAG" --jq .body; } \
-              >> "$RUNNER_TEMP/notes.md"
-            gh release edit "$TAG" -R "$REPO" --notes-file "$RUNNER_TEMP/notes.md"
-          else
-            prerelease=()
-            [[ $VERSION == *-* ]] && prerelease=(--prerelease)
-            gh release create "$TAG" -R "$REPO" --verify-tag --draft --generate-notes \
-              --notes-file "$RUNNER_TEMP/notes.md" --title "$TAG" "${prerelease[@]}" "${assets[@]}"
-          fi
-          {
-            echo "### Published $VERSION"
-            echo "- image: \`$IMAGE:$VERSION\` (\`$DIGEST\`)"
-            echo "- chart: \`$CHART_REPO/calendar-gates --version $VERSION\` (pinned to the digest)"
+            echo "### Approved $VERSION"
+            echo "- digest: \`$DIGEST\`"
+            echo "- the version tags and the chart follow the smoke tests (ADR 0009)"
           } >> "$GITHUB_STEP_SUMMARY"
-
   # Admission control (ADR 0010): Kyverno with the project's policies on a throwaway kind cluster.
   # The release must be admitted in `calendar-gates`; the unattested edge image and a foreign image
-  # must be denied; `calendar-gates-dev` must admit edge and report it. The release only goes
-  # public (smoke) if the policies hold.
+  # must be denied; `calendar-gates-dev` must admit edge and report it. Nothing is published until
+  # this and `smoke` pass (F071), so the chart is packaged here and installed from the tarball; the
+  # same tarball is what `promote` pushes, so the bytes that were tested are the bytes released.
   admission-smoke:
     name: admission-smoke
-    needs: [verify, build, publish]
+    needs: [verify, build, approve]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -442,10 +385,14 @@ jobs:
           done
           kubectl get validatingpolicies,imagevalidatingpolicies
           [ "$pending" = 0 ] || { echo "::error::$pending policies are not ready"; exit 1; }
+      - name: Package the chart, pinned to the digest
+        run: |
+          yq -i ".image.digest = \"$DIGEST\"" deploy/helm/calendar-gates/values.yaml
+          helm package deploy/helm/calendar-gates --version "$VERSION" --app-version "$VERSION" -d dist
       - name: The release is admitted in calendar-gates
         run: |
-          helm install calendar-gates oci://ghcr.io/gergodrazsdik/charts/calendar-gates \
-            --version "$VERSION" -n calendar-gates --wait --timeout 4m
+          helm install calendar-gates "dist/calendar-gates-$VERSION.tgz" \
+            -n calendar-gates --wait --timeout 4m
           kubectl -n calendar-gates get pods -o wide
           running=$(kubectl -n calendar-gates get pods -o jsonpath='{.items[*].spec.containers[*].image}')
           for image in $running; do
@@ -504,15 +451,24 @@ jobs:
             kubectl -n kyverno logs deploy/kyverno-admission-controller --tail=60 2>&1 || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+      # The exact tarball these tests admitted, for `promote` to push: not a second packaging run.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: chart
+          path: dist/calendar-gates-*.tgz
+          retention-days: 7
 
+  # The release digest as a running service. It needs nothing that `promote` creates, so it runs
+  # before it: a failed smoke used to leave the version tags, the chart and a draft release behind,
+  # which burnt the version (F071).
   smoke:
     name: smoke
-    needs: [verify, build, publish, admission-smoke]
+    needs: [verify, build, approve]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
-      contents: write # publish the draft release
-      packages: read # pull the published image, also while the package is private
+      contents: read
+      packages: read # pull the image by digest, also while the package is private
     env:
       VERSION: ${{ needs.verify.outputs.version }}
       TAG: ${{ github.ref_name }}
@@ -545,8 +501,96 @@ jobs:
       - name: Container logs
         if: failure()
         run: docker logs calendar-gates
-      - name: Publish the release
+
+  # Everything public, and only now: the version tags, the chart the admission tests installed, and
+  # the GitHub Release. No `environment:` here, so there is no second approval pause — this job can
+  # only run because `approve` already passed its gate, and the approval is attested on the digest.
+  promote:
+    name: promote
+    needs: [verify, build, attest, approve, admission-smoke, smoke]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write # the GitHub Release
+      packages: write # version tags and the chart on ghcr.io
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+      TAG: ${{ github.ref_name }}
+      DIGEST: ${{ needs.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-files
+          path: ${{ runner.temp }}/out
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: chart
+          path: dist
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Promote the attested digest to the version tags
+        run: |
+          # X.Y.Z is never moved: a re-run that built new bytes must not take over the version.
+          if existing=$(docker buildx imagetools inspect "$IMAGE:$VERSION" \
+              --format '{{.Manifest.Digest}}' 2> /dev/null); then
+            if [ "$existing" != "$DIGEST" ]; then
+              echo "::error::$IMAGE:$VERSION is already $existing; this run built $DIGEST. Release a new version."
+              exit 1
+            fi
+          fi
+          tags=(-t "$IMAGE:$VERSION")
+          # X.Y only for final versions, as docker/metadata-action's semver patterns did.
+          [[ $VERSION == *-* ]] || tags+=(-t "$IMAGE:${VERSION%.*}")
+          docker buildx imagetools create "${tags[@]}" "$IMAGE@$DIGEST"
+          for tag in "${tags[@]}"; do
+            [ "$tag" = -t ] && continue
+            got=$(docker buildx imagetools inspect "$tag" --format '{{.Manifest.Digest}}')
+            [ "$got" = "$DIGEST" ] || { echo "::error::$tag is $got, not $DIGEST"; exit 1; }
+          done
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.2.2
+      - name: Push the chart the admission tests installed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          helm registry login ghcr.io -u "$ACTOR" --password-stdin <<< "$GH_TOKEN"
+          helm push "dist/calendar-gates-$VERSION.tgz" "$CHART_REPO"
+      - name: Publish the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-        run: gh release edit "$TAG" -R "$REPO" --draft=false
+        run: |
+          assets=("$RUNNER_TEMP/out/sbom.spdx.json" "dist/calendar-gates-$VERSION.tgz")
+          {
+            echo "Image: \`$IMAGE:$VERSION\` (\`$DIGEST\`). Verify: \`just verify-release $VERSION\`."
+            echo
+            cat "$RUNNER_TEMP/out/release-notes.md"
+          } > "$RUNNER_TEMP/notes.md"
+          if gh release view "$TAG" -R "$REPO" > /dev/null 2>&1; then
+            # A re-run of this job only: the release exists, refresh its assets and notes (the
+            # generated changelog is added again, as --generate-notes does on create).
+            gh release upload "$TAG" -R "$REPO" --clobber "${assets[@]}"
+            { echo; gh api -X POST "repos/$REPO/releases/generate-notes" -f tag_name="$TAG" --jq .body; } \
+              >> "$RUNNER_TEMP/notes.md"
+            gh release edit "$TAG" -R "$REPO" --notes-file "$RUNNER_TEMP/notes.md" --draft=false
+          else
+            prerelease=()
+            [[ $VERSION == *-* ]] && prerelease=(--prerelease)
+            # Not a draft: the tests that used to decide whether to publish it have already run.
+            gh release create "$TAG" -R "$REPO" --verify-tag --generate-notes \
+              --notes-file "$RUNNER_TEMP/notes.md" --title "$TAG" "${prerelease[@]}" "${assets[@]}"
+          fi
+          {
+            echo "### Released $VERSION"
+            echo "- image: \`$IMAGE:$VERSION\` (\`$DIGEST\`)"
+            echo "- chart: \`$CHART_REPO/calendar-gates --version $VERSION\` (pinned to the digest)"
+          } >> "$GITHUB_STEP_SUMMARY"
