@@ -264,3 +264,29 @@ def test_an_unreviewed_override_is_counted_apart_from_overridden_findings() -> N
 
     assert report.override_rate == (1, 1)  # only PR 1 had blocking findings
     assert report.unreviewed_overrides == 1  # PR 2
+
+
+def test_a_check_the_plan_did_not_need_counts_as_decided() -> None:
+    """At low risk the plan drops security-review, and the record says `not_needed`. Treating that
+    as a gap made every merged low-risk PR count as uncovered (F083)."""
+    records = [
+        run(1, "code-review", risk="low", blocking=False),
+        run(1, "security-review", risk="low", verdict="not_needed", blocking=False),
+    ]
+
+    report = compute(records, [pr(1)])
+
+    assert (report.coverage, report.uncovered) == (1.0, [])
+
+
+def test_turnaround_counts_first_attempts_only() -> None:
+    """A re-run keeps the original event's payload, so `pr_event_at` is when the PR was pushed, not
+    when the re-run started: including attempt 2 measured the wait for a human (F053)."""
+    records = [
+        run(1, finished_at="2026-10-16T10:02:00Z", run_attempt=1),
+        run(1, finished_at="2026-10-16T18:00:00Z", run_attempt=2),  # re-run hours later
+    ]
+
+    report = compute(records, [pr(1)])
+
+    assert report.turnaround["code-review"] == (120.0, 120.0, 1)

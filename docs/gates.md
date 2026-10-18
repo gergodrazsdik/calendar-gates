@@ -93,7 +93,10 @@ is required too (see below).
   model. A check the level doesn't need still reports success with "not needed at risk: <level>",
   so required checks never go missing (and that record says `blocking: false`, because it blocked
   nothing). The job summary shows why the PR got its level.
-- **api-contract** runs when a PR touches `Endpoints/`, `Domain/`, `Program.cs` or `http/`. The JSON
+- **api-contract** runs when a PR touches `Endpoints/`, `Domain/`, `Program.cs`, the API's `.csproj`
+  or `appsettings*.json`, `Directory.Build.props`, `Directory.Packages.props` or `http/` — all of
+  which can change the contract (F023) — and it runs at every risk level, including `low`, where an
+  `http/`-only PR lands (F024). The JSON
   contract isn't only in `Endpoints/`: `IsoWeekInfo` (in `Domain/`) is returned as-is by `/api/week`, and
   `Program.cs` holds the `/api` group and OpenAPI. Found by the evals (`ac-001`, drill 3), where the
   narrower filter made the check "not applicable".

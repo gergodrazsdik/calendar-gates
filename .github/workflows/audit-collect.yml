@@ -60,12 +60,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           pr="$PR_FROM_EVENT"
-          if [ -z "$pr" ]; then # fork PRs: the event lists no pull_requests
-            pr=$(gh api "repos/$REPO/commits/$HEAD_SHA/pulls" \
-              --jq '[.[] | select(.state == "open")][0].number // empty')
+          # The event lists only *open* PRs (and none at all for forks), and the fallback used to
+          # filter on open as well, so a review that finished after its PR merged was dropped
+          # whole: no records, and the release attestation then reported the merged head as
+          # unreviewed (F073). Any state will do — every API call below works on a merged PR.
+          if [ -z "$pr" ]; then
+            pr=$(gh api "repos/$REPO/commits/$HEAD_SHA/pulls" --jq '.[0].number // empty')
           fi
           if ! [[ "$pr" =~ ^[0-9]+$ ]]; then
-            echo "::notice title=audit-collect::No open PR for $HEAD_SHA; nothing to collect."
+            echo "::notice title=audit-collect::No PR for $HEAD_SHA; nothing to collect."
             echo "pr=" >> "$GITHUB_OUTPUT"
             exit 0
           fi

@@ -3,7 +3,8 @@ id: tr-009-ai-assisted-src-change
 kind: triage
 checks: [triage]
 source: drill-18
-description: The one-line src/ change of tr-003, AI-assisted, so raised from medium to high.
+description: 'The one-line src/ change of tr-003, AI-assisted, so raised from medium to high. A floor
+  pin, not a model test: the AI raise decides it.'
 base: 0b407197a6271a3a3c5aeaae89b1a3e3027cb774
 expect_risk: high
 ai_assisted: true

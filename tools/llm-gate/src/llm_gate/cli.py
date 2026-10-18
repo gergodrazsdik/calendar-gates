@@ -23,6 +23,7 @@ from .config import (
     TRIAGE,
     Check,
     ConfigError,
+    EngineName,
     GateConfig,
     Risk,
     TriageConfig,
@@ -306,6 +307,9 @@ def build_parser() -> argparse.ArgumentParser:
     efp.add_argument("finding_id")
     efp.add_argument(
         "--audit-dir", type=Path, help="audit-log checkout (default: <repo>/.audit-log)"
+    )
+    efp.add_argument(
+        "--pr", type=int, help="the PR the finding was reported on (a 16-bit id can repeat)"
     )
     return parser
 
@@ -759,6 +763,18 @@ def _triage_expected(args: argparse.Namespace) -> audit.TriageExpected | None:
     )
 
 
+def _engines_to_score(check: Check, triage_config: TriageConfig | None) -> list[EngineName]:
+    """The engines a check is actually reviewed with: its configured one, plus any a risk level
+    switches it to. `security-review` is configured `api` but reviews on `agent` at high risk —
+    which is most PRs here — and the eval only ever scored the configured engine, so the agent
+    prompt was unscored although its baseline entry already existed (F009)."""
+    engines: list[EngineName] = [check.engine]
+    for level in (triage_config.levels if triage_config else {}).values():
+        if check.name in level.blocking and level.engine and level.engine not in engines:
+            engines.append(level.engine)
+    return engines
+
+
 def cmd_eval(
     args: argparse.Namespace,
     checks: Mapping[str, Check],
@@ -785,6 +801,7 @@ def cmd_eval(
             audit_dir=args.audit_dir or root / ".audit-log",
             repo_root=root,
             cases_dir=cases_dir,
+            pr=args.pr,
         )
         print(
             f"wrote {directory}; review it: loosen forbid.title (a regex, now the exact title) to "
@@ -829,7 +846,13 @@ def cmd_eval(
         check = checks[name]
         if args.model:
             check = replace(check, model=args.model)
-        engine_names = list(ENGINES) if args.engine == "both" else [args.engine or check.engine]
+        engine_names = (
+            list(ENGINES)
+            if args.engine == "both"
+            else [args.engine]
+            if args.engine
+            else _engines_to_score(check, triage_config)
+        )
         for engine_name in engine_names:
             runs.append(
                 evals.run_eval(

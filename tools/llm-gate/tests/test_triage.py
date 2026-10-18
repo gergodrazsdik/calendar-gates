@@ -258,7 +258,9 @@ def test_the_latest_risk_override_comes_from_the_audit_log(tmp_path: Path) -> No
 
 def test_the_plan_per_level(real: GateConfig, tc: TriageConfig) -> None:
     low = triage.plan_for("low", tc, real.checks)
-    assert {n for n, c in low.items() if c} == {"code-review", "docs-drift"}
+    # api-contract is here so that an http/**-only PR, which is rated low, is reviewed by the check
+    # whose paths name http/** at all (F024).
+    assert {n for n, c in low.items() if c} == {"code-review", "docs-drift", "api-contract"}
     assert low["code-review"] is not None and not low["code-review"].blocking  # advisory here
     assert low["security-review"] is None
 
@@ -738,13 +740,23 @@ def test_triage_eval_scores_risk_accuracy_and_compares(tc: TriageConfig, tmp_pat
     baseline = {"triage": {evals.run_key(run): evals.baseline_entry(run)}}
     thresholds = evals.Thresholds()
     rows = {r.metric: r for r in evals.compare(run, baseline, thresholds)}
-    assert set(rows) == {"risk_accuracy", "model_below_floor", "flip_rate", "cost_usd"}
-    assert all(r.ok for r in rows.values())
+    assert set(rows) == {
+        "risk_accuracy",
+        "cases_wrong_every_repeat",
+        "model_below_floor",
+        "flip_rate",
+        "cost_usd",
+    }
     # Reported, never a verdict: the floor wins whatever the model answers.
     assert rows["model_below_floor"].current == 4
     assert rows["model_below_floor"].ok
     worse = run.model_copy(update={"metrics": m.model_copy(update={"risk_accuracy": 0.3})})
     assert not {r.metric: r for r in evals.compare(worse, baseline, thresholds)}["risk_accuracy"].ok
+    # The `src` case is wrong in both repeats (the stub always says low, the rules give medium,
+    # the case expects high), which an average of 4/6 hides: a case that is never right fails on
+    # its own now (F018).
+    assert m.cases_wrong_every_repeat == 1
+    assert not rows["cases_wrong_every_repeat"].ok
 
 
 def test_triage_cases_name_only_the_triage_check() -> None:
@@ -1501,3 +1513,61 @@ def test_cli_run_at_high_risk_moves_a_blocking_check_to_the_agent_engine(
     assert len(agent.requests) == 1
     (record,) = [json.loads(x) for x in (out / audit.AUDIT_FILE).read_text().splitlines()]
     assert (record["engine"], record["risk"], record["blocking"]) == ("agent", "high", True)
+
+
+def test_a_check_skipped_for_want_of_a_key_is_exempt_from_the_risk_check(tmp_path: Path) -> None:
+    """A fork PR has no API key: triage still rates it from the rules, but every check records
+    `skipped_no_key`. Such a record is exempt from the plan check — security-review isn't planned at
+    medium, and a review there would be a problem — and nothing executed that exemption (F032)."""
+    artifact(tmp_path, "audit-100-1-code-review", audit.dumps(gate_run(risk="medium")))
+    skipped = gate_run(
+        check="security-review",
+        prompt_file=".claude/commands/llm-security-review.md",
+        risk="medium",
+        verdict="skipped_no_key",
+        exit_code=0,
+    )
+    artifact(tmp_path, "audit-100-1-security-review", audit.dumps(skipped))
+    artifact(tmp_path, "audit-100-1-triage", audit.dumps(triage_record()))
+
+    result = collect_run(tmp_path, triage_expected=expected())
+
+    assert not problems(result, "audit-100-1-security-review")
+    # The same record with a verdict that claims a review is a problem, which is what the exemption
+    # is carved out of.
+    reviewed = tmp_path / "reviewed"
+    artifact(reviewed, "audit-100-1-triage", audit.dumps(triage_record()))
+    artifact(
+        reviewed,
+        "audit-100-1-security-review",
+        audit.dumps(skipped.model_copy(update={"verdict": "pass"})),
+    )
+    assert "not needed at risk medium" in " ".join(
+        problems(collect_run(reviewed, triage_expected=expected()), "audit-100-1-security-review")
+    )
+
+
+def test_without_an_expectation_the_plan_comes_from_the_runs_own_triage(tmp_path: Path) -> None:
+    """When the collector can't recompute the expectation (too many files to compare), a gate_run is
+    still checked against the run's own `checks_plan` — a path no test reached (F032)."""
+    artifact(tmp_path, "audit-100-1-code-review", audit.dumps(gate_run(risk="medium")))
+    unplanned = gate_run(
+        check="docs-drift",
+        prompt_file=".claude/commands/llm-docs-drift.md",
+        risk="medium",
+        blocking=False,
+        verdict="pass",
+        exit_code=0,
+    )
+    artifact(tmp_path, "audit-100-1-docs-drift", audit.dumps(unplanned))
+    artifact(
+        tmp_path,
+        "audit-100-1-triage",
+        audit.dumps(triage_record(checks_plan=["code-review"])),  # docs-drift was not planned
+    )
+    jobs = {**JOBS, "llm / docs-drift": "success"}
+
+    result = collect_run(tmp_path, triage_expected=None, jobs=jobs)
+
+    assert not problems(result, "audit-100-1-code-review")  # planned, so accepted
+    assert "not needed at risk medium" in " ".join(problems(result, "audit-100-1-docs-drift"))

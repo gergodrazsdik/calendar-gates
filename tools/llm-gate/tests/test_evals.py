@@ -546,3 +546,22 @@ def test_a_baseline_for_another_engine_does_not_count(
     assert run(eval_repo, reviewer(), "--repeats", "1", "--compare") == 1
 
     assert "an entry for api/claude-test-model" in capsys.readouterr().out
+
+
+def test_the_eval_scores_the_engine_a_risk_level_switches_a_check_to() -> None:
+    """security-review is configured `api` but reviews on `agent` at high risk, which is most PRs
+    here; the eval only ever scored the configured engine, so the agent prompt went unscored
+    although its baseline entry existed (F009)."""
+    from pathlib import Path
+
+    from llm_gate.cli import _engines_to_score
+    from llm_gate.config import load_gate_config
+
+    gate = load_gate_config(Path("checks.yaml"), Path(__file__).resolve().parents[3])
+    assert gate.triage is not None
+
+    assert _engines_to_score(gate.checks["security-review"], gate.triage) == ["api", "agent"]
+    assert _engines_to_score(gate.checks["code-review"], gate.triage) == ["agent"]
+    # An advisory check is never moved, so there is nothing extra to score for it.
+    assert _engines_to_score(gate.checks["docs-drift"], gate.triage) == ["api"]
+    assert _engines_to_score(gate.checks["docs-drift"], None) == ["api"]
