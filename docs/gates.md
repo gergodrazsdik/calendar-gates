@@ -41,6 +41,11 @@ is required too (see below).
   job passes with a notice and runs nothing: `LLM_GATE_MISSING_KEY` applies to `llm / <check>`,
   not to `llm-eval`. A Dependabot bump of `tools/llm-gate`'s dependencies therefore merges without
   an eval run.
+- **uv itself is pinned** in `uv.toml` (`required-version`), which `setup-uv` reads in every
+  workflow: the attest job signs with an OIDC token and the collector and feedback jobs hold write
+  tokens, so "whatever uv was released last, with no cooldown" was the one unpinned tool in the
+  trusted path (F052). Bumping it is a deliberate PR, like the linters below. A local `uv` of
+  another version fails loudly rather than drifting.
 - **lint**: the tools fetched on demand are pinned in both `ci.yml` and the `lint` recipe
   (`uvx yamllint@...`, `zizmor@...`, `ruff@...`, `actionlint@...`); bump them together. The ones
   that come from the image or the system (hadolint, shellcheck, helm, kubeconform, kyverno) follow
