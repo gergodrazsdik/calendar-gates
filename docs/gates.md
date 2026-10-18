@@ -196,9 +196,13 @@ Kyverno 1.19.1 on `kind-calendar-gates` (`just k8s-up k8s-policy-up`,
 | `calendar-gates-images` | Deny | Audit | An image isn't `ghcr.io/gergodrazsdik/calendar-gates` by digest |
 | `calendar-gates-release` | Deny | Audit | There's no build provenance or vulnerability scan signed by `release.yml` on a `v*` tag, or the scan lists a critical finding |
 | `calendar-gates-llm-review` | Deny | Audit | There's no LLM-review attestation signed by `release.yml` on a `v*` tag |
+| `calendar-gates-approved` | Deny | Audit | There's no `release-approved` attestation: the image was never approved in the `release` environment, or it's a rejected candidate. Deny since v0.3.2, the first release that carries one |
+| (any policy) | Deny | Audit | The pod has an **image volume**: nothing can attestation-verify one, so they aren't allowed in `calendar-gates` |
 
-- **Fix a denial:** deploy a release (`just k8s-deploy-release X.Y.Z`). A local build goes to
-  `calendar-gates-dev` (`just k8s-deploy calendar-gates-dev`).
+- **Fix a denial:** deploy a release **from v0.3.2 on** (`just k8s-deploy-release X.Y.Z`). v0.3.0
+  and v0.3.1 have no approval attestation and are refused here; deploy those in
+  `calendar-gates-dev`, which audits. A local build goes there too
+  (`just k8s-deploy calendar-gates-dev`).
 - **See the findings:** `just k8s-policy-report [namespace]` lists the Audit findings.
 - **Test offline:** `just lint-policies` runs the policy tests that need no registry; it's part of
   `just ci` and the `lint` job.
