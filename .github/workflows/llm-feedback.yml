@@ -67,11 +67,16 @@ jobs:
       - name: Validate the command
         id: handle
         env:
+          GH_TOKEN: ${{ github.token }}
           ROLE: ${{ steps.role.outputs.role }}
         run: |
+          # The PR's head when the command arrived: a /llm-risk that *lowers* the level applies to
+          # that head only, so one early `low` can't leave every later push unreviewed (F020).
+          head=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)
           uv run --project tools/llm-gate --locked llm-gate feedback handle \
             --event "$GITHUB_EVENT_PATH" --audit-dir "$RUNNER_TEMP/audit-log" \
-            --permission "$ROLE" --out "$RUNNER_TEMP/out" > "$RUNNER_TEMP/actions.json"
+            --permission "$ROLE" --head-sha "$head" \
+            --out "$RUNNER_TEMP/out" > "$RUNNER_TEMP/actions.json"
           jq -r '"path=\(.path)", "reaction=\(.reaction // "")", "label=\(.label // "")",
             "rerun=\(.rerun)", "command=\(.message)", "mark_check=\(.mark.check // "")",
             "mark_finding=\(.mark.finding_id // "")", "mark_by=\(.mark.by // "")"' \

@@ -256,6 +256,11 @@ def build_parser() -> argparse.ArgumentParser:
     fbh.add_argument(
         "--permission", help="the commenter's repository role (collaborators/<login>/permission)"
     )
+    fbh.add_argument(
+        "--head-sha",
+        help="the PR's head when the comment arrived: a /llm-risk that lowers the level applies "
+        "to that head only (ADR 0008)",
+    )
     fbm = fbsub.add_parser("mark", help="mark a finding as a false positive in a sticky comment")
     fbm.add_argument("--body-file", type=Path, required=True)
     fbm.add_argument("--finding", required=True)
@@ -448,7 +453,16 @@ def cmd_triage(args: argparse.Namespace, gate_config: GateConfig, *, root: Path,
         os.environ, head_sha=_head(root), base_sha=_merge_base(root, args.base)
     )
     manual = triage.latest_risk_override(args.audit_dir, context.pr)
-    decision = triage.final_risk(floor.risk, model.risk if model else None, manual)
+    decision = triage.final_risk(
+        floor.risk, model.risk if model else None, manual, head_sha=context.head_sha
+    )
+    if manual is not None and decision.source != "manual":
+        log.info(
+            "/llm-risk %s by %s was given for head %s, not this one: the rules' floor stands",
+            manual.to,
+            manual.by,
+            (manual.head_sha or "unknown")[:7],
+        )
     plan = triage.checks_plan(decision.final, config, gate_config.checks)
     try:
         record = audit.Triage(
@@ -633,6 +647,14 @@ def _triage_expected(args: argparse.Namespace) -> audit.TriageExpected | None:
         log.warning("audit collect: %s", problem)
     required = next((m for m in reversed(usable) if started is None or m.ts <= started), None)
     latest = usable[-1] if usable else None
+    # The same head rule as triage (F020): a lowering counts only for the head it was given for,
+    # so a run that honoured a stale one is flagged rather than accepted.
+    applicable = [
+        m
+        for m in (required, latest)
+        if triage.manual_applies(m, rules=floor.risk, head_sha=args.head_sha)
+    ]
+    required = required if required in applicable else None
     plans: dict[Risk, dict[str, bool | None]] = {
         risk: {
             name: None if check is None else check.blocking
@@ -644,7 +666,7 @@ def _triage_expected(args: argparse.Namespace) -> audit.TriageExpected | None:
         rules_risk=floor.risk,
         ai_assisted=detection.assisted,
         manual_required=required.to if required else None,
-        manual_allowed=frozenset(m.to for m in (required, latest) if m is not None),
+        manual_allowed=frozenset(m.to for m in applicable if m is not None),
         plans=plans,
     )
 
@@ -793,7 +815,7 @@ def cmd_feedback(args: argparse.Namespace, checks: Mapping[str, Check]) -> int:
         print(marked, end="")
         return 0
     event = json.loads(args.event.read_text(encoding="utf-8"))
-    context = audit.context_from_env(os.environ, head_sha=None, base_sha=None)
+    context = audit.context_from_env(os.environ, head_sha=args.head_sha, base_sha=None)
     actions = feedback.handle(
         event,
         audit_dir=args.audit_dir,

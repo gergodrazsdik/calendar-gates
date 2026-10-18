@@ -31,13 +31,13 @@ A review of the whole repository at `43ec3c2` (2026-10-17), after PLAN-v2 was wr
 | accepted | 0 | 0 | 0 | 2 | 1 | 3 |
 | rejected | 0 | 0 | 0 | 0 | 11 | 11 |
 
-**Fixed so far: 50 of 119** (2 partial, 66 open, 1 unverifiable). By severity:
+**Fixed so far: 52 of 119** (3 partial, 63 open, 1 unverifiable). By severity:
 
 | Status | critical | high | medium | low | info | total |
 |---|---|---|---|---|---|---|
-| ✅ fixed | 0 | 2 | 8 | 21 | 19 | 50 |
-| 🟡 partial | 0 | 0 | 1 | 1 | 0 | 2 |
-| open | 0 | 0 | 7 | 52 | 7 | 66 |
+| ✅ fixed | 0 | 2 | 10 | 21 | 19 | 52 |
+| 🟡 partial | 0 | 0 | 1 | 2 | 0 | 3 |
+| open | 0 | 0 | 5 | 51 | 7 | 63 |
 | ⚪ unverifiable | 0 | 0 | 1 | 0 | 0 | 1 |
 
 Each fix names the PR that made it. The status column is maintained by hand as fixes land; the verdicts and severities below are the review's own and are not revised.
@@ -118,7 +118,10 @@ exactly the bypass it describes, so it was not built. What is confirmed without 
 `http-tests` and `k8s-smoke` hold `checks: write` while running PR code. Moving test reporting to
 a job that runs no PR code removes the question.
 
-**Since the review (2026-10-18).** Six things changed under this document:
+**Since the review (2026-10-18).** Seven things changed under this document:
+- **#69** took the admission pair and the stale-risk hole: image volumes are refused (F047), the
+  approval is its own attestation (F048, Audit until v0.3.2 carries it), and a `/llm-risk`
+  lowering no longer covers later pushes (F020).
 - **#68** closed both highs: the `.gitattributes` hole (F001) and the forged review cache (F002),
   plus the narrow `workflow_modified` flag they both relied on (F042).
 - **#67** bound a release tag to a commit on `main` (F043), outside the workflow the tag supplies.
@@ -158,8 +161,6 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F003](#f003) | open | medium | high | A | The agent reviewer's file reads are not fenced to the reviewed checkout, and its output is published unredacted | small | S:P/medium M:C/medium I:C/low |
 | [F008](#f008) | open | medium | medium | A | llm-eval checks only flips and fp-regressions when the run's engine/model has no baseline entry, so changing a check's model skips the regression gate | small | S:C/medium M:C/medium I:C/medium |
 | [F010](#f010) | open | medium | medium | A | Name-based EXCLUDES drop compiled C# from the review, and a PR made only of excluded files passes as 'not applicable' | small | S:C/medium M:C/medium I:C/low |
-| [F020](#f020) | open | medium | medium | A | A /llm-risk decision isn't tied to a head: lowering the risk once removes blocking review from every later push to the PR | small | S:C/medium M:C/low I:C/medium |
-| [F047](#f047) | open | medium | medium | B | No policy inspects OCI image volumes, so a pod in calendar-gates can run code from any registry next to an attested container | trivial | S:C/medium M:C/medium I:C/low |
 | [F052](#f052) | open | medium | medium | B | uv itself is unpinned: every setup-uv step installs the newest uv release, in the signing job and the write-token jobs too | small | S:C/low M:C/medium I:C/medium |
 | [F081](#f081) | open | medium | medium | C | A malformed or empty ?year= on /api/friday13 gets a 400 without `errors` in Production and a 500 in Development, not the 400 ValidationProblem | small | S:C/medium M:C/medium I:C/medium |
 | [F012](#f012) | 🟡 partial | medium | medium | A | Cache keys ignore llm-gate's request code and engine settings, so llm-eval scores engine changes from main's cached reviews | small | S:C/medium M:C/medium I:C/medium |
@@ -167,9 +168,11 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F005](#f005) | ✅ fixed | medium | medium | A | Triage and the collector accept any risk_override record on audit-log, so a hand-pushed record can lower the risk with a forged author and an unbeatable timestamp | medium | S:C/medium M:C/medium I:C/medium |
 | [F006](#f006) | ✅ fixed | medium | medium | A | Re-running only the failed llm jobs turns their records into tamper_suspected, because the new attempt has no triage artifact | small | S:C/medium M:C/medium I:C/medium |
 | [F011](#f011) | ✅ fixed | medium | medium | A | Schema-invalid or truncated model output escapes structured_call as pydantic.ValidationError, crashing triage instead of leaving the floor | small | S:C/medium M:C/medium I:C/medium |
+| [F020](#f020) | ✅ fixed | medium | medium | A | A /llm-risk decision isn't tied to a head: lowering the risk once removes blocking review from every later push to the PR | small | S:C/medium M:C/low I:C/medium |
 | [F042](#f042) | ✅ fixed | medium | medium | B | `workflow_modified` only looks at llm-review.yml, so other PR changes that steer the review still count as verified | small | S:C/medium M:C/medium I:C/medium |
 | [F043](#f043) | ✅ fixed | medium | medium | B | A v* tag on any commit, merged or not, mints release attestations, because the 'on main' check runs inside that commit's own release.yml | medium | S:C/medium M:C/medium I:C/medium |
 | [F044](#f044) | ✅ fixed | medium | medium | B | /llm-risk and /llm-override posted while llm-review is running get a +1 reaction but may never take effect | small | S:C/medium M:C/medium I:C/medium |
+| [F047](#f047) | ✅ fixed | medium | medium | B | No policy inspects OCI image volumes, so a pod in calendar-gates can run code from any registry next to an attested container | trivial | S:C/medium M:C/medium I:C/low |
 | [F084](#f084) | ✅ fixed | medium | medium | C | "A failed smoke leaves a draft; re-running the workflow refreshes it" no longer holds under build-once releases | trivial | S:C/medium M:C/medium I:C/medium |
 | [F007](#f007) | open | low | medium | A | An override by label skips the write-role check that `/llm-override` enforces | trivial | S:C/low M:C/low I:C/low |
 | [F009](#f009) | open | low | medium | A | llm-eval scores security-review only on the API engine, but high-risk PRs (most of them) review it on the agent engine | small | S:C/low M:C/medium I:C/low |
@@ -199,7 +202,6 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F039](#f039) | open | low | low | A | Audit file paths use the date of collection, so re-running audit-collect or llm-feedback on another day writes duplicates | small | S:C/low M:C/low I:C/low |
 | [F045](#f045) | open | low | medium | B | The allow rules for just, uv run, dotnet and gh run auto-approve arbitrary and irreversible commands, which makes the deny list ineffective | small | S:C/low M:C/low I:C/low |
 | [F046](#f046) | open | low | medium | B | Ephemeral containers are tested nowhere: removing them from the images policy leaves every test green | trivial | S:C/low M:C/medium I:C/low |
-| [F048](#f048) | open | low | medium | B | Every attestation Kyverno requires exists before the release is approved or smoke-tested, so rejected and failed candidates are admitted | medium | S:C/low M:C/low I:C/low |
 | [F053](#f053) | open | low | low | B | Re-runs keep the original event's updated_at as pr_event_at, so the turnaround metric includes the time people took to trigger the re-run | trivial | S:C/low M:C/low I:C/low |
 | [F054](#f054) | open | low | low | B | The deployable unit, the chart, is installed by a mutable version tag and verified by nothing | small | S:C/low M:C/low I:C/low |
 | [F056](#f056) | open | low | low | B | k8s-up's restart path neither waits for the API server nor restores the kubeconfig | small | S:C/low M:C/low I:C/low |
@@ -223,6 +225,7 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F111](#f111) | open | low | low | C | /api/friday13/next's 404 (no Friday the 13th left before year 10000) has no test | trivial | S:C/low M:C/low I:C/info |
 | [F113](#f113) | open | low | low | C | VersionEndpoints.Read has no unit test, and the version/commit checks accept its fallbacks | small | S:C/low M:C/low I:C/info |
 | [F114](#f114) | open | low | low | C | The leap endpoint's year validation is tested only with 99999 | trivial | S:C/low M:C/low I:C/low |
+| [F048](#f048) | 🟡 partial | low | medium | B | Every attestation Kyverno requires exists before the release is approved or smoke-tested, so rejected and failed candidates are admitted | medium | S:C/low M:C/low I:C/low |
 | [F091](#f091) | 🟡 partial | low | low | C | The audit/v1 type lists in ADR 0005 and in the audit-log branch README are out of date | small | S:C/low M:C/low I:C/low |
 | [F055](#f055) | ✅ fixed | low | low | B | pr-title accepts non-Conventional titles that start with 'Merge ', 'fixup! ', 'squash! ' or 'amend! ' | trivial | S:C/low M:C/low I:C/low |
 | [F058](#f058) | ✅ fixed | low | low | B | k8s-policy-up returns before the policies are ready, so a deploy right after it can be admitted unchecked | trivial | S:C/low M:C/low I:C/low |
@@ -442,53 +445,6 @@ EXCLUDES removes **/*.g.cs, **/*.generated.cs, **/*.Designer.cs, **/*.lock and *
 
 </details>
 
-### F020
-
-**A /llm-risk decision isn't tied to a head: lowering the risk once removes blocking review from every later push to the PR**
-
-- **Status:** open
-- **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
-- **Where:** `tools/llm-gate/src/llm_gate/triage.py:321` · **area:** llm-gate and review prompts
-- **Reported by:** `wr-05` (medium, high confidence)
-- **Reviewer's accepted_in:** ADR 0008 (people may lower the risk with a recorded reason); carrying the decision over to later heads isn't covered
-
-feedback.handle builds the risk_override from a context with head_sha=None (cli.py:778; the live record for PR 47 has "head_sha": null). latest_risk_override returns the PR's latest record whatever the head, and final_risk lets a manual risk win outright, even below the rules floor. So `/llm-risk low <reason>` given for a docs-only head keeps the PR at low for every later commit, however risky. At low no check blocks (checks.yaml levels.low.blocking: []), and the metrics don't count it in the override rate. ADR 0008 and WRITEUP §4 accept that a collaborator can lower the risk on purpose. Neither discusses the decision carrying over to code pushed later, which here is often an agent's, since most PRs are AI-assisted.
-
-*Failure scenario:* Triage rates a typo-fix PR high because it is AI-assisted. The owner comments `/llm-risk low only a typo`. Later the agent pushes a src/ change with a real bug to the same PR. Triage says manual, low. code-review runs as advisory, its high finding doesn't block, the PR merges, and the collector accepts it.
-
-*Suggested fix:* Record the PR's head SHA in the risk_override. Have triage apply a manual lowering only while the head (or at least the rules floor) is unchanged; a raise may persist. Say "manual risk from an older head ignored" in the triage summary.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, medium, small): cmd_feedback builds the context with head_sha=None, and the live PR 47 risk_override on audit-log has head_sha null. latest_risk_override returns the PR's latest record whatever the head, and final_risk lets a manual risk win outright, so a /llm-risk low persists for every later push. At low, levels.low.blocking is empty. ADR 0008 and WRITEUP section 4 accept deliberate lowering, but not its carry-over to code pushed later, so this is not ACCEPTED.
-- **maintainer** (CONFIRMED, low, small): cmd_feedback builds the context with head_sha=None, latest_risk_override ignores the head, and final_risk lets a manual risk win outright, so a /llm-risk low persists for every later push. ADR 0008/WRITEUP accept a deliberate, visible lowering but don't discuss carry-over to new heads. It matches the PR-scoped semantics of llm-override (the label also persists across pushes) and stays visible on every run (risk:low label, triage summary), so low.
-- **impact** (CONFIRMED, medium, small): feedback.handle builds the risk_override from a context with head_sha=None, latest_risk_override takes the PR's latest record regardless of head, and final_risk lets a manual risk win outright, so `/llm-risk low` persists for every later push, and at low nothing blocks. The trigger is a write-role collaborator using the command as designed early in a PR, after which an agent's later src/ push gets advisory-only review without anyone deciding that for the new code; the record is truthful (source manual), so it is a gate lapse, not a forgery. ADR 0008 accepts lowering on purpose, not carrying it over to later heads, so not ACCEPTED. Medium.
-
-</details>
-
-### F047
-
-**No policy inspects OCI image volumes, so a pod in calendar-gates can run code from any registry next to an attested container**
-
-- **Status:** open
-- **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `deploy/policies/base/images.yaml:21` · **area:** workflows, release, deploy, scripts
-- **Reported by:** `cr-ops-01` (medium, medium confidence)
-
-calendar-gates-images builds its image list from spec.containers, initContainers and ephemeralContainers only (images.yaml:21-25). Both ImageValidatingPolicies verify only images.containers + initContainers + ephemeralContainers (release.yaml:50-52, llm-review.yaml:41-43), and a foreign reference doesn't match their matchImageReferences glob anyway. spec.volumes[].image (KEP-4639) is checked by nothing. The project cluster runs Kubernetes 1.35 (deploy/kind/cluster.yaml), where ImageVolume is beta and on by default. Image volumes are mounted read-only, but the KEP later dropped its noexec requirement (kubernetes/enhancements #5354, #5417), and the current docs only promise read-only. So a container can exec a binary from one. I checked this offline: running kyverno test with base/images.yaml on a pod whose only container is the attested release digest, with command /payload/bin/tool and an image volume docker.io/library/busybox:latest, gives 'Want fail, got pass'. WRITEUP §4 says Kyverno checks every container kind. That stays literally true, because an image volume isn't a container kind, but the promise that nothing runs without attestations doesn't hold. The policies admit such a pod in every case; whether it starts also depends on the kind node's containerd supporting image volumes (containerd 2.1 or later).
-
-*Failure scenario:* kubectl -n calendar-gates apply a Pod with containers[0].image = ghcr.io/gergodrazsdik/calendar-gates@sha256:<attested>, command [/payload/bin/tool], a volumeMount at /payload, and volumes[0].image.reference = docker.io/someone/tools:latest -> calendar-gates-images, -release and -llm-review all pass -> an unattested binary from Docker Hub runs in the Deny namespace.
-
-*Suggested fix:* In calendar-gates-images, deny image volumes outright (e.g. a validation `!has(object.spec.volumes) || !object.spec.volumes.exists(v, has(v.image))`; the release chart uses none). Alternatively, add their references to variables.images so the repository/digest rule applies, and verify them in the image policies. Add a negative case to deploy/policies/tests.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, medium, small): images.yaml:21-25 lists only containers, initContainers and ephemeralContainers, and both ImageValidatingPolicies verify only those with a glob a foreign reference wouldn't match. Reproduced with kyverno 1.19.1: a calendar-gates pod whose only container is the release digest plus volumes[].image.reference docker.io/library/busybox:latest gives 'Want fail, got pass'. Kubernetes' feature-gate table shows ImageVolume Beta and default true in 1.35 (GA in 1.36), the volumes docs promise only a read-only mount, and the runtime image keeps the dotnet host (Dockerfile ENTRYPOINT [dotnet, ...]), so `command: [dotnet, /payload/x.dll]` would run foreign IL even on a noexec mount. Not verified: that kind v0.33.0's v1.35.8 node ships containerd 2.1+ (needed for the pod to actually start).
-- **maintainer** (CONFIRMED, medium, trivial): Reproduced offline: kyverno test with base/images.yaml on a pod whose only container is the attested release digest plus a volumes[].image of docker.io/library/busybox:latest gives 'Want fail, got pass'. Both image policies read only images.containers/initContainers/ephemeralContainers, so nothing looks at image volumes. The Kubernetes feature-gate table lists ImageVolume as beta and default true in 1.35, the project node's version, and the current volume docs promise only a read-only mount, no noexec. Whether a binary from the volume actually executes depends on containerd in kindest/node v1.35.8, which I couldn't test without a cluster, but the policy gap contradicts ADR 0010's 'every container kind' intent and WRITEUP's 'nothing runs without attestations'. Denying image volumes in calendar-gates-images (the chart uses none) plus a negative test case is a few lines.
-- **impact** (CONFIRMED, low, trivial): Reproduced offline: a calendar-gates Pod whose only container is the attested digest plus an image volume from docker.io gives 'Want fail, got pass' for calendar-gates-images, and both image policies verify only images.containers+initContainers+ephemeralContainers. Kubernetes docs list ImageVolume as beta and enabled by default in 1.35 and mount it read-only with no noexec promise; containerd support in kind's v1.35.8 node image I did not verify. Calibrated down to low: only someone who can already create pods in the namespace (the cluster admin, or a tampered chart, see F054) can use it, and that actor can run arbitrary code under the attested image anyway, e.g. args [/cfg/x.dll] from a ConfigMap, since the chiseled image's entrypoint is the dotnet host.
-
-</details>
-
 ### F052
 
 **uv itself is unpinned: every setup-uv step installs the newest uv release, in the signing job and the write-token jobs too**
@@ -689,6 +645,30 @@ structured_call catches only anthropic exceptions, but beta.messages.parse valid
 
 </details>
 
+### F020
+
+**A /llm-risk decision isn't tied to a head: lowering the risk once removes blocking review from every later push to the PR**
+
+- **Status:** ✅ fixed — #69: a lowering applies only to the head it was given for; a raise persists
+- **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
+- **Where:** `tools/llm-gate/src/llm_gate/triage.py:321` · **area:** llm-gate and review prompts
+- **Reported by:** `wr-05` (medium, high confidence)
+- **Reviewer's accepted_in:** ADR 0008 (people may lower the risk with a recorded reason); carrying the decision over to later heads isn't covered
+
+feedback.handle builds the risk_override from a context with head_sha=None (cli.py:778; the live record for PR 47 has "head_sha": null). latest_risk_override returns the PR's latest record whatever the head, and final_risk lets a manual risk win outright, even below the rules floor. So `/llm-risk low <reason>` given for a docs-only head keeps the PR at low for every later commit, however risky. At low no check blocks (checks.yaml levels.low.blocking: []), and the metrics don't count it in the override rate. ADR 0008 and WRITEUP §4 accept that a collaborator can lower the risk on purpose. Neither discusses the decision carrying over to code pushed later, which here is often an agent's, since most PRs are AI-assisted.
+
+*Failure scenario:* Triage rates a typo-fix PR high because it is AI-assisted. The owner comments `/llm-risk low only a typo`. Later the agent pushes a src/ change with a real bug to the same PR. Triage says manual, low. code-review runs as advisory, its high finding doesn't block, the PR merges, and the collector accepts it.
+
+*Suggested fix:* Record the PR's head SHA in the risk_override. Have triage apply a manual lowering only while the head (or at least the rules floor) is unchanged; a raise may persist. Say "manual risk from an older head ignored" in the triage summary.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, medium, small): cmd_feedback builds the context with head_sha=None, and the live PR 47 risk_override on audit-log has head_sha null. latest_risk_override returns the PR's latest record whatever the head, and final_risk lets a manual risk win outright, so a /llm-risk low persists for every later push. At low, levels.low.blocking is empty. ADR 0008 and WRITEUP section 4 accept deliberate lowering, but not its carry-over to code pushed later, so this is not ACCEPTED.
+- **maintainer** (CONFIRMED, low, small): cmd_feedback builds the context with head_sha=None, latest_risk_override ignores the head, and final_risk lets a manual risk win outright, so a /llm-risk low persists for every later push. ADR 0008/WRITEUP accept a deliberate, visible lowering but don't discuss carry-over to new heads. It matches the PR-scoped semantics of llm-override (the label also persists across pushes) and stays visible on every run (risk:low label, triage summary), so low.
+- **impact** (CONFIRMED, medium, small): feedback.handle builds the risk_override from a context with head_sha=None, latest_risk_override takes the PR's latest record regardless of head, and final_risk lets a manual risk win outright, so `/llm-risk low` persists for every later push, and at low nothing blocks. The trigger is a write-role collaborator using the command as designed early in a PR, after which an agent's later src/ push gets advisory-only review without anyone deciding that for the new code; the record is truthful (source manual), so it is a gate lapse, not a forgery. ADR 0008 accepts lowering on purpose, not carrying it over to later heads, so not ACCEPTED. Medium.
+
+</details>
+
 ### F042
 
 **`workflow_modified` only looks at llm-review.yml, so other PR changes that steer the review still count as verified**
@@ -786,6 +766,29 @@ The re-run step re-runs the latest llm-review run only when its status is `compl
 - **skeptic** (CONFIRMED, medium, small): llm-feedback.yml:152-163 re-runs only a completed llm-review run; otherwise it prints 'still running; it reads the label itself' and exits. But each llm job reads labels once, in its 'Override reason' step before the review (llm-review.yml:244-268), triage reads /llm-risk from audit-log once at run start (78-91, 118), and the label added with GITHUB_TOKEN starts no new run. So an /llm-override posted after a check finished (naturally right after its failing sticky comment appears, while slower agent checks still run) is recorded, labelled and +1'd but not applied, and an /llm-risk raise during the run leaves that run at the lower risk, which fails open for raises. ADR 0007/0008 don't accept this.
 - **maintainer** (CONFIRMED, medium, small): llm-feedback.yml:158-159 skips the re-run whenever the latest llm-review run isn't completed, on the assumption that 'it reads the label itself'. But each llm job reads the labels once in its Override reason step (llm-review.yml:244-268) before the review, jobs that already finished are never revisited, and triage reads /llm-risk from audit-log only at the start (lines 88-91, 118). The label is added with GITHUB_TOKEN, so nothing re-runs later, while the commenter gets a +1. ADR 0007 and docs/gates.md promise the command re-runs the review; this race isn't discussed anywhere. For /llm-override it fails closed (the check stays red), but a /llm-risk raise during a run is silently dropped. A wait-then-rerun or cancel-and-rerun is a small change.
 - **impact** (CONFIRMED, medium, small): llm-feedback.yml:153-160 re-runs only a completed llm-review run and otherwise prints 'it reads the label itself', but each llm job reads labels once in its early 'Override reason' step and triage reads /llm-risk from audit-log once at the start, and the bot-added label starts no run. The common case bites: a failed code-review is only visible once that job finished, so an /llm-override posted while any other check of the run is still going is recorded, +1'd and never applied to that run. For override this fails safe (check stays red, a manual re-run fixes it); a raising /llm-risk is silently dropped for the running attempt, and the collector accepts that because the override is newer than run_started_at, while the +1 tells the owner it worked. Both real uses so far (#43 override, #47 /llm-risk low) took effect because they came after the run completed, so it hasn't bitten yet. A documented contract (docs/gates.md) that silently fails in a common timing window, no gate opens wrongly: medium.
+
+</details>
+
+### F047
+
+**No policy inspects OCI image volumes, so a pod in calendar-gates can run code from any registry next to an attested container**
+
+- **Status:** ✅ fixed — #69: calendar-gates-images denies any pod with an image volume, which no policy can verify
+- **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `deploy/policies/base/images.yaml:21` · **area:** workflows, release, deploy, scripts
+- **Reported by:** `cr-ops-01` (medium, medium confidence)
+
+calendar-gates-images builds its image list from spec.containers, initContainers and ephemeralContainers only (images.yaml:21-25). Both ImageValidatingPolicies verify only images.containers + initContainers + ephemeralContainers (release.yaml:50-52, llm-review.yaml:41-43), and a foreign reference doesn't match their matchImageReferences glob anyway. spec.volumes[].image (KEP-4639) is checked by nothing. The project cluster runs Kubernetes 1.35 (deploy/kind/cluster.yaml), where ImageVolume is beta and on by default. Image volumes are mounted read-only, but the KEP later dropped its noexec requirement (kubernetes/enhancements #5354, #5417), and the current docs only promise read-only. So a container can exec a binary from one. I checked this offline: running kyverno test with base/images.yaml on a pod whose only container is the attested release digest, with command /payload/bin/tool and an image volume docker.io/library/busybox:latest, gives 'Want fail, got pass'. WRITEUP §4 says Kyverno checks every container kind. That stays literally true, because an image volume isn't a container kind, but the promise that nothing runs without attestations doesn't hold. The policies admit such a pod in every case; whether it starts also depends on the kind node's containerd supporting image volumes (containerd 2.1 or later).
+
+*Failure scenario:* kubectl -n calendar-gates apply a Pod with containers[0].image = ghcr.io/gergodrazsdik/calendar-gates@sha256:<attested>, command [/payload/bin/tool], a volumeMount at /payload, and volumes[0].image.reference = docker.io/someone/tools:latest -> calendar-gates-images, -release and -llm-review all pass -> an unattested binary from Docker Hub runs in the Deny namespace.
+
+*Suggested fix:* In calendar-gates-images, deny image volumes outright (e.g. a validation `!has(object.spec.volumes) || !object.spec.volumes.exists(v, has(v.image))`; the release chart uses none). Alternatively, add their references to variables.images so the repository/digest rule applies, and verify them in the image policies. Add a negative case to deploy/policies/tests.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, medium, small): images.yaml:21-25 lists only containers, initContainers and ephemeralContainers, and both ImageValidatingPolicies verify only those with a glob a foreign reference wouldn't match. Reproduced with kyverno 1.19.1: a calendar-gates pod whose only container is the release digest plus volumes[].image.reference docker.io/library/busybox:latest gives 'Want fail, got pass'. Kubernetes' feature-gate table shows ImageVolume Beta and default true in 1.35 (GA in 1.36), the volumes docs promise only a read-only mount, and the runtime image keeps the dotnet host (Dockerfile ENTRYPOINT [dotnet, ...]), so `command: [dotnet, /payload/x.dll]` would run foreign IL even on a noexec mount. Not verified: that kind v0.33.0's v1.35.8 node ships containerd 2.1+ (needed for the pod to actually start).
+- **maintainer** (CONFIRMED, medium, trivial): Reproduced offline: kyverno test with base/images.yaml on a pod whose only container is the attested release digest plus a volumes[].image of docker.io/library/busybox:latest gives 'Want fail, got pass'. Both image policies read only images.containers/initContainers/ephemeralContainers, so nothing looks at image volumes. The Kubernetes feature-gate table lists ImageVolume as beta and default true in 1.35, the project node's version, and the current volume docs promise only a read-only mount, no noexec. Whether a binary from the volume actually executes depends on containerd in kindest/node v1.35.8, which I couldn't test without a cluster, but the policy gap contradicts ADR 0010's 'every container kind' intent and WRITEUP's 'nothing runs without attestations'. Denying image volumes in calendar-gates-images (the chart uses none) plus a negative test case is a few lines.
+- **impact** (CONFIRMED, low, trivial): Reproduced offline: a calendar-gates Pod whose only container is the attested digest plus an image volume from docker.io gives 'Want fail, got pass' for calendar-gates-images, and both image policies verify only images.containers+initContainers+ephemeralContainers. Kubernetes docs list ImageVolume as beta and enabled by default in 1.35 and mount it read-only with no noexec promise; containerd support in kind's v1.35.8 node image I did not verify. Calibrated down to low: only someone who can already create pods in the namespace (the cluster admin, or a tampered chart, see F054) can use it, and that actor can run arbitrary code under the attested image anyway, e.g. args [/cfg/x.dll] from a ConfigMap, since the chiseled image's entrypoint is the dotnet host.
 
 </details>
 
@@ -1529,29 +1532,6 @@ kyverno-test.yaml tests only calendar-gates-images from base/, on pods with cont
 
 </details>
 
-### F048
-
-**Every attestation Kyverno requires exists before the release is approved or smoke-tested, so rejected and failed candidates are admitted**
-
-- **Status:** open
-- **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** medium
-- **Where:** `deploy/policies/base/release.yaml:30` · **area:** workflows, release, deploy, scripts
-- **Reported by:** `cr-ops-02` (medium, high confidence)
-
-The Deny policies admit an image once provenance, a vuln-scan with no critical findings and an llm-review attestation, each signed by release.yml on a v* tag, exist (release.yaml:30-65, llm-review.yaml:26-48). release.yml creates all four in the attest job (needs: verify, build, scan; release.yml:184-276). That job runs before publish, which is the only job in the approval-gated release environment, and before admission-smoke and smoke. The signing identity is the same for every job, so nothing distinguishes an approved release from a rejected one. The candidate-vX.Y.Z tag stays in GHCR after a rejection, and Kyverno resolves tags to digests: WRITEUP §5 (drill 23) shows candidate-v0.3.0 admitted. calendar-gates-llm-review only checks that the attestation is present. So a candidate whose attestation lists unverified PRs (workflow_modified, tamper_suspected), which is exactly what the approver reads in the release notes before deciding, is admitted before anyone looked. Likewise, publish pushes X.Y.Z and the chart before smoke runs, so a release whose contract tests failed stays a draft but deploys and is admitted via just k8s-deploy-release. ADR 0009 puts attest before approval on purpose ('the reviewer approves known bytes'), but neither it nor ADR 0010 mentions this admission consequence.
-
-*Failure scenario:* Push v0.4.0; scan passes; attest pushes the four attestations; the approver rejects publish because the notes list an unverified PR -> kubectl -n calendar-gates run x --image=ghcr.io/gergodrazsdik/calendar-gates:candidate-v0.4.0 is admitted and pinned to the candidate digest.
-
-*Suggested fix:* Create at least one required attestation only after approval, for example by moving the llm-review attestation (or a small release-approved/v1 predicate) into publish or smoke, and require it in the Deny policies. The release would still get four Rekor entries. Otherwise, state in ADR 0010 that admission means 'built and scanned by release.yml', not 'approved and published'.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, medium): attest (needs verify, build, scan) pushes all four attestations before publish, the only job in the approval-gated release environment, and before admission-smoke and smoke; every job signs with the same release.yml@refs/tags/vX identity, so Kyverno can't tell an approved release from a rejected candidate, and candidate-vX.Y.Z stays in GHCR (drill 23 shows a candidate tag admitted). ADR 0009 chose attest-before-approval and ADR 0010/WRITEUP section 2 list exactly what admission checks (approval isn't among them), but neither records that a rejected or smoke-failed candidate is admissible, so not ACCEPTED. The bytes are still main-built, scanned and attested by the genuine workflow, and deploying them needs cluster access, so low rather than medium.
-- **maintainer** (CONFIRMED, low, small): attest (release.yml:184-276) runs before publish, the only approval-gated job, and every attestation Kyverno requires is created there with the same release.yml@refs/tags identity, so a candidate the owner rejects (or whose smoke fails after publish) stays fully attested; WRITEUP §5 already shows candidate-vX admitted by tag. ADR 0009 places attest before approval on purpose ('the reviewer approves known bytes'), so the cause is a recorded decision, but neither ADR 0009 nor ADR 0010 says admission therefore means 'built, scanned and attested', not 'approved'. Low: running a rejected candidate needs someone to reference its tag or digest by hand, and the approver is the solo owner. Keeping the predicate generation in attest for the notes and attesting llm-review (or a small release-approved predicate) from publish would keep four Rekor entries.
-- **impact** (CONFIRMED, low, medium): release.yml's attest job (needs verify, build, scan) creates every attestation the Deny policies require before publish, the only job in the approval-gated release environment, and the candidate-vX.Y.Z tag stays in GHCR after a rejection, so a rejected candidate is admissible by tag or digest (drill 23 already showed candidate-v0.3.0 admitted). ADR 0009 accepts attest-before-approval for 'known bytes' but not this admission consequence, so not ACCEPTED. Low: the bytes passed build-test and scan and were built from a signed tag on main; the documented deploy path (k8s-deploy-release) needs the chart that only publish pushes, so deploying a rejected candidate takes a hand-written pod spec on a local cluster.
-
-</details>
-
 ### F053
 
 **Re-runs keep the original event's updated_at as pr_event_at, so the turnaround metric includes the time people took to trigger the re-run**
@@ -2145,6 +2125,29 @@ The Easter and Friday13 integration tests check both 1582 and 10000. LeapYearRej
 - **skeptic** (CONFIRMED, low, trivial): MetaTests.LeapYearRejectsUnsupportedYears uses only 99999, while EasterTests and Friday13Tests check 1582 and 10000, and calendar.http has no out-of-range leap request. So the leap endpoint's own [Range] lower bound is untested at the endpoint layer (the calculator's throw is unit-tested). The endpoint is correct today: /api/leap/1582 and /api/leap/10000 return the ValidationProblem. Adding two [Arguments] is trivial.
 - **maintainer** (CONFIRMED, low, trivial): MetaTests.LeapYearRejectsUnsupportedYears uses only 99999, while the Easter and Friday13 integration tests check 1582 and 10000. Each endpoint declares its own [Range], and no .http request covers an out-of-range leap year, so the leap endpoint's lower bound and the 10000 boundary are untested. Two [Arguments] rows fix it.
 - **impact** (CONFIRMED, low, trivial): LeapYearRejectsUnsupportedYears uses only 99999, while the Easter and Friday13 integration tests use 1582 and 10000, and each endpoint declares its own [Range]. Relaxing only the leap endpoint's range (plausible, since the Gregorian leap rule is defined for any year, see F087) would let 1582 reach LeapYearCalculator.IsLeap, which throws through Years.ThrowIfUnsupported: a 500 no test catches.
+
+</details>
+
+### F048
+
+**Every attestation Kyverno requires exists before the release is approved or smoke-tested, so rejected and failed candidates are admitted**
+
+- **Status:** 🟡 partial — #69: publish attests release-approved/v1 and a policy requires it, on Audit until v0.3.2 carries it
+- **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** medium
+- **Where:** `deploy/policies/base/release.yaml:30` · **area:** workflows, release, deploy, scripts
+- **Reported by:** `cr-ops-02` (medium, high confidence)
+
+The Deny policies admit an image once provenance, a vuln-scan with no critical findings and an llm-review attestation, each signed by release.yml on a v* tag, exist (release.yaml:30-65, llm-review.yaml:26-48). release.yml creates all four in the attest job (needs: verify, build, scan; release.yml:184-276). That job runs before publish, which is the only job in the approval-gated release environment, and before admission-smoke and smoke. The signing identity is the same for every job, so nothing distinguishes an approved release from a rejected one. The candidate-vX.Y.Z tag stays in GHCR after a rejection, and Kyverno resolves tags to digests: WRITEUP §5 (drill 23) shows candidate-v0.3.0 admitted. calendar-gates-llm-review only checks that the attestation is present. So a candidate whose attestation lists unverified PRs (workflow_modified, tamper_suspected), which is exactly what the approver reads in the release notes before deciding, is admitted before anyone looked. Likewise, publish pushes X.Y.Z and the chart before smoke runs, so a release whose contract tests failed stays a draft but deploys and is admitted via just k8s-deploy-release. ADR 0009 puts attest before approval on purpose ('the reviewer approves known bytes'), but neither it nor ADR 0010 mentions this admission consequence.
+
+*Failure scenario:* Push v0.4.0; scan passes; attest pushes the four attestations; the approver rejects publish because the notes list an unverified PR -> kubectl -n calendar-gates run x --image=ghcr.io/gergodrazsdik/calendar-gates:candidate-v0.4.0 is admitted and pinned to the candidate digest.
+
+*Suggested fix:* Create at least one required attestation only after approval, for example by moving the llm-review attestation (or a small release-approved/v1 predicate) into publish or smoke, and require it in the Deny policies. The release would still get four Rekor entries. Otherwise, state in ADR 0010 that admission means 'built and scanned by release.yml', not 'approved and published'.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, medium): attest (needs verify, build, scan) pushes all four attestations before publish, the only job in the approval-gated release environment, and before admission-smoke and smoke; every job signs with the same release.yml@refs/tags/vX identity, so Kyverno can't tell an approved release from a rejected candidate, and candidate-vX.Y.Z stays in GHCR (drill 23 shows a candidate tag admitted). ADR 0009 chose attest-before-approval and ADR 0010/WRITEUP section 2 list exactly what admission checks (approval isn't among them), but neither records that a rejected or smoke-failed candidate is admissible, so not ACCEPTED. The bytes are still main-built, scanned and attested by the genuine workflow, and deploying them needs cluster access, so low rather than medium.
+- **maintainer** (CONFIRMED, low, small): attest (release.yml:184-276) runs before publish, the only approval-gated job, and every attestation Kyverno requires is created there with the same release.yml@refs/tags identity, so a candidate the owner rejects (or whose smoke fails after publish) stays fully attested; WRITEUP §5 already shows candidate-vX admitted by tag. ADR 0009 places attest before approval on purpose ('the reviewer approves known bytes'), so the cause is a recorded decision, but neither ADR 0009 nor ADR 0010 says admission therefore means 'built, scanned and attested', not 'approved'. Low: running a rejected candidate needs someone to reference its tag or digest by hand, and the approver is the solo owner. Keeping the predicate generation in attest for the notes and attesting llm-review (or a small release-approved predicate) from publish would keep four Rekor entries.
+- **impact** (CONFIRMED, low, medium): release.yml's attest job (needs verify, build, scan) creates every attestation the Deny policies require before publish, the only job in the approval-gated release environment, and the candidate-vX.Y.Z tag stays in GHCR after a rejection, so a rejected candidate is admissible by tag or digest (drill 23 already showed candidate-v0.3.0 admitted). ADR 0009 accepts attest-before-approval for 'known bytes' but not this admission consequence, so not ACCEPTED. Low: the bytes passed build-test and scan and were built from a signed tag on main; the documented deploy path (k8s-deploy-release) needs the chart that only publish pushes, so deploying a rejected candidate takes a hand-written pod spec on a local cluster.
 
 </details>
 

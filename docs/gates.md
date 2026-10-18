@@ -178,8 +178,10 @@ A failed scan leaves only the candidate tag: no version tags, no chart, no relea
 
 Check the supply chain afterwards with `just verify-release X.Y.Z`. It runs from `main`, so a
 tagged commit can't weaken it: the tag must be annotated with a signature GitHub verifies, its
-commit must be an **ancestor of `main`**, and all four attestations must be signed by
-`release.yml` for that tag **and that commit** (`--source-digest`). It then prints the
+commit must be an **ancestor of `main`**, and all five attestations (provenance, SBOM, vuln-scan,
+llm-review, release-approved) must be signed by `release.yml` for that tag **and that commit**
+(`--source-digest`). Releases before v0.3.2 have no `release-approved` attestation, so it fails on
+that type for them. It then prints the
 vulnerability counts and the review gaps. Run it before trusting a release you didn't make
 yourself ([ADR 0009](adr/0009-build-once-attest-promote.md)). Deploy it with `just k8s-deploy-release X.Y.Z`. Tags can't be moved or deleted
 (`release-tags` ruleset), so a bad release is fixed with a new version.

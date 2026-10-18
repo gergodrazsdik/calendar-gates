@@ -23,6 +23,16 @@ spec:
         object.spec.containers.map(c, c.image)
         + (has(object.spec.initContainers) ? object.spec.initContainers.map(c, c.image) : [])
         + (has(object.spec.ephemeralContainers) ? object.spec.ephemeralContainers.map(c, c.image) : [])
+    # Image volumes (KEP-4639, beta and on by default in 1.35) mount a registry image read-only,
+    # with no promise that what's in it can't be executed, and the ImageValidatingPolicies can't
+    # reach them: their `images` collections are containers, init containers and ephemeral
+    # containers. An image nothing can verify doesn't belong in a namespace where admission is
+    # supposed to mean "attested", so they are refused here outright (F047).
+    - name: imageVolumes
+      expression: >-
+        has(object.spec.volumes)
+        ? object.spec.volumes.filter(v, has(v.image)).map(v, v.name)
+        : []
     - name: pinned
       expression: >-
         variables.images.filter(i,
@@ -32,3 +42,7 @@ spec:
       messageExpression: >-
         'only ghcr.io/gergodrazsdik/calendar-gates images by digest may run here, not: '
         + variables.pinned.join(', ')
+    - expression: size(variables.imageVolumes) == 0
+      messageExpression: >-
+        'image volumes cannot be attestation-verified, so they are not allowed here: '
+        + variables.imageVolumes.join(', ')

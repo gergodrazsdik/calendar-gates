@@ -122,8 +122,34 @@ def test_the_model_may_raise_but_not_lower_and_a_manual_change_wins() -> None:
     assert triage.final_risk("medium", "high", None) == triage.Decision("high", "model")
     assert triage.final_risk("medium", "low", None) == triage.Decision("medium", "rules")
     assert triage.final_risk("high", None, None) == triage.Decision("high", "rules")
-    manual = triage.ManualRisk("low", "alice", "docs", datetime(2026, 10, 17, tzinfo=UTC))
-    assert triage.final_risk("high", "high", manual) == triage.Decision("low", "manual")
+    lower = triage.ManualRisk(
+        "low", "alice", "docs", datetime(2026, 10, 17, tzinfo=UTC), head_sha="a" * 40
+    )
+    assert triage.final_risk("high", "high", lower, head_sha="a" * 40) == triage.Decision(
+        "low", "manual"
+    )
+
+
+def test_a_lowering_applies_to_the_head_it_was_given_for_but_a_raise_persists() -> None:
+    """F020: `/llm-risk low` used to keep every later push to the PR unreviewed, including code
+    pushed after the person who gave it had looked."""
+    when = datetime(2026, 10, 17, tzinfo=UTC)
+    lower = triage.ManualRisk("low", "alice", "docs only", when, head_sha="a" * 40)
+
+    assert triage.final_risk("medium", None, lower, head_sha="a" * 40).source == "manual"
+    # A later push: the lowering is ignored and the rules' floor stands.
+    assert triage.final_risk("medium", None, lower, head_sha="b" * 40) == triage.Decision(
+        "medium", "rules"
+    )
+    # An older record with no head at all can never lower anything.
+    headless = triage.ManualRisk("low", "alice", "docs only", when)
+    assert triage.final_risk("medium", None, headless, head_sha="b" * 40).source == "rules"
+
+    # A raise persists: it only ever adds review.
+    raise_ = triage.ManualRisk("high", "alice", "touches auth", when, head_sha="a" * 40)
+    assert triage.final_risk("medium", None, raise_, head_sha="b" * 40) == triage.Decision(
+        "high", "manual"
+    )
 
 
 def assessment_response(risk: str = "high", model: str = "claude-haiku-5-5") -> Any:
@@ -180,9 +206,17 @@ def test_a_failed_assessment_leaves_the_floor(tc: TriageConfig) -> None:
     assert got.risk is None and got.error and "cyber" in got.error
 
 
-def risk_override(pr: int, to: str, ts: str) -> str:
+def risk_override(pr: int, to: str, ts: str, head_sha: str | None = None) -> str:
     return json.dumps(
-        {"type": "risk_override", "pr": pr, "to": to, "by": "alice", "reason": "r", "ts": ts}
+        {
+            "type": "risk_override",
+            "pr": pr,
+            "to": to,
+            "by": "alice",
+            "reason": "r",
+            "ts": ts,
+            **({"head_sha": head_sha} if head_sha else {}),
+        }
     )
 
 
@@ -1267,3 +1301,66 @@ def test_too_many_files_to_recompute_means_no_expectation(
 
     (triage_line,) = records
     assert triage_line["type"] == "triage"
+
+
+def test_the_collector_refuses_a_lowering_from_an_older_head(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], real: GateConfig
+) -> None:
+    """F020 on the collector's side: the run honoured a `/llm-risk low` given for another head, so
+    the recomputation doesn't allow that level and the run is flagged."""
+    log = tmp_path / "audit-log"
+    day = log / "events" / "2026" / "10" / "17"
+    day.mkdir(parents=True)
+    (day / "feedback-2.jsonl").write_text(
+        risk_override(7, "low", "2026-10-17T09:00:00Z", head_sha="b" * 40) + "\n"
+    )
+    stale = triage_record(source="manual", final_risk="low", checks_plan=real_plan(real, "low"))
+    artifact(tmp_path, "audit-100-1-triage", audit.dumps(stale))
+
+    records = collect_cli(
+        tmp_path,
+        capsys,
+        audit_dir=log,
+        comments=[comment(2, "/llm-risk low docs only")],
+        inputs={
+            "compare_files": [compare_file("src/Api/A.cs")],
+            "commits": [{"commit": {"message": "fix: a thing"}}],
+            "body": "",
+            "head_ref": "fix/a",
+            "run_started_at": "2026-10-17T10:00:00Z",
+        },
+    )
+
+    (tamper,) = records
+    assert tamper["type"] == "tamper_suspected"
+    assert any("no such /llm-risk in the log" in p for p in tamper["problems"])
+
+
+def test_the_collector_allows_a_lowering_for_the_head_it_was_given_for(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], real: GateConfig
+) -> None:
+    log = tmp_path / "audit-log"
+    day = log / "events" / "2026" / "10" / "17"
+    day.mkdir(parents=True)
+    (day / "feedback-2.jsonl").write_text(
+        risk_override(7, "low", "2026-10-17T09:00:00Z", head_sha="a" * 40) + "\n"
+    )
+    honoured = triage_record(source="manual", final_risk="low", checks_plan=real_plan(real, "low"))
+    artifact(tmp_path, "audit-100-1-triage", audit.dumps(honoured))
+
+    records = collect_cli(
+        tmp_path,
+        capsys,
+        audit_dir=log,
+        comments=[comment(2, "/llm-risk low docs only")],
+        inputs={
+            "compare_files": [compare_file("src/Api/A.cs")],
+            "commits": [{"commit": {"message": "fix: a thing"}}],
+            "body": "",
+            "head_ref": "fix/a",
+            "run_started_at": "2026-10-17T10:00:00Z",
+        },
+    )
+
+    (triage_line,) = records
+    assert triage_line["type"] == "triage"  # the head matches EXPECTED's head_sha ("a" * 40)

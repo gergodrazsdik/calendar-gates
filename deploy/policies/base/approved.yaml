@@ -1,0 +1,57 @@
+# The release was approved before it was published (F048, docs/adr/0010-admission-control.md).
+# The other four attestations are made in release.yml's `attest` job, which runs before the
+# approval-gated `publish`, on purpose: the approver sees bytes that are already attested
+# (ADR 0009). The consequence was that a candidate built, scanned, attested and then *rejected*
+# carried everything admission asked for, and drill 23 showed a `candidate-v…` tag being admitted.
+# This attestation is created inside `publish`, so only an approved release has it.
+#
+# **Audit until a release carries it.** No release up to v0.3.1 does, and flipping to Deny now
+# would make the current releases undeployable. The same path the LLM-review policy took: Audit
+# first, Deny once v0.3.2 is out (then set validationActions: [Deny] here and say so in ADR 0010).
+apiVersion: policies.kyverno.io/v1
+kind: ImageValidatingPolicy
+metadata:
+  name: calendar-gates-approved
+spec:
+  validationActions: [Audit]
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: calendar-gates
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        # The subresource is how `kubectl debug` adds an ephemeral container to a running pod.
+        resources: [pods, pods/ephemeralcontainers]
+  # A cold check fetches every attestation and the Sigstore trust root; 10 s (the default) isn't
+  # always enough. Results are cached for an hour.
+  webhookConfiguration:
+    timeoutSeconds: 30
+  matchImageReferences:
+    - glob: "ghcr.io/gergodrazsdik/calendar-gates*"
+  attestors:
+    - name: release
+      cosign:
+        keyless:
+          identities:
+            - issuer: https://token.actions.githubusercontent.com
+              # A regex can't be wrapped safely.
+              # yamllint disable-line rule:line-length
+              subjectRegExp: '^https://github\.com/gergodrazsdik/calendar-gates/\.github/workflows/release\.yml@refs/tags/v[0-9].*$'
+  attestations:
+    - name: approved
+      intoto:
+        type: https://github.com/gergodrazsdik/calendar-gates/attestations/release-approved/v1
+  # Every container kind, not only spec.containers: an unapproved image must not slip in as an init
+  # or ephemeral container.
+  variables:
+    - name: allImages
+      expression: images.containers + images.initContainers + images.ephemeralContainers
+  validations:
+    - expression: >-
+        variables.allImages.map(image,
+          verifyAttestationSignatures(image, attestations.approved, [attestors.release])).all(e, e > 0)
+      message: >-
+        the image has no release-approved attestation: it was never approved in the release
+        environment, or it is a candidate that was rejected

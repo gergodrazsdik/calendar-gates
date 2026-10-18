@@ -315,6 +315,7 @@ class ManualRisk:
     reason: str
     ts: datetime
     comment_id: int | None = None  # the `/llm-risk` comment, from the record's file name
+    head_sha: str | None = None  # the PR's head when it was given: a lowering applies to it only
 
 
 # How far a record's `ts` may run ahead of this machine's clock before it is ignored. Records are
@@ -360,7 +361,17 @@ def risk_overrides(audit_dir: Path | None, pr: int | None) -> list[ManualRisk]:
                 continue
             if ts.tzinfo is None or ts > cutoff:
                 continue
-            found.append(ManualRisk(to, by, reason, ts, comment_id=_comment_id(path)))
+            head = record.get("head_sha")
+            found.append(
+                ManualRisk(
+                    to,
+                    by,
+                    reason,
+                    ts,
+                    comment_id=_comment_id(path),
+                    head_sha=head if isinstance(head, str) else None,
+                )
+            )
     found.sort(key=lambda m: m.ts)
     return found
 
@@ -385,8 +396,30 @@ class Decision:
     source: Literal["rules", "model", "manual"]
 
 
-def final_risk(rules: Risk, model: Risk | None, manual: ManualRisk | None) -> Decision:
-    if manual is not None:
+def manual_applies(manual: ManualRisk | None, *, rules: Risk, head_sha: str | None) -> bool:
+    """Whether a `/llm-risk` still decides this run.
+
+    A raise always does: it only ever adds review. A level at or below the rules' floor lowers the
+    review, and that is tied to the head it was given for — otherwise one `/llm-risk low` early in
+    a PR would keep every later push unreviewed, including code pushed after the person looked
+    (F020). Both triage and the collector use this, so they agree on what a run should have done.
+    """
+    if manual is None:
+        return False
+    if rank(manual.to) > rank(rules):
+        return True
+    return manual.head_sha is not None and head_sha is not None and manual.head_sha == head_sha
+
+
+def final_risk(
+    rules: Risk,
+    model: Risk | None,
+    manual: ManualRisk | None,
+    *,
+    head_sha: str | None = None,
+) -> Decision:
+    if manual_applies(manual, rules=rules, head_sha=head_sha):
+        assert manual is not None  # noqa: S101  # manual_applies is False for None
         return Decision(manual.to, "manual")
     if model is not None and rank(model) > rank(rules):
         return Decision(model, "model")

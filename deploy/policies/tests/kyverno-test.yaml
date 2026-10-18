@@ -12,9 +12,17 @@ variables: values.yaml
 results:
   - policy: calendar-gates-images
     kind: Pod
-    resources: [release-by-digest, release-tag-and-digest]
+    resources:
+      - release-by-digest
+      - release-tag-and-digest
+      - release-with-plain-volumes
     result: pass
   - policy: calendar-gates-images
     kind: Pod
-    resources: [release-by-tag, lookalike-repository, foreign-init-container]
+    resources:
+      - release-by-tag
+      - lookalike-repository
+      - foreign-init-container
+      - foreign-image-volume
+      - release-image-volume
     result: fail
