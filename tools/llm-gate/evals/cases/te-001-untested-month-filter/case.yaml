@@ -4,10 +4,12 @@ kind: bug
 checks: [test-review]
 source: written for the evals (F037)
 description: '/api/friday13 gets an optional month filter with no test: the integration test file is touched
-  in the same diff, but only to strengthen an assertion about the year.'
+  in the same diff, but only to strengthen an assertion about the year. The expected lines span the new
+  parameter and the filter it feeds, because the reviewer reports the gap at either end: in #76''s CI
+  run one repeat said line 33 and the other two 51 and 52.'
 base: 02b65a82747c5410b4d3dd73baa4998e4914bd20
 expect:
   - file: src/CalendarGates.Api/Endpoints/Friday13Endpoints.cs
-    lines: [51, 53]
+    lines: [33, 53]
     min_severity: medium
     category: missing-test

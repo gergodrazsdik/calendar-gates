@@ -115,7 +115,7 @@
         "recall": 1.0,
         "repeats": 3,
         "risk_accuracy": null,
-        "spent_usd": 0.001658,
+        "spent_usd": 0.0,
         "verdict_accuracy": 1.0
       },
       "prompt_sha256": "308d9aca1e3cb65baf9519b20110734a6fe36313524a37f701d27cb4d0f241bb",
@@ -190,7 +190,7 @@
         "recall": 1.0,
         "repeats": 3,
         "risk_accuracy": null,
-        "spent_usd": 0.002223,
+        "spent_usd": 0.0,
         "verdict_accuracy": 1.0
       },
       "prompt_sha256": "cdd941b698248ae1bed11a67802b7ca232a1bb613e8abea3da4b654b8661916d",
