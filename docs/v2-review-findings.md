@@ -31,17 +31,6 @@ A review of the whole repository at `43ec3c2` (2026-10-17), after PLAN-v2 was wr
 | accepted | 0 | 0 | 0 | 2 | 1 | 3 |
 | rejected | 0 | 0 | 0 | 0 | 11 | 11 |
 
-**Fixed so far: 41 of 119** (1 partial, 76 open, 1 unverifiable). By severity:
-
-| Status | critical | high | medium | low | info | total |
-|---|---|---|---|---|---|---|
-| ✅ fixed | 0 | 0 | 1 | 21 | 19 | 41 |
-| 🟡 partial | 0 | 0 | 0 | 1 | 0 | 1 |
-| open | 0 | 2 | 15 | 52 | 7 | 76 |
-| ⚪ unverifiable | 0 | 0 | 1 | 0 | 0 | 1 |
-
-Each fix names the PR that made it. The status column is maintained by hand as fixes land; the verdicts and severities below are the review's own and are not revised.
-
 Items a council member said only a throwaway PR can settle: [F050](#f050). **Marked unverifiable and left at `plausible`** (2026-10-18): settling it means writing PR code that takes a CI job's token and publishes a forged passing check under a required check's name, which is a working bypass of this repository's merge protection, so it wasn't built. The least-privilege fix stands whatever GitHub's precedence turns out to be.
 
 ## Reading guide
@@ -118,13 +107,7 @@ exactly the bypass it describes, so it was not built. What is confirmed without 
 `http-tests` and `k8s-smoke` hold `checks: write` while running PR code. Moving test reporting to
 a job that runs no PR code removes the question.
 
-**Since the review (2026-10-18).** Three things changed under this document:
-- **#63** fixed the trivial end: every stale document, instruction file and comment the review
-  found, plus the small recipe and script defects (zizmor's token, `audit-pull` on an empty
-  branch, `k8s-cluster-down` ignoring `cluster=`, the port-forward that didn't bind, the release
-  tag left behind by a failed push, `gh-setup`'s whole-entry secret, `pr-title` accepting
-  "Merge …", `wait-for-health`'s timeout, the pre-commit ruff gap) and the missing 400s in the
-  OpenAPI document. Each item's Status line names it.
+**Since the review (2026-10-18).** Two things changed under this document:
 - **#62** (`feat(llm-gate)`) gave oversized diffs a path through the gate. The hole wasn't on this
   list: it surfaced when this very document, 488 KB, failed both blocking checks on the size cap
   and the override couldn't lift an `error`. ADR 0002 is amended. Along the way the gate's own
@@ -142,129 +125,127 @@ fails.
 
 Confirmed, plausible and split items, most severe first. Votes are `S`/`M`/`I`: verdict/severity.
 
-Open items are sorted after fixed ones of the same severity, so the top of each severity block is what's left to decide.
-
-| ID | Status | Sev | Was | Area | Title | Fix | Votes |
+| ID | Sev | Was | Outcome | Area | Title | Fix | Votes |
 |---|---|---|---|---|---|---|---|
-| [F001](#f001) | open | high | high | A | A PR's own .gitattributes can hide its changes from every LLM reviewer and from triage's size rule | small | S:C/high M:C/high I:C/medium |
-| [F002](#f002) | open | high | high | A | Review results restored from the Actions cache are trusted unverified, and other workflows of the same PR can write that cache | medium | S:C/high M:C/high I:C/medium |
-| [F003](#f003) | open | medium | high | A | The agent reviewer's file reads are not fenced to the reviewed checkout, and its output is published unredacted | small | S:P/medium M:C/medium I:C/low |
-| [F004](#f004) | open | medium | high | A | The collector's triage recomputation (_triage_expected) has no test at all | small | S:C/medium M:C/medium I:C/low |
-| [F005](#f005) | open | medium | medium | A | Triage and the collector accept any risk_override record on audit-log, so a hand-pushed record can lower the risk with a forged author and an unbeatable timestamp | medium | S:C/medium M:C/medium I:C/medium |
-| [F006](#f006) | open | medium | medium | A | Re-running only the failed llm jobs turns their records into tamper_suspected, because the new attempt has no triage artifact | small | S:C/medium M:C/medium I:C/medium |
-| [F008](#f008) | open | medium | medium | A | llm-eval checks only flips and fp-regressions when the run's engine/model has no baseline entry, so changing a check's model skips the regression gate | small | S:C/medium M:C/medium I:C/medium |
-| [F010](#f010) | open | medium | medium | A | Name-based EXCLUDES drop compiled C# from the review, and a PR made only of excluded files passes as 'not applicable' | small | S:C/medium M:C/medium I:C/low |
-| [F011](#f011) | open | medium | medium | A | Schema-invalid or truncated model output escapes structured_call as pydantic.ValidationError, crashing triage instead of leaving the floor | small | S:C/medium M:C/medium I:C/medium |
-| [F012](#f012) | open | medium | medium | A | Cache keys ignore llm-gate's request code and engine settings, so llm-eval scores engine changes from main's cached reviews | small | S:C/medium M:C/medium I:C/medium |
-| [F020](#f020) | open | medium | medium | A | A /llm-risk decision isn't tied to a head: lowering the risk once removes blocking review from every later push to the PR | small | S:C/medium M:C/low I:C/medium |
-| [F042](#f042) | open | medium | medium | B | `workflow_modified` only looks at llm-review.yml, so other PR changes that steer the review still count as verified | small | S:C/medium M:C/medium I:C/medium |
-| [F043](#f043) | open | medium | medium | B | A v* tag on any commit, merged or not, mints release attestations, because the 'on main' check runs inside that commit's own release.yml | medium | S:C/medium M:C/medium I:C/medium |
-| [F044](#f044) | open | medium | medium | B | /llm-risk and /llm-override posted while llm-review is running get a +1 reaction but may never take effect | small | S:C/medium M:C/medium I:C/medium |
-| [F047](#f047) | open | medium | medium | B | No policy inspects OCI image volumes, so a pod in calendar-gates can run code from any registry next to an attested container | trivial | S:C/medium M:C/medium I:C/low |
-| [F052](#f052) | open | medium | medium | B | uv itself is unpinned: every setup-uv step installs the newest uv release, in the signing job and the write-token jobs too | small | S:C/low M:C/medium I:C/medium |
-| [F081](#f081) | open | medium | medium | C | A malformed or empty ?year= on /api/friday13 gets a 400 without `errors` in Production and a 500 in Development, not the 400 ValidationProblem | small | S:C/medium M:C/medium I:C/medium |
-| [F084](#f084) | ✅ fixed | medium | medium | C | "A failed smoke leaves a draft; re-running the workflow refreshes it" no longer holds under build-once releases | trivial | S:C/medium M:C/medium I:C/medium |
-| [F007](#f007) | open | low | medium | A | An override by label skips the write-role check that `/llm-override` enforces | trivial | S:C/low M:C/low I:C/low |
-| [F009](#f009) | open | low | medium | A | llm-eval scores security-review only on the API engine, but high-risk PRs (most of them) review it on the agent engine | small | S:C/low M:C/medium I:C/low |
-| [F013](#f013) | open | low | medium | A | `llm-gate run --risk` for a check the level runs (demoted to advisory, engine switched) is never exercised | small | S:C/low M:C/low I:C/low |
-| [F014](#f014) | open | low | medium | A | Only `feedback` is tested as a record type a PR's artifact may not carry; `risk_override` is not | trivial | S:C/low M:C/low I:C/low |
-| [F015](#f015) | open | low | medium | A | The 'exactly one triage record' rule is untested; the test named for it passes through a different check | trivial | S:C/low M:C/low I:C/low |
-| [F016](#f016) | open | low | medium | A | The 128 KB per-artifact limit is untested, and the 256 KB per-line limit can never trigger | trivial | S:C/low M:C/low I:C/low |
-| [F017](#f017) | open | low | medium | A | The committed-eval-cases test is skipped in CI (shallow checkout), and one missing base skips every case | trivial | S:C/low M:C/low I:C/low |
-| [F018](#f018) | open | low | medium | A | The triage eval lets any one triage case fail in every repeat, tr-008 included; 4 of its 10 cases can't fail at all | small | S:C/low M:C/low I:C/low |
-| [F019](#f019) | open | low | medium | A | fp-tr-835a can still pass for the wrong reason: its forbid rule needs a literal `$IMAGE` in the title | trivial | S:C/low M:C/low I:C/low |
-| [F021](#f021) | open | low | low | A | Triage rates gate configuration outside .github/ and tools/llm-gate/ at the default medium | trivial | S:C/low M:C/low I:C/low |
-| [F022](#f022) | open | low | low | A | The collector rechecks a run's triage against the default branch's checks.yaml at collection time, not the config the run used | small | S:C/low M:C/low I:C/low |
-| [F023](#f023) | open | low | low | A | api-contract's paths filter misses files that change the HTTP contract outside Endpoints/, Domain/, Program.cs and http/ | trivial | S:C/low M:C/low I:C/low |
-| [F024](#f024) | open | low | low | A | A PR that changes only http/calendar.http is rated low, where api-contract doesn't run, so its http/** filter never fires for such PRs | trivial | S:C/low M:C/low I:C/low |
-| [F025](#f025) | open | low | low | A | One /llm-override writes an override record per check job, including advisory, passing and not-applicable checks, and the release attestation repeats them all | trivial | S:C/low M:C/low I:C/low |
-| [F026](#f026) | open | low | low | A | /llm-fp and /llm-ack on a finding from the current run are rejected as unknown_finding until audit-collect has written that run | small | S:C/low M:C/low I:C/low |
-| [F027](#f027) | open | low | low | A | The llm-review attestation doesn't list a PR whose merged head is missing a record for a blocking check | small | S:C/low M:C/low I:C/low |
-| [F029](#f029) | open | low | low | A | Model-written review text reaches the PR comment and job summary without redaction or markup neutralisation | small | S:C/low M:C/low I:C/low |
-| [F030](#f030) | open | low | low | A | floor_violations can never be non-zero: it is computed from final_risk(), which takes the higher risk | trivial | S:C/low M:R/info I:C/low |
-| [F031](#f031) | open | low | low | A | 'Latest wins' tests use fixtures already in time order; the invalid-`to` fixture is rejected for its bad ts | trivial | S:C/low M:C/low I:C/low |
-| [F032](#f032) | open | low | low | A | The collector's paths for keyless PRs (skipped_no_key) and for a missing triage expectation are untested | small | S:C/low M:C/low I:C/low |
-| [F033](#f033) | open | low | low | A | Two of the eight redaction patterns (Slack, JWT) have no test case | trivial | S:C/low M:C/low I:C/low |
-| [F035](#f035) | open | low | low | A | `/llm-ack` recording and a writer's malformed command are never tested through handle() | trivial | S:C/low M:C/low I:C/low |
-| [F036](#f036) | open | low | low | A | The API engine's cost is checked against estimate_cost itself; the price arithmetic has no independent test | trivial | S:C/low M:C/low I:C/low |
-| [F037](#f037) | open | low | low | A | docs-drift has no eval case, and test-review has only an fp-regression case | medium | S:C/low M:C/low I:C/low |
-| [F038](#f038) | open | low | low | A | The prompt-guard test skips llm-triage.md | trivial | S:C/low M:C/info I:C/low |
-| [F039](#f039) | open | low | low | A | Audit file paths use the date of collection, so re-running audit-collect or llm-feedback on another day writes duplicates | small | S:C/low M:C/low I:C/low |
-| [F045](#f045) | open | low | medium | B | The allow rules for just, uv run, dotnet and gh run auto-approve arbitrary and irreversible commands, which makes the deny list ineffective | small | S:C/low M:C/low I:C/low |
-| [F046](#f046) | open | low | medium | B | Ephemeral containers are tested nowhere: removing them from the images policy leaves every test green | trivial | S:C/low M:C/medium I:C/low |
-| [F048](#f048) | open | low | medium | B | Every attestation Kyverno requires exists before the release is approved or smoke-tested, so rejected and failed candidates are admitted | medium | S:C/low M:C/low I:C/low |
-| [F053](#f053) | open | low | low | B | Re-runs keep the original event's updated_at as pr_event_at, so the turnaround metric includes the time people took to trigger the re-run | trivial | S:C/low M:C/low I:C/low |
-| [F054](#f054) | open | low | low | B | The deployable unit, the chart, is installed by a mutable version tag and verified by nothing | small | S:C/low M:C/low I:C/low |
-| [F056](#f056) | open | low | low | B | k8s-up's restart path neither waits for the API server nor restores the kubeconfig | small | S:C/low M:C/low I:C/low |
-| [F057](#f057) | open | low | low | B | cluster=local inherits $KUBECONFIG, so it breaks in exactly the shell setup AGENTS.md suggests | trivial | S:C/low M:C/low I:C/low |
-| [F069](#f069) | open | low | low | B | No test exercises the admission rule 'no critical vulnerabilities' | medium | S:A/info M:C/low I:C/low |
-| [F070](#f070) | open | low | low | B | Nothing tests who may honour a bot-added override (override-writers.sh) | small | S:C/low M:C/low I:C/low |
-| [F071](#f071) | open | low | low | B | The version tags, the moving X.Y tag and the chart are pushed before admission-smoke and smoke run | small | S:C/low M:C/low I:C/low |
-| [F072](#f072) | open | low | low | B | pr-title isn't re-checked when the title is edited, so the check can stay green on a title that isn't a Conventional Commit | small | S:C/low M:C/low I:C/low |
-| [F073](#f073) | open | low | low | B | Records are dropped when an llm-review run completes after its PR was merged | trivial | S:C/low M:C/low I:C/low |
-| [F074](#f074) | open | low | low | B | The consistency check validates the main.json file, not the live ruleset, and ignores job-level if: | small | S:C/low M:C/low I:C/low |
-| [F075](#f075) | open | low | low | B | GH_TOKEN with contents: write is set for the whole collect job, including the step that parses untrusted artifacts | trivial | S:C/low M:C/low I:C/info |
-| [F076](#f076) | open | low | low | B | Dependabot's uv updates for tools/llm-gate will stall at the fixed exclude-newer date in pyproject.toml | small | S:C/low M:C/low I:P/low |
-| [F083](#f083) | open | low | medium | C | The coverage metric doesn't count triage's not_needed verdict as a decision, so every merged low-risk PR shows as not covered | small | S:C/low M:C/medium I:C/low |
-| [F085](#f085) | open | low | medium | C | The workdays range guard near year 9999 (start year above 9989) has no test | trivial | S:C/low M:C/low I:C/low |
-| [F086](#f086) | open | low | low | C | OpenAPI documents workdays' from/to as optional plain strings and week's {date} without a date format | small | S:C/low M:C/low I:C/low |
-| [F090](#f090) | open | low | low | C | llm-gate's README leaves out the triage and attest subcommands and --risk/LLM_GATE_RISK, which the workflows call | small | S:C/low M:C/low I:C/low |
-| [F096](#f096) | open | low | low | C | OpenAPI declares every integer in the responses as integer-or-string, though the API only writes JSON numbers | trivial | S:C/low M:C/info I:C/low |
-| [F098](#f098) | open | low | low | C | The contract tests check the content type on 2 of 17 requests and leave out several error contracts | small | S:C/info M:C/low I:C/low |
-| [F099](#f099) | open | low | low | C | The blocking code-review prompt's scope and severity rubric cover only the date API, not the gate code most PRs change | medium | S:C/low M:C/low I:C/low |
-| [F104](#f104) | open | low | low | C | PLAN.md's drill table, which /gate-drill checks results against, predates reasoned overrides and the --no-verify ban | small | S:C/info M:C/low I:C/low |
-| [F111](#f111) | open | low | low | C | /api/friday13/next's 404 (no Friday the 13th left before year 10000) has no test | trivial | S:C/low M:C/low I:C/info |
-| [F113](#f113) | open | low | low | C | VersionEndpoints.Read has no unit test, and the version/commit checks accept its fallbacks | small | S:C/low M:C/low I:C/info |
-| [F114](#f114) | open | low | low | C | The leap endpoint's year validation is tested only with 99999 | trivial | S:C/low M:C/low I:C/low |
-| [F091](#f091) | 🟡 partial | low | low | C | The audit/v1 type lists in ADR 0005 and in the audit-log branch README are out of date | small | S:C/low M:C/low I:C/low |
-| [F055](#f055) | ✅ fixed | low | low | B | pr-title accepts non-Conventional titles that start with 'Merge ', 'fixup! ', 'squash! ' or 'amend! ' | trivial | S:C/low M:C/low I:C/low |
-| [F058](#f058) | ✅ fixed | low | low | B | k8s-policy-up returns before the policies are ready, so a deploy right after it can be admitted unchecked | trivial | S:C/low M:C/low I:C/low |
-| [F059](#f059) | ✅ fixed | low | low | B | k8s-cluster-down ignores cluster=, so with cluster=local it deletes the project cluster | trivial | S:R/info M:C/low I:C/low |
-| [F060](#f060) | ✅ fixed | low | low | B | k8s-http doesn't notice a port-forward that failed to bind 18080, and tests whatever already listens there | trivial | S:C/low M:C/low I:C/low |
-| [F062](#f062) | ✅ fixed | low | low | B | A failed push in just release leaves the local tag behind, and the retry stops at 'already exists' | trivial | S:C/info M:C/low I:C/low |
-| [F064](#f064) | ✅ fixed | low | low | B | gh-setup uploads the whole pass entry as ANTHROPIC_API_KEY, while the other recipes use only its first line | trivial | S:C/info M:C/low I:C/low |
-| [F065](#f065) | ✅ fixed | low | low | B | The timeout counts attempts, not seconds, because curl runs without --max-time | trivial | S:C/low M:C/low I:C/low |
-| [F082](#f082) | ✅ fixed | low | medium | C | OpenAPI documents only 200 for /api/easter/{year}, /api/leap/{year} and /api/friday13, which also return 400 ValidationProblem | trivial | S:C/low M:C/low I:C/low |
-| [F089](#f089) | ✅ fixed | low | low | C | docs/gates.md's list of required checks leaves out llm-eval and says the other checks don't block | trivial | S:C/low M:C/low I:C/low |
-| [F092](#f092) | ✅ fixed | low | low | C | Undocumented: llm-eval passes without running when there's no API key, and LLM_GATE_MISSING_KEY doesn't apply to it | trivial | S:C/low M:C/low I:C/low |
-| [F093](#f093) | ✅ fixed | low | low | C | Kyverno update instructions point at "the chart version in the justfile", which doesn't exist | trivial | S:C/low M:C/low I:C/low |
-| [F094](#f094) | ✅ fixed | low | low | C | WRITEUP §5 says the metrics still count drill 19's /llm-fp marking; §3 and metrics.py say the later /llm-ack reversed it | trivial | S:C/low M:C/low I:C/low |
-| [F095](#f095) | ✅ fixed | low | low | C | "Denied in calendar-gates since v0.3.1": the Deny switch came after v0.3.1 and no release has exercised it | trivial | S:C/low M:C/low I:C/low |
-| [F100](#f100) | ✅ fixed | low | low | C | AGENTS.md says only audit-collect.yml writes the audit-log branch; llm-feedback.yml writes to it too | trivial | S:C/low M:C/low I:C/low |
-| [F101](#f101) | ✅ fixed | low | low | C | The kyverno test file says it runs in `just lint`; it runs in `just lint-policies` | trivial | S:C/info M:C/low I:C/low |
-| [F102](#f102) | ✅ fixed | low | low | C | The lint gate's local equivalent and tool list omit the kyverno policy tests that CI's lint job runs | trivial | S:C/low M:C/low I:C/low |
-| [F103](#f103) | ✅ fixed | low | low | C | /gate-drill sends "drills 13 and up" to PLAN-v2, but drill 13 is in PLAN.md and v2 starts at 14 | trivial | S:C/low M:C/low I:C/low |
-| [F105](#f105) | ✅ fixed | low | low | C | The entry docs point only at docs/PLAN.md; PLAN-v2.md (Phases 13-21, drills 14-23) is never mentioned | trivial | S:C/low M:C/low I:C/low |
-| [F107](#f107) | ✅ fixed | low | low | C | llm-eval also fails when a forbidden (fp-regression) finding returns; gates.md and WRITEUP don't say so | trivial | S:C/low M:C/low I:C/low |
-| [F108](#f108) | ✅ fixed | low | low | C | /new-endpoint skips the two exact OpenAPI route lists a new endpoint must be added to | trivial | S:C/info M:C/low I:C/low |
-| [F109](#f109) | ✅ fixed | low | low | C | The quick start's requirements don't cover `just setup` / `just ci`, which now need an exact kyverno CLI | trivial | S:C/low M:C/low I:C/low |
-| [F028](#f028) | open | info | low | A | eval add-from-fp looks up a 16-bit finding id across every PR and takes the last match | trivial | S:C/info M:C/low I:C/info |
-| [F040](#f040) | open | info | info | A | gate_run records for checks that triage didn't need carry the configured blocking flag, not the effective one | trivial | S:C/info M:C/info I:C/info |
-| [F080](#f080) | open | info | info | B | Tool versions pinned inside run: steps and with: inputs aren't covered by Dependabot | medium | S:C/info M:C/info I:C/info |
-| [F110](#f110) | open | info | low | C | Friday-the-13th lists are compared ignoring order | trivial | S:C/info M:C/info I:C/info |
-| [F112](#f112) | open | info | low | C | CurrentWeekUsesTodayInUtc can't tell UTC from local time | trivial | S:C/info M:C/low I:C/info |
-| [F116](#f116) | open | info | info | C | The api-contract prompt defines the contract as the /api routes and OpenAPI, leaving out /health, which checks.yaml gives as a reason to review Program.cs | small | S:C/info M:C/info I:C/info |
-| [F128](#f128) | open | info | info | C | The docs-drift gate's own list of docs leaves out the tool READMEs and command files, where drift collects | small | S:C/info M:C/info I:C/info |
-| [F061](#f061) | ✅ fixed | info | low | B | audit-pull, and with it metrics, fails when the audit-log branch has no events/ directory | trivial | S:C/info M:C/low I:C/info |
-| [F063](#f063) | ✅ fixed | info | low | B | just lint hands the user's full-scope gh OAuth token to a PyPI-fetched zizmor on every run | trivial | S:R/info M:C/low I:C/info |
-| [F077](#f077) | ✅ fixed | info | info | B | The pre-commit ruff job skips scripts/*.py, which the lint gate checks | trivial | S:C/info M:C/info I:C/info |
-| [F078](#f078) | ✅ fixed | info | info | B | llm and llm-list run uv without --locked, unlike every other recipe and CI | trivial | S:C/info M:C/info I:C/info |
-| [F106](#f106) | ✅ fixed | info | low | C | ADR 0005 says the untrusted llm job uploads with a read-only token; it holds pull-requests: write | trivial | S:C/info M:C/low I:C/info |
-| [F115](#f115) | ✅ fixed | info | info | C | Header comments in checks.yaml and the workflows still describe the override label alone, a per-level model and a not-yet-required llm-eval | trivial | S:C/info M:C/info I:C/info |
-| [F119](#f119) | ✅ fixed | info | info | C | ADR 0004's amendment names a job, `llm-plan`, that no longer exists | trivial | S:C/info M:C/info I:C/info |
-| [F120](#f120) | ✅ fixed | info | info | C | ADR 0009's job order and release.yml's header comment leave out admission-smoke | trivial | S:C/info M:C/info I:C/info |
-| [F121](#f121) | ✅ fixed | info | info | C | WRITEUP's cr-def4 doesn't match the finding the audit log records under that id | trivial | S:R/info M:C/info I:C/info |
-| [F122](#f122) | ✅ fixed | info | info | C | The turnaround row's unlabelled "1.0 / 2.3 min" is code-review's figure, not the overall one | trivial | S:C/info M:C/info I:C/info |
-| [F123](#f123) | ✅ fixed | info | info | C | WRITEUP §5 says high-risk PRs "get Opus", in the present tense, though #58 switched them back to Sonnet | trivial | S:C/info M:C/info I:C/info |
-| [F124](#f124) | ✅ fixed | info | info | C | "To regenerate (costs API credits)" includes `just metrics`, which spends nothing | trivial | S:C/info M:C/info I:C/info |
-| [F125](#f125) | ✅ fixed | info | info | C | values-kind.yaml calls itself kind-local's, but `just k8s-load`/`k8s-deploy` now target the project cluster | trivial | S:C/info M:C/info I:C/info |
-| [F126](#f126) | ✅ fixed | info | info | C | PLAN-v2's Status table says ADR 0008 records the rename rule; ADR 0008 never mentions renames | trivial | S:C/info M:C/info I:C/info |
-| [F127](#f127) | ✅ fixed | info | info | C | gate-debugger still says docs/gates.md has details "when it exists" | trivial | S:C/info M:C/info I:C/info |
-| [F129](#f129) | ✅ fixed | info | info | C | "Lint tool versions are pinned in both ci.yml and the lint recipe" holds for only some of the tools | trivial | S:C/info M:C/info I:C/info |
-| [F130](#f130) | ✅ fixed | info | info | C | AGENTS.md says `just ci` runs "every deterministic gate"; http-tests, grype and k8s-smoke aren't in it | trivial | S:C/info M:C/info I:C/low |
-| [F131](#f131) | ✅ fixed | info | info | C | The workflow-review prompt attributes workflow rules to AGENTS.md; they live in docs/PLAN.md | trivial | S:C/info M:C/info I:C/info |
-| [F132](#f132) | ✅ fixed | info | info | C | No doc or recipe explains how to create the Gate health issue and set GATE_HEALTH_ISSUE | trivial | S:C/info M:C/info I:C/info |
-| [F050](#f050) | ⚪ unverifiable | medium | medium | B | Required checks are pinned to the GitHub Actions app, not to the jobs that produce them, while three PR jobs hold checks: write next to PR-controlled code | small | S:P/medium M:P/low I:P/medium |
+| [F001](#f001) | high | high | confirmed | A | A PR's own .gitattributes can hide its changes from every LLM reviewer and from triage's size rule | small | S:C/high M:C/high I:C/medium |
+| [F002](#f002) | high | high | confirmed | A | Review results restored from the Actions cache are trusted unverified, and other workflows of the same PR can write that cache | medium | S:C/high M:C/high I:C/medium |
+| [F003](#f003) | medium | high | confirmed | A | The agent reviewer's file reads are not fenced to the reviewed checkout, and its output is published unredacted | small | S:P/medium M:C/medium I:C/low |
+| [F004](#f004) | medium | high | confirmed | A | The collector's triage recomputation (_triage_expected) has no test at all | small | S:C/medium M:C/medium I:C/low |
+| [F005](#f005) | medium | medium | confirmed | A | Triage and the collector accept any risk_override record on audit-log, so a hand-pushed record can lower the risk with a forged author and an unbeatable timestamp | medium | S:C/medium M:C/medium I:C/medium |
+| [F006](#f006) | medium | medium | confirmed | A | Re-running only the failed llm jobs turns their records into tamper_suspected, because the new attempt has no triage artifact | small | S:C/medium M:C/medium I:C/medium |
+| [F008](#f008) | medium | medium | confirmed | A | llm-eval checks only flips and fp-regressions when the run's engine/model has no baseline entry, so changing a check's model skips the regression gate | small | S:C/medium M:C/medium I:C/medium |
+| [F010](#f010) | medium | medium | confirmed | A | Name-based EXCLUDES drop compiled C# from the review, and a PR made only of excluded files passes as 'not applicable' | small | S:C/medium M:C/medium I:C/low |
+| [F011](#f011) | medium | medium | confirmed | A | Schema-invalid or truncated model output escapes structured_call as pydantic.ValidationError, crashing triage instead of leaving the floor | small | S:C/medium M:C/medium I:C/medium |
+| [F012](#f012) | medium | medium | confirmed | A | Cache keys ignore llm-gate's request code and engine settings, so llm-eval scores engine changes from main's cached reviews | small | S:C/medium M:C/medium I:C/medium |
+| [F020](#f020) | medium | medium | confirmed | A | A /llm-risk decision isn't tied to a head: lowering the risk once removes blocking review from every later push to the PR | small | S:C/medium M:C/low I:C/medium |
+| [F042](#f042) | medium | medium | confirmed | B | `workflow_modified` only looks at llm-review.yml, so other PR changes that steer the review still count as verified | small | S:C/medium M:C/medium I:C/medium |
+| [F043](#f043) | medium | medium | confirmed | B | A v* tag on any commit, merged or not, mints release attestations, because the 'on main' check runs inside that commit's own release.yml | medium | S:C/medium M:C/medium I:C/medium |
+| [F044](#f044) | medium | medium | confirmed | B | /llm-risk and /llm-override posted while llm-review is running get a +1 reaction but may never take effect | small | S:C/medium M:C/medium I:C/medium |
+| [F047](#f047) | medium | medium | confirmed | B | No policy inspects OCI image volumes, so a pod in calendar-gates can run code from any registry next to an attested container | trivial | S:C/medium M:C/medium I:C/low |
+| [F052](#f052) | medium | medium | confirmed | B | uv itself is unpinned: every setup-uv step installs the newest uv release, in the signing job and the write-token jobs too | small | S:C/low M:C/medium I:C/medium |
+| [F081](#f081) | medium | medium | confirmed | C | A malformed or empty ?year= on /api/friday13 gets a 400 without `errors` in Production and a 500 in Development, not the 400 ValidationProblem | small | S:C/medium M:C/medium I:C/medium |
+| [F084](#f084) | medium | medium | confirmed | C | "A failed smoke leaves a draft; re-running the workflow refreshes it" no longer holds under build-once releases | trivial | S:C/medium M:C/medium I:C/medium |
+| [F007](#f007) | low | medium | confirmed | A | An override by label skips the write-role check that `/llm-override` enforces | trivial | S:C/low M:C/low I:C/low |
+| [F009](#f009) | low | medium | confirmed | A | llm-eval scores security-review only on the API engine, but high-risk PRs (most of them) review it on the agent engine | small | S:C/low M:C/medium I:C/low |
+| [F013](#f013) | low | medium | confirmed | A | `llm-gate run --risk` for a check the level runs (demoted to advisory, engine switched) is never exercised | small | S:C/low M:C/low I:C/low |
+| [F014](#f014) | low | medium | confirmed | A | Only `feedback` is tested as a record type a PR's artifact may not carry; `risk_override` is not | trivial | S:C/low M:C/low I:C/low |
+| [F015](#f015) | low | medium | confirmed | A | The 'exactly one triage record' rule is untested; the test named for it passes through a different check | trivial | S:C/low M:C/low I:C/low |
+| [F016](#f016) | low | medium | confirmed | A | The 128 KB per-artifact limit is untested, and the 256 KB per-line limit can never trigger | trivial | S:C/low M:C/low I:C/low |
+| [F017](#f017) | low | medium | confirmed | A | The committed-eval-cases test is skipped in CI (shallow checkout), and one missing base skips every case | trivial | S:C/low M:C/low I:C/low |
+| [F018](#f018) | low | medium | confirmed | A | The triage eval lets any one triage case fail in every repeat, tr-008 included; 4 of its 10 cases can't fail at all | small | S:C/low M:C/low I:C/low |
+| [F019](#f019) | low | medium | confirmed | A | fp-tr-835a can still pass for the wrong reason: its forbid rule needs a literal `$IMAGE` in the title | trivial | S:C/low M:C/low I:C/low |
+| [F021](#f021) | low | low | confirmed | A | Triage rates gate configuration outside .github/ and tools/llm-gate/ at the default medium | trivial | S:C/low M:C/low I:C/low |
+| [F022](#f022) | low | low | confirmed | A | The collector rechecks a run's triage against the default branch's checks.yaml at collection time, not the config the run used | small | S:C/low M:C/low I:C/low |
+| [F023](#f023) | low | low | confirmed | A | api-contract's paths filter misses files that change the HTTP contract outside Endpoints/, Domain/, Program.cs and http/ | trivial | S:C/low M:C/low I:C/low |
+| [F024](#f024) | low | low | confirmed | A | A PR that changes only http/calendar.http is rated low, where api-contract doesn't run, so its http/** filter never fires for such PRs | trivial | S:C/low M:C/low I:C/low |
+| [F025](#f025) | low | low | confirmed | A | One /llm-override writes an override record per check job, including advisory, passing and not-applicable checks, and the release attestation repeats them all | trivial | S:C/low M:C/low I:C/low |
+| [F026](#f026) | low | low | confirmed | A | /llm-fp and /llm-ack on a finding from the current run are rejected as unknown_finding until audit-collect has written that run | small | S:C/low M:C/low I:C/low |
+| [F027](#f027) | low | low | confirmed | A | The llm-review attestation doesn't list a PR whose merged head is missing a record for a blocking check | small | S:C/low M:C/low I:C/low |
+| [F029](#f029) | low | low | confirmed | A | Model-written review text reaches the PR comment and job summary without redaction or markup neutralisation | small | S:C/low M:C/low I:C/low |
+| [F030](#f030) | low | low | confirmed | A | floor_violations can never be non-zero: it is computed from final_risk(), which takes the higher risk | trivial | S:C/low M:R/info I:C/low |
+| [F031](#f031) | low | low | confirmed | A | 'Latest wins' tests use fixtures already in time order; the invalid-`to` fixture is rejected for its bad ts | trivial | S:C/low M:C/low I:C/low |
+| [F032](#f032) | low | low | confirmed | A | The collector's paths for keyless PRs (skipped_no_key) and for a missing triage expectation are untested | small | S:C/low M:C/low I:C/low |
+| [F033](#f033) | low | low | confirmed | A | Two of the eight redaction patterns (Slack, JWT) have no test case | trivial | S:C/low M:C/low I:C/low |
+| [F035](#f035) | low | low | confirmed | A | `/llm-ack` recording and a writer's malformed command are never tested through handle() | trivial | S:C/low M:C/low I:C/low |
+| [F036](#f036) | low | low | confirmed | A | The API engine's cost is checked against estimate_cost itself; the price arithmetic has no independent test | trivial | S:C/low M:C/low I:C/low |
+| [F037](#f037) | low | low | confirmed | A | docs-drift has no eval case, and test-review has only an fp-regression case | medium | S:C/low M:C/low I:C/low |
+| [F038](#f038) | low | low | confirmed | A | The prompt-guard test skips llm-triage.md | trivial | S:C/low M:C/info I:C/low |
+| [F039](#f039) | low | low | confirmed | A | Audit file paths use the date of collection, so re-running audit-collect or llm-feedback on another day writes duplicates | small | S:C/low M:C/low I:C/low |
+| [F045](#f045) | low | medium | confirmed | B | The allow rules for just, uv run, dotnet and gh run auto-approve arbitrary and irreversible commands, which makes the deny list ineffective | small | S:C/low M:C/low I:C/low |
+| [F046](#f046) | low | medium | confirmed | B | Ephemeral containers are tested nowhere: removing them from the images policy leaves every test green | trivial | S:C/low M:C/medium I:C/low |
+| [F048](#f048) | low | medium | confirmed | B | Every attestation Kyverno requires exists before the release is approved or smoke-tested, so rejected and failed candidates are admitted | medium | S:C/low M:C/low I:C/low |
+| [F053](#f053) | low | low | confirmed | B | Re-runs keep the original event's updated_at as pr_event_at, so the turnaround metric includes the time people took to trigger the re-run | trivial | S:C/low M:C/low I:C/low |
+| [F054](#f054) | low | low | confirmed | B | The deployable unit, the chart, is installed by a mutable version tag and verified by nothing | small | S:C/low M:C/low I:C/low |
+| [F055](#f055) | low | low | confirmed | B | pr-title accepts non-Conventional titles that start with 'Merge ', 'fixup! ', 'squash! ' or 'amend! ' | trivial | S:C/low M:C/low I:C/low |
+| [F056](#f056) | low | low | confirmed | B | k8s-up's restart path neither waits for the API server nor restores the kubeconfig | small | S:C/low M:C/low I:C/low |
+| [F057](#f057) | low | low | confirmed | B | cluster=local inherits $KUBECONFIG, so it breaks in exactly the shell setup AGENTS.md suggests | trivial | S:C/low M:C/low I:C/low |
+| [F058](#f058) | low | low | confirmed | B | k8s-policy-up returns before the policies are ready, so a deploy right after it can be admitted unchecked | trivial | S:C/low M:C/low I:C/low |
+| [F059](#f059) | low | low | confirmed | B | k8s-cluster-down ignores cluster=, so with cluster=local it deletes the project cluster | trivial | S:R/info M:C/low I:C/low |
+| [F060](#f060) | low | low | confirmed | B | k8s-http doesn't notice a port-forward that failed to bind 18080, and tests whatever already listens there | trivial | S:C/low M:C/low I:C/low |
+| [F062](#f062) | low | low | confirmed | B | A failed push in just release leaves the local tag behind, and the retry stops at 'already exists' | trivial | S:C/info M:C/low I:C/low |
+| [F064](#f064) | low | low | confirmed | B | gh-setup uploads the whole pass entry as ANTHROPIC_API_KEY, while the other recipes use only its first line | trivial | S:C/info M:C/low I:C/low |
+| [F065](#f065) | low | low | confirmed | B | The timeout counts attempts, not seconds, because curl runs without --max-time | trivial | S:C/low M:C/low I:C/low |
+| [F069](#f069) | low | low | confirmed | B | No test exercises the admission rule 'no critical vulnerabilities' | medium | S:A/info M:C/low I:C/low |
+| [F070](#f070) | low | low | confirmed | B | Nothing tests who may honour a bot-added override (override-writers.sh) | small | S:C/low M:C/low I:C/low |
+| [F071](#f071) | low | low | confirmed | B | The version tags, the moving X.Y tag and the chart are pushed before admission-smoke and smoke run | small | S:C/low M:C/low I:C/low |
+| [F072](#f072) | low | low | confirmed | B | pr-title isn't re-checked when the title is edited, so the check can stay green on a title that isn't a Conventional Commit | small | S:C/low M:C/low I:C/low |
+| [F073](#f073) | low | low | confirmed | B | Records are dropped when an llm-review run completes after its PR was merged | trivial | S:C/low M:C/low I:C/low |
+| [F074](#f074) | low | low | confirmed | B | The consistency check validates the main.json file, not the live ruleset, and ignores job-level if: | small | S:C/low M:C/low I:C/low |
+| [F075](#f075) | low | low | confirmed | B | GH_TOKEN with contents: write is set for the whole collect job, including the step that parses untrusted artifacts | trivial | S:C/low M:C/low I:C/info |
+| [F076](#f076) | low | low | confirmed | B | Dependabot's uv updates for tools/llm-gate will stall at the fixed exclude-newer date in pyproject.toml | small | S:C/low M:C/low I:P/low |
+| [F082](#f082) | low | medium | confirmed | C | OpenAPI documents only 200 for /api/easter/{year}, /api/leap/{year} and /api/friday13, which also return 400 ValidationProblem | trivial | S:C/low M:C/low I:C/low |
+| [F083](#f083) | low | medium | confirmed | C | The coverage metric doesn't count triage's not_needed verdict as a decision, so every merged low-risk PR shows as not covered | small | S:C/low M:C/medium I:C/low |
+| [F085](#f085) | low | medium | confirmed | C | The workdays range guard near year 9999 (start year above 9989) has no test | trivial | S:C/low M:C/low I:C/low |
+| [F086](#f086) | low | low | confirmed | C | OpenAPI documents workdays' from/to as optional plain strings and week's {date} without a date format | small | S:C/low M:C/low I:C/low |
+| [F089](#f089) | low | low | confirmed | C | docs/gates.md's list of required checks leaves out llm-eval and says the other checks don't block | trivial | S:C/low M:C/low I:C/low |
+| [F090](#f090) | low | low | confirmed | C | llm-gate's README leaves out the triage and attest subcommands and --risk/LLM_GATE_RISK, which the workflows call | small | S:C/low M:C/low I:C/low |
+| [F091](#f091) | low | low | confirmed | C | The audit/v1 type lists in ADR 0005 and in the audit-log branch README are out of date | small | S:C/low M:C/low I:C/low |
+| [F092](#f092) | low | low | confirmed | C | Undocumented: llm-eval passes without running when there's no API key, and LLM_GATE_MISSING_KEY doesn't apply to it | trivial | S:C/low M:C/low I:C/low |
+| [F093](#f093) | low | low | confirmed | C | Kyverno update instructions point at "the chart version in the justfile", which doesn't exist | trivial | S:C/low M:C/low I:C/low |
+| [F094](#f094) | low | low | confirmed | C | WRITEUP §5 says the metrics still count drill 19's /llm-fp marking; §3 and metrics.py say the later /llm-ack reversed it | trivial | S:C/low M:C/low I:C/low |
+| [F095](#f095) | low | low | confirmed | C | "Denied in calendar-gates since v0.3.1": the Deny switch came after v0.3.1 and no release has exercised it | trivial | S:C/low M:C/low I:C/low |
+| [F096](#f096) | low | low | confirmed | C | OpenAPI declares every integer in the responses as integer-or-string, though the API only writes JSON numbers | trivial | S:C/low M:C/info I:C/low |
+| [F098](#f098) | low | low | confirmed | C | The contract tests check the content type on 2 of 17 requests and leave out several error contracts | small | S:C/info M:C/low I:C/low |
+| [F099](#f099) | low | low | confirmed | C | The blocking code-review prompt's scope and severity rubric cover only the date API, not the gate code most PRs change | medium | S:C/low M:C/low I:C/low |
+| [F100](#f100) | low | low | confirmed | C | AGENTS.md says only audit-collect.yml writes the audit-log branch; llm-feedback.yml writes to it too | trivial | S:C/low M:C/low I:C/low |
+| [F101](#f101) | low | low | confirmed | C | The kyverno test file says it runs in `just lint`; it runs in `just lint-policies` | trivial | S:C/info M:C/low I:C/low |
+| [F102](#f102) | low | low | confirmed | C | The lint gate's local equivalent and tool list omit the kyverno policy tests that CI's lint job runs | trivial | S:C/low M:C/low I:C/low |
+| [F103](#f103) | low | low | confirmed | C | /gate-drill sends "drills 13 and up" to PLAN-v2, but drill 13 is in PLAN.md and v2 starts at 14 | trivial | S:C/low M:C/low I:C/low |
+| [F104](#f104) | low | low | confirmed | C | PLAN.md's drill table, which /gate-drill checks results against, predates reasoned overrides and the --no-verify ban | small | S:C/info M:C/low I:C/low |
+| [F105](#f105) | low | low | confirmed | C | The entry docs point only at docs/PLAN.md; PLAN-v2.md (Phases 13-21, drills 14-23) is never mentioned | trivial | S:C/low M:C/low I:C/low |
+| [F107](#f107) | low | low | confirmed | C | llm-eval also fails when a forbidden (fp-regression) finding returns; gates.md and WRITEUP don't say so | trivial | S:C/low M:C/low I:C/low |
+| [F108](#f108) | low | low | confirmed | C | /new-endpoint skips the two exact OpenAPI route lists a new endpoint must be added to | trivial | S:C/info M:C/low I:C/low |
+| [F109](#f109) | low | low | confirmed | C | The quick start's requirements don't cover `just setup` / `just ci`, which now need an exact kyverno CLI | trivial | S:C/low M:C/low I:C/low |
+| [F111](#f111) | low | low | confirmed | C | /api/friday13/next's 404 (no Friday the 13th left before year 10000) has no test | trivial | S:C/low M:C/low I:C/info |
+| [F113](#f113) | low | low | confirmed | C | VersionEndpoints.Read has no unit test, and the version/commit checks accept its fallbacks | small | S:C/low M:C/low I:C/info |
+| [F114](#f114) | low | low | confirmed | C | The leap endpoint's year validation is tested only with 99999 | trivial | S:C/low M:C/low I:C/low |
+| [F028](#f028) | info | low | confirmed | A | eval add-from-fp looks up a 16-bit finding id across every PR and takes the last match | trivial | S:C/info M:C/low I:C/info |
+| [F040](#f040) | info | info | confirmed | A | gate_run records for checks that triage didn't need carry the configured blocking flag, not the effective one | trivial | S:C/info M:C/info I:C/info |
+| [F061](#f061) | info | low | confirmed | B | audit-pull, and with it metrics, fails when the audit-log branch has no events/ directory | trivial | S:C/info M:C/low I:C/info |
+| [F063](#f063) | info | low | confirmed | B | just lint hands the user's full-scope gh OAuth token to a PyPI-fetched zizmor on every run | trivial | S:R/info M:C/low I:C/info |
+| [F077](#f077) | info | info | confirmed | B | The pre-commit ruff job skips scripts/*.py, which the lint gate checks | trivial | S:C/info M:C/info I:C/info |
+| [F078](#f078) | info | info | confirmed | B | llm and llm-list run uv without --locked, unlike every other recipe and CI | trivial | S:C/info M:C/info I:C/info |
+| [F080](#f080) | info | info | confirmed | B | Tool versions pinned inside run: steps and with: inputs aren't covered by Dependabot | medium | S:C/info M:C/info I:C/info |
+| [F106](#f106) | info | low | confirmed | C | ADR 0005 says the untrusted llm job uploads with a read-only token; it holds pull-requests: write | trivial | S:C/info M:C/low I:C/info |
+| [F110](#f110) | info | low | confirmed | C | Friday-the-13th lists are compared ignoring order | trivial | S:C/info M:C/info I:C/info |
+| [F112](#f112) | info | low | confirmed | C | CurrentWeekUsesTodayInUtc can't tell UTC from local time | trivial | S:C/info M:C/low I:C/info |
+| [F115](#f115) | info | info | confirmed | C | Header comments in checks.yaml and the workflows still describe the override label alone, a per-level model and a not-yet-required llm-eval | trivial | S:C/info M:C/info I:C/info |
+| [F116](#f116) | info | info | confirmed | C | The api-contract prompt defines the contract as the /api routes and OpenAPI, leaving out /health, which checks.yaml gives as a reason to review Program.cs | small | S:C/info M:C/info I:C/info |
+| [F119](#f119) | info | info | confirmed | C | ADR 0004's amendment names a job, `llm-plan`, that no longer exists | trivial | S:C/info M:C/info I:C/info |
+| [F120](#f120) | info | info | confirmed | C | ADR 0009's job order and release.yml's header comment leave out admission-smoke | trivial | S:C/info M:C/info I:C/info |
+| [F121](#f121) | info | info | confirmed | C | WRITEUP's cr-def4 doesn't match the finding the audit log records under that id | trivial | S:R/info M:C/info I:C/info |
+| [F122](#f122) | info | info | confirmed | C | The turnaround row's unlabelled "1.0 / 2.3 min" is code-review's figure, not the overall one | trivial | S:C/info M:C/info I:C/info |
+| [F123](#f123) | info | info | confirmed | C | WRITEUP §5 says high-risk PRs "get Opus", in the present tense, though #58 switched them back to Sonnet | trivial | S:C/info M:C/info I:C/info |
+| [F124](#f124) | info | info | confirmed | C | "To regenerate (costs API credits)" includes `just metrics`, which spends nothing | trivial | S:C/info M:C/info I:C/info |
+| [F125](#f125) | info | info | confirmed | C | values-kind.yaml calls itself kind-local's, but `just k8s-load`/`k8s-deploy` now target the project cluster | trivial | S:C/info M:C/info I:C/info |
+| [F126](#f126) | info | info | confirmed | C | PLAN-v2's Status table says ADR 0008 records the rename rule; ADR 0008 never mentions renames | trivial | S:C/info M:C/info I:C/info |
+| [F127](#f127) | info | info | confirmed | C | gate-debugger still says docs/gates.md has details "when it exists" | trivial | S:C/info M:C/info I:C/info |
+| [F128](#f128) | info | info | confirmed | C | The docs-drift gate's own list of docs leaves out the tool READMEs and command files, where drift collects | small | S:C/info M:C/info I:C/info |
+| [F129](#f129) | info | info | confirmed | C | "Lint tool versions are pinned in both ci.yml and the lint recipe" holds for only some of the tools | trivial | S:C/info M:C/info I:C/info |
+| [F130](#f130) | info | info | confirmed | C | AGENTS.md says `just ci` runs "every deterministic gate"; http-tests, grype and k8s-smoke aren't in it | trivial | S:C/info M:C/info I:C/low |
+| [F131](#f131) | info | info | confirmed | C | The workflow-review prompt attributes workflow rules to AGENTS.md; they live in docs/PLAN.md | trivial | S:C/info M:C/info I:C/info |
+| [F132](#f132) | info | info | confirmed | C | No doc or recipe explains how to create the Gate health issue and set GATE_HEALTH_ISSUE | trivial | S:C/info M:C/info I:C/info |
+| [F050](#f050) | medium | medium | plausible | B | Required checks are pinned to the GitHub Actions app, not to the jobs that produce them, while three PR jobs hold checks: write next to PR-controlled code | small | S:P/medium M:P/low I:P/medium |
 
 ## Confirmed
 
@@ -274,7 +255,6 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 
 **A PR's own .gitattributes can hide its changes from every LLM reviewer and from triage's size rule**
 
-- **Status:** open — the `.gitattributes` hole; #62 did not touch it
 - **Severity:** high (reviewers: high) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/diff.py:55` · **area:** llm-gate and review prompts
 - **Reported by:** `cr-gate-01` (high, high confidence), `sec-01` (high, high confidence)
@@ -307,7 +287,6 @@ merge_base_diff runs `git diff --no-color --no-ext-diff --merge-base <base> HEAD
 
 **Review results restored from the Actions cache are trusted unverified, and other workflows of the same PR can write that cache**
 
-- **Status:** open — the cache forgery; #62 did not touch it
 - **Severity:** high (reviewers: high) · **outcome:** confirmed · **fix cost:** medium
 - **Where:** `tools/llm-gate/src/llm_gate/cache.py:27` · **area:** llm-gate and review prompts
 - **Reported by:** `cr-gate-02` (high, medium confidence), `sec-02` (high, high confidence), `wr-03` (medium, medium confidence)
@@ -350,7 +329,6 @@ The llm job restores .llm-gate/cache with `restore-keys: llm-gate-<check>-pr<N>-
 
 **The agent reviewer's file reads are not fenced to the reviewed checkout, and its output is published unredacted**
 
-- **Status:** open
 - **Severity:** medium (reviewers: high) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/engines/agent_engine.py:89` · **area:** llm-gate and review prompts
 - **Reported by:** `sec-03` (high, medium confidence), `wr-19` (medium, low confidence)
@@ -383,7 +361,6 @@ The Review step exports ANTHROPIC_API_KEY, and the Agent SDK passes os.environ o
 
 **The collector's triage recomputation (_triage_expected) has no test at all**
 
-- **Status:** open
 - **Severity:** medium (reviewers: high) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/cli.py:594` · **area:** llm-gate and review prompts
 - **Reported by:** `tr-01` (high, high confidence)
@@ -406,7 +383,6 @@ _triage_expected builds the TriageExpected that audit-collect.yml checks every r
 
 **Triage and the collector accept any risk_override record on audit-log, so a hand-pushed record can lower the risk with a forged author and an unbeatable timestamp**
 
-- **Status:** open
 - **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** medium
 - **Where:** `tools/llm-gate/src/llm_gate/triage.py:286` · **area:** llm-gate and review prompts
 - **Reported by:** `cr-gate-04` (medium, high confidence), `wr-04` (medium, high confidence), `sec-09` (low, medium confidence)
@@ -448,7 +424,6 @@ The ruleset has only `deletion` and `non_fast_forward` and no bypass actors, so 
 
 **Re-running only the failed llm jobs turns their records into tamper_suspected, because the new attempt has no triage artifact**
 
-- **Status:** open
 - **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/audit.py:757` · **area:** llm-gate and review prompts
 - **Reported by:** `api-04` (medium, medium confidence), `wr-01` (medium, high confidence)
@@ -481,7 +456,6 @@ GitHub's "Re-run failed jobs" and "Re-run this job" start attempt N+1 only for t
 
 **llm-eval checks only flips and fp-regressions when the run's engine/model has no baseline entry, so changing a check's model skips the regression gate**
 
-- **Status:** open
 - **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/evals.py:624` · **area:** llm-gate and review prompts
 - **Reported by:** `cr-gate-06` (medium, high confidence), `tr-09` (medium, high confidence)
@@ -514,7 +488,6 @@ compare() looks up the baseline entry for the check and the engine/model. Withou
 
 **Name-based EXCLUDES drop compiled C# from the review, and a PR made only of excluded files passes as 'not applicable'**
 
-- **Status:** open
 - **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/diff.py:9` · **area:** llm-gate and review prompts
 - **Reported by:** `cr-gate-03` (medium, high confidence)
@@ -537,7 +510,6 @@ EXCLUDES removes **/*.g.cs, **/*.generated.cs, **/*.Designer.cs, **/*.lock and *
 
 **Schema-invalid or truncated model output escapes structured_call as pydantic.ValidationError, crashing triage instead of leaving the floor**
 
-- **Status:** open
 - **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/engines/api_engine.py:64` · **area:** llm-gate and review prompts
 - **Reported by:** `cr-gate-05` (medium, high confidence)
@@ -560,7 +532,6 @@ structured_call catches only anthropic exceptions, but beta.messages.parse valid
 
 **Cache keys ignore llm-gate's request code and engine settings, so llm-eval scores engine changes from main's cached reviews**
 
-- **Status:** open
 - **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/cache.py:15` · **area:** llm-gate and review prompts
 - **Reported by:** `cr-gate-07` (medium, high confidence)
@@ -583,7 +554,6 @@ cache_key covers [CACHE_VERSION, check, engine name, model, prompt body, diff]. 
 
 **A /llm-risk decision isn't tied to a head: lowering the risk once removes blocking review from every later push to the PR**
 
-- **Status:** open
 - **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/triage.py:321` · **area:** llm-gate and review prompts
 - **Reported by:** `wr-05` (medium, high confidence)
@@ -607,7 +577,6 @@ feedback.handle builds the risk_override from a context with head_sha=None (cli.
 
 **`workflow_modified` only looks at llm-review.yml, so other PR changes that steer the review still count as verified**
 
-- **Status:** open
 - **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `.github/workflows/audit-collect.yml:114` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `sec-05` (medium, high confidence), `wr-06` (medium, medium confidence)
@@ -641,7 +610,6 @@ The collector flags a run only when the compare API's file list contains the tri
 
 **A v* tag on any commit, merged or not, mints release attestations, because the 'on main' check runs inside that commit's own release.yml**
 
-- **Status:** open
 - **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** medium
 - **Where:** `.github/rulesets/tags.json:9` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `cr-ops-03` (medium, high confidence), `wr-07` (medium, high confidence)
@@ -674,7 +642,6 @@ release-tags blocks deletion, update and non-fast-forward of v* tags, but not th
 
 **/llm-risk and /llm-override posted while llm-review is running get a +1 reaction but may never take effect**
 
-- **Status:** open
 - **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `.github/workflows/llm-feedback.yml:158` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `api-16` (low, medium confidence), `wr-02` (medium, high confidence)
@@ -707,7 +674,6 @@ The re-run step re-runs the latest llm-review run only when its status is `compl
 
 **No policy inspects OCI image volumes, so a pod in calendar-gates can run code from any registry next to an attested container**
 
-- **Status:** open
 - **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `deploy/policies/base/images.yaml:21` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `cr-ops-01` (medium, medium confidence)
@@ -730,7 +696,6 @@ calendar-gates-images builds its image list from spec.containers, initContainers
 
 **uv itself is unpinned: every setup-uv step installs the newest uv release, in the signing job and the write-token jobs too**
 
-- **Status:** open
 - **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `.github/workflows/release.yml:207` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `wr-08` (medium, high confidence)
@@ -753,7 +718,6 @@ setup-uv's `version` input "Defaults to the version in pyproject.toml or `latest
 
 **A malformed or empty ?year= on /api/friday13 gets a 400 without `errors` in Production and a 500 in Development, not the 400 ValidationProblem**
 
-- **Status:** open
 - **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `src/CalendarGates.Api/Endpoints/Friday13Endpoints.cs:28` · **area:** API, tests, docs
 - **Reported by:** `api-01` (medium, high confidence), `cr-api-01` (medium, high confidence)
@@ -786,7 +750,6 @@ setup-uv's `version` input "Defaults to the version in pyproject.toml or `latest
 
 **"A failed smoke leaves a draft; re-running the workflow refreshes it" no longer holds under build-once releases**
 
-- **Status:** ✅ fixed — #63: gates.md says why not to re-run a failed release
 - **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `docs/gates.md:144` · **area:** API, tests, docs
 - **Reported by:** `dd-01` (medium, high confidence)
@@ -811,7 +774,6 @@ The sentence dates from v1 (#7, 2026-10-15). Back then `publish` rebuilt and re-
 
 **An override by label skips the write-role check that `/llm-override` enforces**
 
-- **Status:** open
 - **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `tools/llm-gate/src/llm_gate/audit.py:524` · **area:** llm-gate and review prompts
 - **Reported by:** `sec-04` (medium, high confidence), `cr-gate-11` (low, high confidence)
@@ -845,7 +807,6 @@ When a person added the label, the only check is that the /llm-override comment'
 
 **llm-eval scores security-review only on the API engine, but high-risk PRs (most of them) review it on the agent engine**
 
-- **Status:** open
 - **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `.github/workflows/llm-eval.yml:100` · **area:** llm-gate and review prompts
 - **Reported by:** `cr-gate-13` (low, high confidence), `tr-08` (medium, high confidence)
@@ -878,7 +839,6 @@ llm-eval runs `eval run --compare` without --engine, so every check runs on its 
 
 **`llm-gate run --risk` for a check the level runs (demoted to advisory, engine switched) is never exercised**
 
-- **Status:** open
 - **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/cli.py:306` · **area:** llm-gate and review prompts
 - **Reported by:** `tr-02` (medium, high confidence)
@@ -901,7 +861,6 @@ _at_risk returns the level's version of a check: advisory at low risk, and the a
 
 **Only `feedback` is tested as a record type a PR's artifact may not carry; `risk_override` is not**
 
-- **Status:** open
 - **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `tools/llm-gate/src/llm_gate/audit.py:255` · **area:** llm-gate and review prompts
 - **Reported by:** `tr-03` (medium, high confidence)
@@ -924,7 +883,6 @@ triage.latest_risk_override trusts every risk_override record on audit-log. That
 
 **The 'exactly one triage record' rule is untested; the test named for it passes through a different check**
 
-- **Status:** open
 - **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `tools/llm-gate/src/llm_gate/audit.py:723` · **area:** llm-gate and review prompts
 - **Reported by:** `tr-04` (medium, high confidence)
@@ -947,7 +905,6 @@ _triage_problems rejects a triage artifact unless it holds exactly one record (l
 
 **The 128 KB per-artifact limit is untested, and the 256 KB per-line limit can never trigger**
 
-- **Status:** open
 - **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `tools/llm-gate/src/llm_gate/audit.py:592` · **area:** llm-gate and review prompts
 - **Reported by:** `tr-05` (medium, high confidence)
@@ -970,7 +927,6 @@ ADR 0005 lists a 128 KB limit per artifact. test_size_and_count_limits (test_aud
 
 **The committed-eval-cases test is skipped in CI (shallow checkout), and one missing base skips every case**
 
-- **Status:** open
 - **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `tools/llm-gate/tests/test_evals.py:102` · **area:** llm-gate and review prompts
 - **Reported by:** `tr-06` (medium, high confidence)
@@ -993,7 +949,6 @@ test_every_committed_case_is_valid_and_applies_to_its_base calls pytest.skip whe
 
 **The triage eval lets any one triage case fail in every repeat, tr-008 included; 4 of its 10 cases can't fail at all**
 
-- **Status:** open
 - **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/evals/thresholds.yaml:8` · **area:** llm-gate and review prompts
 - **Reported by:** `tr-07` (medium, high confidence)
@@ -1016,7 +971,6 @@ risk_accuracy is computed over 10 cases x 3 repeats, with a 1.00 baseline and ma
 
 **fp-tr-835a can still pass for the wrong reason: its forbid rule needs a literal `$IMAGE` in the title**
 
-- **Status:** open
 - **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `tools/llm-gate/evals/cases/fp-tr-835a/case.yaml:10` · **area:** llm-gate and review prompts
 - **Reported by:** `tr-13` (medium, medium confidence)
@@ -1039,7 +993,6 @@ forbidden_hit compares the file exactly and searches the title with the regex \$
 
 **Triage rates gate configuration outside .github/ and tools/llm-gate/ at the default medium**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `tools/llm-gate/checks.yaml:47` · **area:** llm-gate and review prompts
 - **Reported by:** `cr-gate-14` (low, high confidence), `sec-10` (low, high confidence), `cr-ops-20` (info, high confidence)
@@ -1080,7 +1033,6 @@ scripts/** is rated high because CI runs it (check-commit-msg.sh is the pr-title
 
 **The collector rechecks a run's triage against the default branch's checks.yaml at collection time, not the config the run used**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/cli.py:600` · **area:** llm-gate and review prompts
 - **Reported by:** `api-18` (low, medium confidence), `wr-17` (low, medium confidence)
@@ -1114,7 +1066,6 @@ _triage_expected loads tools/llm-gate/checks.yaml from the collector's checkout,
 
 **api-contract's paths filter misses files that change the HTTP contract outside Endpoints/, Domain/, Program.cs and http/**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `tools/llm-gate/checks.yaml:24` · **area:** llm-gate and review prompts
 - **Reported by:** `api-11` (low, medium confidence)
@@ -1137,7 +1088,6 @@ The filter is `src/**/Endpoints/**`, `src/**/Domain/**`, `src/**/Program.cs` and
 
 **A PR that changes only http/calendar.http is rated low, where api-contract doesn't run, so its http/** filter never fires for such PRs**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `tools/llm-gate/checks.yaml:60` · **area:** llm-gate and review prompts
 - **Reported by:** `api-12` (low, high confidence)
@@ -1160,7 +1110,6 @@ triage.rules rate `http/**` low (line 56), and the low level runs only code-revi
 
 **One /llm-override writes an override record per check job, including advisory, passing and not-applicable checks, and the release attestation repeats them all**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `tools/llm-gate/src/llm_gate/cli.py:381` · **area:** llm-gate and review prompts
 - **Reported by:** `api-13` (low, high confidence)
@@ -1183,7 +1132,6 @@ Every llm job reads the override. Whenever an override was honoured and the chec
 
 **/llm-fp and /llm-ack on a finding from the current run are rejected as unknown_finding until audit-collect has written that run**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/feedback.py:187` · **area:** llm-gate and review prompts
 - **Reported by:** `api-17` (low, medium confidence)
@@ -1206,7 +1154,6 @@ Every llm job reads the override. Whenever an override was honoured and the chec
 
 **The llm-review attestation doesn't list a PR whose merged head is missing a record for a blocking check**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/attestations.py:182` · **area:** llm-gate and review prompts
 - **Reported by:** `cr-gate-09` (low, high confidence)
@@ -1229,7 +1176,6 @@ A PR goes into `unreviewed` only when its merged head has no gate_run at all, or
 
 **Model-written review text reaches the PR comment and job summary without redaction or markup neutralisation**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/report.py:101` · **area:** llm-gate and review prompts
 - **Reported by:** `sec-07` (low, high confidence)
@@ -1252,7 +1198,6 @@ A PR goes into `unreviewed` only when its merged head has no gate_run at all, or
 
 **floor_violations can never be non-zero: it is computed from final_risk(), which takes the higher risk**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `tools/llm-gate/src/llm_gate/evals.py:524` · **area:** llm-gate and review prompts
 - **Reported by:** `tr-14` (low, high confidence)
@@ -1275,7 +1220,6 @@ run_triage_eval scores rank(final) < rank(floor), where final = final_risk(floor
 
 **'Latest wins' tests use fixtures already in time order; the invalid-`to` fixture is rejected for its bad ts**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `tools/llm-gate/tests/test_triage.py:193` · **area:** llm-gate and review prompts
 - **Reported by:** `tr-15` (low, high confidence)
@@ -1298,7 +1242,6 @@ In test_the_latest_risk_override_comes_from_the_audit_log, x.jsonl has "to": "fr
 
 **The collector's paths for keyless PRs (skipped_no_key) and for a missing triage expectation are untested**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/audit.py:760` · **area:** llm-gate and review prompts
 - **Reported by:** `tr-16` (low, high confidence)
@@ -1321,7 +1264,6 @@ _risk_problems exempts skipped_no_key gate runs (lines 760-761). Those are the r
 
 **Two of the eight redaction patterns (Slack, JWT) have no test case**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `tools/llm-gate/src/llm_gate/redact.py:22` · **area:** llm-gate and review prompts
 - **Reported by:** `tr-17` (low, high confidence)
@@ -1344,7 +1286,6 @@ test_secrets_are_redacted covers Anthropic keys, GitHub tokens (ghp_, github_pat
 
 **`/llm-ack` recording and a writer's malformed command are never tested through handle()**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `tools/llm-gate/src/llm_gate/feedback.py:180` · **area:** llm-gate and review prompts
 - **Reported by:** `tr-19` (low, high confidence)
@@ -1367,7 +1308,6 @@ The only /llm-ack test names another PR's finding (unknown_finding). The happy p
 
 **The API engine's cost is checked against estimate_cost itself; the price arithmetic has no independent test**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `tools/llm-gate/tests/test_engines.py:75` · **area:** llm-gate and review prompts
 - **Reported by:** `tr-20` (low, high confidence)
@@ -1390,7 +1330,6 @@ test_api_engine_request_and_result asserts cost_usd == approx(estimate_cost('cla
 
 **docs-drift has no eval case, and test-review has only an fp-regression case**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** medium
 - **Where:** `tools/llm-gate/checks.yaml:326` · **area:** llm-gate and review prompts
 - **Reported by:** `tr-27` (low, high confidence)
@@ -1414,7 +1353,6 @@ No case names docs-drift, and llm-eval takes its check list from the cases, so d
 
 **The prompt-guard test skips llm-triage.md**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `tools/llm-gate/tests/test_prompts_cache.py:24` · **area:** llm-gate and review prompts
 - **Reported by:** `tr-28` (low, high confidence)
@@ -1437,7 +1375,6 @@ test_every_repository_prompt_takes_the_diff_and_guards_against_injection iterate
 
 **Audit file paths use the date of collection, so re-running audit-collect or llm-feedback on another day writes duplicates**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/cli.py:581` · **area:** llm-gate and review prompts
 - **Reported by:** `wr-14` (low, high confidence)
@@ -1460,7 +1397,6 @@ collect() writes events/<today>/<run>-<attempt>-<check>.jsonl with day = datetim
 
 **The allow rules for just, uv run, dotnet and gh run auto-approve arbitrary and irreversible commands, which makes the deny list ineffective**
 
-- **Status:** open
 - **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `.claude/settings.json:5` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `cr-ops-05` (medium, medium confidence), `sec-13` (low, high confidence)
@@ -1493,7 +1429,6 @@ The project's permission allowlist contains `Bash(uv run *)` and `Bash(just *)`.
 
 **Ephemeral containers are tested nowhere: removing them from the images policy leaves every test green**
 
-- **Status:** open
 - **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `deploy/policies/base/images.yaml:25` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `tr-10` (medium, high confidence), `cr-ops-17` (low, high confidence)
@@ -1526,7 +1461,6 @@ kyverno-test.yaml tests only calendar-gates-images from base/, on pods with cont
 
 **Every attestation Kyverno requires exists before the release is approved or smoke-tested, so rejected and failed candidates are admitted**
 
-- **Status:** open
 - **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** medium
 - **Where:** `deploy/policies/base/release.yaml:30` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `cr-ops-02` (medium, high confidence)
@@ -1549,7 +1483,6 @@ The Deny policies admit an image once provenance, a vuln-scan with no critical f
 
 **Re-runs keep the original event's updated_at as pr_event_at, so the turnaround metric includes the time people took to trigger the re-run**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `.github/workflows/llm-review.yml:190` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `api-20` (low, high confidence), `cr-gate-10` (low, high confidence)
@@ -1582,7 +1515,6 @@ Turnaround is finished_at - pr_event_at, where pr_event_at is github.event.pull_
 
 **The deployable unit, the chart, is installed by a mutable version tag and verified by nothing**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `justfile:210` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `cr-ops-18` (low, medium confidence), `wr-09` (low, medium confidence)
@@ -1611,11 +1543,32 @@ publish refuses to move ghcr.io/...:X.Y.Z, but GHCR tags and OCI chart versions 
 
 </details>
 
+### F055
+
+**pr-title accepts non-Conventional titles that start with 'Merge ', 'fixup! ', 'squash! ' or 'amend! '**
+
+- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `scripts/check-commit-msg.sh:18` · **area:** workflows, release, deploy, scripts
+- **Reported by:** `cr-ops-07` (low, high confidence)
+
+The exemption for git-generated messages also applies with --title, which ci.yml's pr-title job uses for the PR title, and it exits before the length check. The PR title becomes the squash commit on main (squash_merge_commit_title=PR_TITLE, gh-setup), where neither autosquash markers nor merge subjects make sense. GitHub defaults a single-commit PR's title to that commit's subject, so a branch whose only commit is 'fixup! feat: x' opens a PR that passes the required gate as it is.
+
+*Failure scenario:* A PR titled 'fixup! feat: add leap endpoint', or a 150-character 'Merge ...' -> pr-title is green -> main gets a non-Conventional subject that is over the length limit.
+
+*Suggested fix:* Apply the exemptions only to message files. For --title, keep at most the 'Revert "' form (GitHub's revert button), and enforce max_length either way.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, trivial): Reproduced: scripts/check-commit-msg.sh --title exits 0 for 'fixup! feat: add leap endpoint', 'squash! anything at all' and a 155-character 'Merge xxx' title, because the exemption at line 18 runs before both the pattern and the length check, and exits 1 for 'WIP stuff'. ci.yml's pr-title uses exactly this mode, and gh-setup makes the PR title the squash subject on main. Needs an unusual title and only costs commit-subject hygiene, so low.
+- **maintainer** (CONFIRMED, low, trivial): Reproduced: scripts/check-commit-msg.sh --title 'fixup! feat: add leap endpoint' and --title 'Merge whatever I want here' both exit 0, because the git-message exemption at line 18 also applies to --title and returns before the pattern and length checks. The comment says the exemption is meant for git's own messages, so applying it to PR titles (which become the squash commit) isn't a recorded decision. Low: the owner merges and can edit the squash title anyway.
+- **impact** (CONFIRMED, low, trivial): Reproduced: check-commit-msg.sh --title exits 0 for 'fixup! feat: ...', 'amend! y' and 'Merge stuff that is not conventional', and for a 140-character 'Merge xxx...' title, because the exemption exits before the length check. The PR title becomes main's squash subject. Cosmetic (a non-Conventional subject on main), and the Revert " exemption is worth keeping for GitHub's revert button: low.
+
+</details>
+
 ### F056
 
 **k8s-up's restart path neither waits for the API server nor restores the kubeconfig**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `justfile:152` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `cr-ops-08` (low, high confidence)
@@ -1638,7 +1591,6 @@ For an existing cluster, k8s-up only runs podman start and prints 'started' (jus
 
 **cluster=local inherits $KUBECONFIG, so it breaks in exactly the shell setup AGENTS.md suggests**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `justfile:13` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `cr-ops-09` (low, high confidence)
@@ -1657,11 +1609,143 @@ For cluster=local the justfile sets KUBECONFIG to env('KUBECONFIG', ~/.kube/conf
 
 </details>
 
+### F058
+
+**k8s-policy-up returns before the policies are ready, so a deploy right after it can be admitted unchecked**
+
+- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `justfile:180` · **area:** workflows, release, deploy, scripts
+- **Reported by:** `cr-ops-10` (low, medium confidence)
+
+The recipe applies deploy/policies and prints the list (justfile:180-181). release.yml's admission-smoke waits up to 120 s for status.conditionStatus.ready on every ValidatingPolicy and ImageValidatingPolicy before it tests anything (release.yml:412-422), because Kyverno only enforces a policy once its webhook is configured. Locally nothing waits. Drill 21, or `just k8s-up k8s-policy-up k8s-deploy`, can therefore have a pod admitted in calendar-gates during that window, which looks like a policy failure (or a pass).
+
+*Failure scenario:* just k8s-policy-up, then kubectl -n calendar-gates run edge --image=ghcr.io/gergodrazsdik/calendar-gates:edge within seconds -> the pod is admitted although the Deny policies exist.
+
+*Suggested fix:* Reuse admission-smoke's readiness loop in k8s-policy-up (or kubectl wait on the policies' Ready condition), and fail if they don't become ready.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, trivial): k8s-policy-up applies deploy/policies and lists them (justfile:180-181) without waiting for status.conditionStatus.ready, while release.yml's admission-smoke waits up to 120 s for exactly that before it tests anything (412-422). Kyverno configures the policies' webhooks asynchronously after apply, so a pod created in that window isn't sent to the policy. Not reproduced (no cluster access), but the code gap is clear and the CI counterpart shows the wait is needed; local drills only, so low.
+- **maintainer** (CONFIRMED, low, trivial): k8s-policy-up applies the policies and returns (justfile:180-181), whereas admission-smoke waits up to 120 s for conditionStatus.ready on every policy (release.yml:412-422) because enforcement starts only once Kyverno has configured the webhooks. A local deploy right after the recipe can therefore be admitted unchecked, which a drill would misread. Local only; reusing the existing loop is trivial.
+- **impact** (CONFIRMED, low, trivial): k8s-policy-up applies deploy/policies and lists them (justfile:180-181) with no readiness wait, whereas admission-smoke waits up to 120 s for status.conditionStatus.ready precisely because Kyverno enforces only once a policy's webhook is configured. A chained `just k8s-up k8s-policy-up k8s-deploy` can create a pod in calendar-gates seconds later, inside that window, and the admitted pod then keeps running unattested until recreated. Local cluster, misleading drill result rather than a real exposure: low. (Window not exercised here: no cluster access.)
+
+</details>
+
+### F059
+
+**k8s-cluster-down ignores cluster=, so with cluster=local it deletes the project cluster**
+
+- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `justfile:163` · **area:** workflows, release, deploy, scripts
+- **Reported by:** `cr-ops-11` (low, high confidence)
+- **Reports the council found wrong:** `cr-ops-11`
+
+The recipe hardcodes --name calendar-gates (justfile:162-163), while every other k8s recipe follows {{ cluster }}, and k8s-policy-up refuses cluster=local outright. `just cluster=local k8s-cluster-down` therefore deletes kind-calendar-gates along with Kyverno and the policies. Only the confirm text names the cluster, and --yes skips the confirm.
+
+*Failure scenario:* just cluster=local k8s-cluster-down, meant to reset kind-local -> 'y' -> the project cluster is deleted and kind-local is untouched.
+
+*Suggested fix:* Refuse cluster=local, as k8s-policy-up does, and delete {{ cluster }}.
+
+<details><summary>Council</summary>
+
+- **skeptic** (REJECTED, info, trivial): The behaviour is deliberate and documented: the recipe's doc comment says 'Delete the project cluster (never kind-local)', so it intentionally ignores cluster= to keep the machine-owned kind-local (ADR 0003) out of reach, and its [confirm] text names what it deletes ('Delete the kind cluster calendar-gates and everything in it?'). A user who meant kind-local is told the target before anything happens, and --yes is an explicit opt-out of that prompt. Refusing cluster=local would be a nicety, not a defect fix.
+- **maintainer** (CONFIRMED, low, trivial): k8s-cluster-down hardcodes --name calendar-gates (justfile:162-163), so 'just cluster=local k8s-cluster-down' deletes the project cluster. Never touching kind-local is intended (the doc comment says so, and ADR 0003 keeps kind-local out of the project's hands), but silently ignoring cluster= is a footgun. The confirm text names calendar-gates and the cluster is cheap to rebuild, hence low; refusing cluster=local as k8s-policy-up does is trivial.
+- **impact** (CONFIRMED, low, trivial): Reproduced: `just --dry-run --yes cluster=local k8s-cluster-down` prints `kind delete cluster --name calendar-gates`. The hardcoded name is deliberate (doc comment: never kind-local), but with cluster=local it deletes a different cluster than the one targeted. Mitigated by the confirm text, which names calendar-gates (skipped by --yes); the cluster is rebuilt with k8s-up k8s-policy-up in minutes and holds nothing persistent: low.
+
+</details>
+
+### F060
+
+**k8s-http doesn't notice a port-forward that failed to bind 18080, and tests whatever already listens there**
+
+- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `justfile:219` · **area:** workflows, release, deploy, scripts
+- **Reported by:** `cr-ops-12` (low, medium confidence)
+
+The port-forward runs in the background and only the health URL is polled (justfile:219-223). If port 18080 is taken, for example by k8s-http for the other cluster (AGENTS.md says both clusters may run), kubectl exits at once. wait-for-health then gets a 200 from the other forward, and ijhttp tests the other cluster. Afterwards the EXIT trap's kill fails, and under set -e that turns the exit status into 1. I checked this: a failing kill in an EXIT trap after a successful body exits 1. So the run ends with 'kill: No such process' after green tests that ran against the wrong deployment.
+
+*Failure scenario:* just cluster=local k8s-http in one terminal and just k8s-http calendar-gates-dev in another -> the second run reports the kind-local deployment's results, then exits 1.
+
+*Suggested fix:* After wait-for-health, check `kill -0 "$forward"`, or let kubectl choose a free local port (`:80`) and read it back. Make the trap tolerant: `kill $forward 2>/dev/null || true`.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, trivial): k8s-http backgrounds the port-forward and only polls the health URL (justfile:219-223); if 18080 is already held (k8s-http for the other cluster, or a stale forward), kubectl exits at once, wait-for-health gets a 200 from the other listener and ijhttp tests the other deployment. Reproduced the exit-status part: under set -euo pipefail, a failing `kill` in the EXIT trap after a successful body makes bash print 'kill: No such process' and exit 1. Needs two forwards at once, so low.
+- **maintainer** (CONFIRMED, low, trivial): k8s-http starts the port-forward in the background and only polls the health URL (justfile:219-223). If 18080 is taken, for example by a k8s-http for the other cluster, kubectl exits at once and the tests run against whatever answers there. The EXIT trap's kill then fails, and bash lets an EXIT trap's status override the script's, so the run ends red after green tests. This was reported as checked; my own trap repro was blocked by the session's isolation guard, so I relied on bash's documented behaviour. Niche (two concurrent runs) and local; kill -0 plus a tolerant trap is trivial.
+- **impact** (CONFIRMED, low, trivial): The recipe never checks that the background port-forward is alive, so a busy 18080 lets wait-for-health and ijhttp test whatever already listens there. Reproduced the recipe's shape: with the background job already gone, the green body is followed by 'kill: No such process' and exit 1 under set -e. So the wrong-target run surfaces as a confusing failure, not a silent pass, and needs two forwards (or a stale one) on 18080 at once: low.
+
+</details>
+
+### F062
+
+**A failed push in just release leaves the local tag behind, and the retry stops at 'already exists'**
+
+- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `justfile:284` · **area:** workflows, release, deploy, scripts
+- **Reported by:** `cr-ops-14` (low, high confidence)
+
+The existence check reads local refs (justfile:284-285), and the tag is created before the push (287-288). git push can fail: the SSH key isn't loaded after a restart (AGENTS.md says the first use needs the passphrase), the network drops, or the pre-push hook's just test fails. In each case the signed tag stays local. Re-running just release X.Y.Z then exits with 'vX.Y.Z already exists' after the confirm, with no hint to push or delete the tag.
+
+*Failure scenario:* just release 0.4.0 -> the push fails at the SSH passphrase -> just release 0.4.0 -> 'v0.4.0 already exists'.
+
+*Suggested fix:* Check the remote with `git ls-remote --exit-code --tags origin refs/tags/v$version`. If the tag exists only locally and points at HEAD, push it. Or delete the local tag in a trap when the push fails.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, info, trivial): Confirmed by reading: the existence check (justfile:284-285) reads local refs, and the signed tag is created (287) before the push (288). A failed push (SSH key not loaded after a restart, network, the pre-push test hook) leaves the tag local, and a retry stops at 'v$version already exists' with no hint. Recovery is one manual git push or git tag -d, so info.
+- **maintainer** (CONFIRMED, low, trivial): The recipe creates the signed tag (justfile:287) before pushing it (288), and the existence check (284-285) reads local refs. If the push fails (the SSH key not loaded after a restart, the pre-push hook's just test failing, the network), a retry stops at 'vX.Y.Z already exists' with no hint. Recovery is a manual git push of the same tag, which is safe because the tag points at a verified HEAD; a usability gap, not a gate problem.
+- **impact** (CONFIRMED, low, trivial): The existence check reads local refs after `git fetch origin main --tags` (justfile:280-285) and the signed tag is created before the push (287-288). A failed push (SSH key not loaded after a restart, network, the pre-push hook's just test) leaves the local tag, and the retry stops at 'vX.Y.Z already exists' with no hint. Plausible after a WSL restart; the fix by hand is `git push origin vX.Y.Z` or `git tag -d`. Annoyance only: low.
+
+</details>
+
+### F064
+
+**gh-setup uploads the whole pass entry as ANTHROPIC_API_KEY, while the other recipes use only its first line**
+
+- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `justfile:387` · **area:** workflows, release, deploy, scripts
+- **Reported by:** `cr-ops-16` (low, medium confidence)
+
+llm and eval take `head -n 1` of `pass show api/anthropic-calendar-gates` (justfile:101, 133), following pass's convention of the secret on line one and metadata below. gh-setup pipes the full output into gh secret set (387). If the entry has a second line, the CI secret contains it too. The metadata then becomes part of a GitHub secret, and the x-api-key header becomes invalid, so every LLM check errors and the blocking ones fail closed.
+
+*Failure scenario:* A pass entry of 'sk-ant-...' plus a 'url: ...' line -> just gh-setup -> the CI ANTHROPIC_API_KEY holds both lines -> llm / code-review ends with an error verdict on every PR.
+
+*Suggested fix:* Use `pass show api/anthropic-calendar-gates | head -n 1 | gh secret set ANTHROPIC_API_KEY -R "$repo"`, as the other recipes do.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, info, trivial): Confirmed by reading: gh-setup pipes the full `pass show api/anthropic-calendar-gates` output into gh secret set (justfile:387), while llm and eval take head -n 1 (101, 133). It's latent: CI reviews have been running with the current secret (the audit log has paid reviews), so the entry is single-line today, and a metadata line added later would break every LLM check loudly (blocking checks fail closed, not open). Info.
+- **maintainer** (CONFIRMED, low, trivial): llm and eval take 'head -n 1' of the pass entry (justfile:101, 133), following pass's secret-on-line-one convention, while gh-setup pipes the whole output into gh secret set (387). The inconsistency is real; whether it bites depends on the entry having a second line, which I must not read. If it does, the CI key is invalid and every blocking check fails closed, visibly. Adding head -n 1 is trivial.
+- **impact** (CONFIRMED, low, trivial): gh-setup pipes the whole `pass show api/anthropic-calendar-gates` output into gh secret set (justfile:387) while llm and eval take head -n 1. Latent: CI reviews work today (224 paid runs), so the entry is single-line now; the bite comes only if metadata lines are added and gh-setup is re-run, and then every LLM check errors and the blocking ones fail closed, loud and safe. I did not read the pass entry (out of bounds). Low.
+
+</details>
+
+### F065
+
+**The timeout counts attempts, not seconds, because curl runs without --max-time**
+
+- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `scripts/wait-for-health.sh:10` · **area:** workflows, release, deploy, scripts
+- **Reported by:** `cr-ops-19` (low, high confidence)
+
+Each attempt is `curl -fsS` with no --max-time or --connect-timeout, followed by sleep 1. A listener that accepts the connection and never answers (for example a port-forward to a hung pod) holds one attempt open indefinitely, well past the timeout argument. In CI the jobs' timeout-minutes is the real bound; locally, http-docker and k8s-http can hang.
+
+*Failure scenario:* wait-for-health.sh http://localhost:18080/health 30 against a forward whose pod accepts but doesn't respond -> blocks far longer than 30 s instead of failing.
+
+*Suggested fix:* Use `curl --max-time 2`, or compute a deadline from $SECONDS.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, trivial): wait-for-health.sh:10 runs curl -fsS with no --max-time or --connect-timeout, so a single attempt can block far beyond the timeout argument against a listener that accepts and never answers; the loop counts attempts, not seconds. CI jobs are bounded by timeout-minutes; locally http-docker and k8s-http could hang. Real but narrow.
+- **maintainer** (CONFIRMED, low, trivial): wait-for-health.sh loops 'timeout' times over curl -fsS with no --max-time, so a listener that accepts and never answers holds one attempt open well past the stated seconds. In CI, timeout-minutes bounds it; locally http-docker and k8s-http can hang. A hung-but-accepting listener is rare (a port-forward usually errors fast), so low; --max-time 2 is trivial.
+- **impact** (CONFIRMED, low, trivial): Reproduced: against a local listener that accepts and never answers, `wait-for-health.sh http://127.0.0.1:18999/health 3` was still waiting after 15 s and was killed by timeout (124): curl has no --max-time, so one attempt can block indefinitely. Real listeners rarely behave so (port-forward and rootless port mapping reset when nothing listens), CI jobs have timeout-minutes, and locally Ctrl-C ends it: low (the repo's scale calls missing timeouts low).
+
+</details>
+
 ### F069
 
 **No test exercises the admission rule 'no critical vulnerabilities'**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** medium
 - **Where:** `deploy/policies/base/release.yaml:61` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `tr-26` (low, medium confidence)
@@ -1685,7 +1769,6 @@ calendar-gates-release requires results.all(r, r.counts.critical == 0). The offl
 
 **Nothing tests who may honour a bot-added override (override-writers.sh)**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `scripts/override-writers.sh:12` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `tr-29` (low, high confidence)
@@ -1708,7 +1791,6 @@ For llm-review and the collector (ADR 0007), the script decides which /llm-overr
 
 **The version tags, the moving X.Y tag and the chart are pushed before admission-smoke and smoke run**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `.github/workflows/release.yml:326` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `wr-10` (low, high confidence)
@@ -1731,7 +1813,6 @@ publish promotes the digest to X.Y.Z and X.Y and pushes the chart. admission-smo
 
 **pr-title isn't re-checked when the title is edited, so the check can stay green on a title that isn't a Conventional Commit**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `.github/workflows/ci.yml:6` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `wr-12` (low, high confidence)
@@ -1754,7 +1835,6 @@ ci.yml's pull_request trigger uses the default types (opened, synchronize, reope
 
 **Records are dropped when an llm-review run completes after its PR was merged**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `.github/workflows/audit-collect.yml:58` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `wr-13` (low, medium confidence)
@@ -1777,7 +1857,6 @@ workflow_run.pull_requests lists only open PRs that match the head (GitHub's wor
 
 **The consistency check validates the main.json file, not the live ruleset, and ignores job-level if:**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `scripts/check-ruleset-consistency.py:66` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `wr-15` (low, high confidence)
@@ -1800,7 +1879,6 @@ lint compares .github/rulesets/main.json with the workflows and checks.yaml, but
 
 **GH_TOKEN with contents: write is set for the whole collect job, including the step that parses untrusted artifacts**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `.github/workflows/audit-collect.yml:34` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `wr-16` (low, high confidence)
@@ -1823,7 +1901,6 @@ llm-feedback.yml deliberately sets GH_TOKEN only on the steps that call the API.
 
 **Dependabot's uv updates for tools/llm-gate will stall at the fixed exclude-newer date in pyproject.toml**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `.github/dependabot.yml:30` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `wr-18` (low, medium confidence)
@@ -1842,11 +1919,42 @@ tools/llm-gate/pyproject.toml sets [tool.uv] exclude-newer = "2026-10-01T00:00:0
 
 </details>
 
+### F082
+
+**OpenAPI documents only 200 for /api/easter/{year}, /api/leap/{year} and /api/friday13, which also return 400 ValidationProblem**
+
+- **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `src/CalendarGates.Api/Endpoints/EasterEndpoints.cs:20` · **area:** API, tests, docs
+- **Reported by:** `api-02` (medium, high confidence), `cr-api-02` (low, high confidence)
+
+**`api-02`: OpenAPI documents only 200 for /api/easter/{year}, /api/leap/{year} and /api/friday13, which also return 400 ValidationProblem**
+
+EasterEndpoints.cs:20, LeapEndpoints.cs:20 and Friday13Endpoints.cs:27 return `Ok<T>` and validate with `[Range]` and `AddValidation()`. The validation filter's 400 is not added to the endpoint metadata. The /openapi/v1.json generated from a build of 43ec3c2 lists only `200` for GetEaster, GetLeapYear and GetFriday13s. GetWeek and GetWorkdays, whose `Results<..., ValidationProblem>` unions carry the metadata, document `400 application/problem+json HttpValidationProblemDetails`. So three of the five endpoints that take input leave out an error response they return every day, along with the binding-failure 400 from api-01. GetNextFriday13 also documents its `404` with no content, although UseStatusCodePages answers it with problem+json. The api-contract prompt lists 'response types that OpenAPI will document wrongly' as something to look for. new-endpoint.md says 'Use TypedResults so OpenAPI picks up the response types', but copying the `[Range]` pattern of the existing year endpoints quietly breaks that. The OpenAPI contract tests (calendar.http 'openapi: lists every route', MetaTests.OpenApiListsEveryRoute) compare only the path keys.
+
+*Failure scenario:* A client generated from /openapi/v1.json has no error type for `GET /api/easter/1500`. The 400 with `errors.year` that the API returns is an undeclared response. No test notices that GetEaster and GetWeek document their errors differently.
+
+*Suggested fix:* Add `.ProducesValidationProblem()` to the three endpoints, or return `Results<Ok<T>, ValidationProblem>`. Add `.ProducesProblem(404)` to /friday13/next. Extend the OpenAPI request in calendar.http to assert that every operation with parameters documents a 400.
+
+**`cr-api-02`: The OpenAPI document lists only 200 for /api/easter, /api/leap and /api/friday13, though all three return a 400 ValidationProblem**
+
+The handlers are declared as `Ok<EasterResponse> ForYear([Range] int year)` (EasterEndpoints.cs:20), `Ok<LeapResponse> ForYear([Range] int year)` (LeapEndpoints.cs:20) and `Ok<Friday13YearResponse> InYear([Range] int? year, ...)` (Friday13Endpoints.cs:27). The 400 comes from the `AddValidation()` endpoint filter, which adds no response metadata. I fetched `/openapi/v1.json` from the running API. The responses for `/api/easter/{year}`, `/api/leap/{year}` and `/api/friday13` are `["200"]` only. Endpoints that return `Results<..., ValidationProblem>` do list 400: `/api/week/{date}` and `/api/workdays` show `["200","400"]`. The integration and .http tests assert that these three endpoints return 400 with `errors.year`, so the published contract leaves out a response the tests treat as part of it. A client generated from the document has no type for that 400.
+
+*Failure scenario:* A generated client calls GET /api/easter/1582. The server answers 400 application/problem+json, but the OpenAPI document declares only 200, so the client has no model for the error and either throws a generic exception or mis-deserializes the body.
+
+*Suggested fix:* Add `.ProducesValidationProblem()` to the three `MapGet` calls, or declare the return types as `Results<Ok<T>, ValidationProblem>`. Then extend `OpenApiListsEveryRoute` or add a test that checks the 400 is documented.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, trivial): The /openapi/v1.json from the build lists only a 200 for GetEaster, GetLeapYear and GetFriday13s. GetWeek and GetWorkdays (Results<..., ValidationProblem>) list a 400 HttpValidationProblemDetails. GetNextFriday13's 404 has no content, although UseStatusCodePages answers it with problem+json. One mitigation the reports miss: the year parameters carry minimum 1583 and maximum 9999 in their schema, so a generated client knows the valid range. The undeclared 400 is still a real gap, and the route-list contract tests compare only path keys.
+- **maintainer** (CONFIRMED, low, trivial): In the built API's /openapi/v1.json, /api/easter/{year}, /api/leap/{year} and /api/friday13 list only 200, while week/{date} and workdays (`Results<..., ValidationProblem>`) list 400 problem+json. /api/friday13/next documents its 404 with no content, but UseStatusCodePages answers it with problem+json. This goes against new-endpoint.md's 'Use TypedResults so OpenAPI picks up the response types'. On a scratch copy, `.ProducesValidationProblem()` added the 400 and `.ProducesProblem(404)` the body. Nothing consumes the document today, so low.
+- **impact** (CONFIRMED, low, small): My build's /openapi/v1.json lists only 200 for GetEaster, GetLeapYear and GetFriday13s, while GetWeek and GetWorkdays document 400 application/problem+json; GetNextFriday13 documents its 404 with no content although the response is problem+json (seen in the test host). Calibrated down from api-02's medium: the year parameters carry `minimum: 1583, maximum: 9999` in their schemas, so a generated client knows the valid range, and an undeclared 400 surfaces as a generic API error, not a wrong result; no client of this API exists. The real cost is that new-endpoint.md promises TypedResults make OpenAPI right, and copying the [Range] pattern silently breaks it; `.ProducesValidationProblem()` on three MapGet calls plus `.ProducesProblem(404)` fixes it.
+
+</details>
+
 ### F083
 
 **The coverage metric doesn't count triage's not_needed verdict as a decision, so every merged low-risk PR shows as not covered**
 
-- **Status:** open
 - **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/metrics.py:18` · **area:** API, tests, docs
 - **Reported by:** `api-03` (medium, high confidence), `cr-gate-08` (low, high confidence), `tr-11` (medium, medium confidence), `dd-19` (low, high confidence)
@@ -1895,7 +2003,6 @@ metrics.md defines Coverage as "every blocking check has a gate_run with a real 
 
 **The workdays range guard near year 9999 (start year above 9989) has no test**
 
-- **Status:** open
 - **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `src/CalendarGates.Api/Endpoints/WorkdaysEndpoints.cs:34` · **area:** API, tests, docs
 - **Reported by:** `tr-12` (medium, high confidence)
@@ -1918,7 +2025,6 @@ The endpoint caps the range at start.AddYears(10). For start years 9990-9999 it 
 
 **OpenAPI documents workdays' from/to as optional plain strings and week's {date} without a date format**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `src/CalendarGates.Api/Endpoints/WorkdaysEndpoints.cs:19` · **area:** API, tests, docs
 - **Reported by:** `api-06` (low, high confidence), `cr-api-03` (low, high confidence)
@@ -1947,11 +2053,42 @@ The endpoint caps the range at start.AddYears(10). For start years 9990-9999 it 
 
 </details>
 
+### F089
+
+**docs/gates.md's list of required checks leaves out llm-eval and says the other checks don't block**
+
+- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `docs/gates.md:5` · **area:** API, tests, docs
+- **Reported by:** `api-15` (low, high confidence), `dd-02` (low, high confidence)
+
+**`api-15`: docs/gates.md's list of required checks leaves out llm-eval and says the other checks don't block**
+
+Lines 4-7 list the required checks from pr-title to llm / security-review and add 'The other checks report but don't block.'. But .github/rulesets/main.json also requires `llm-eval` (since #40; scripts/check-ruleset-consistency.py passes), and gates.md:53, README.md:41 and AGENTS.md all say it is required. Line 11 says the check names are the job names in ci.yml and llm-review.yml, leaving out llm-eval.yml, which the consistency script also reads.
+
+*Failure scenario:* Someone reads this section and expects to merge a gate-changing PR with llm-eval red. The ruleset blocks the merge.
+
+*Suggested fix:* Add `llm-eval` to the list on lines 5-7, and llm-eval.yml to line 11.
+
+**`dd-02`: gates.md's list of required checks omits llm-eval and says all other checks don't block**
+
+Lines 5-7 list ten required checks and then say "The other checks report but don't block". `.github/rulesets/main.json` requires 11, including `llm-eval`. The consistency script prints "11 required checks". README.md:41-42, AGENTS.md ("Required, on its own"), ADR 0006:51-53 and gates.md's own line 52-53 ("the llm / ... checks and llm-eval are required on their own") all say it is required. Line 11 also says the check names are the job names in ci.yml and llm-review.yml, but `llm-eval` comes from llm-eval.yml (WORKFLOWS in check-ruleset-consistency.py). #40 made llm-eval required and updated only line 52 of gates.md.
+
+*Failure scenario:* A reader using gates.md, the canonical gate reference, concludes that a red llm-eval is advisory. They merge-plan around it, then find the PR blocked by the ruleset.
+
+*Suggested fix:* Add `llm-eval` to the list on lines 5-7, and say the names are the job names in ci.yml, llm-review.yml and llm-eval.yml.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, trivial): .github/rulesets/main.json requires 11 contexts, including llm-eval since #40. gates.md:5-7 lists ten and adds 'The other checks report but don't block'. Line 11 names only ci.yml and llm-review.yml, although WORKFLOWS in check-ruleset-consistency.py includes llm-eval.yml. The same file contradicts itself at lines 52-53 ('llm-eval ... required on their own'), and README, AGENTS.md and ADR 0006 all say llm-eval is required. #40 updated only that later sentence.
+- **maintainer** (CONFIRMED, low, trivial): gates.md:5-7 lists ten required checks and says the others don't block. `.github/rulesets/main.json` requires eleven, including llm-eval. #40, which made llm-eval required, only changed gates.md's `gates` note (line 52-53). Line 11 also says the check names are the job names in ci.yml and llm-review.yml, but llm-eval comes from llm-eval.yml, which check-ruleset-consistency.py reads.
+- **impact** (CONFIRMED, low, trivial): main.json requires 11 checks including `llm-eval` (since #40, e466368), while gates.md:5-7 lists 10 and adds 'The other checks report but don't block', and line 11 names only ci.yml and llm-review.yml although check-ruleset-consistency.py's WORKFLOWS includes llm-eval.yml. The same file's table row (line 27) and lines 52-53, README and AGENTS.md say llm-eval is required, so a careful reader sees the contradiction and a skimming one meets a blocked merge. Nothing goes unenforced: the ruleset decides.
+
+</details>
+
 ### F090
 
 **llm-gate's README leaves out the triage and attest subcommands and --risk/LLM_GATE_RISK, which the workflows call**
 
-- **Status:** open
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/README.md:8` · **area:** API, tests, docs
 - **Reported by:** `api-19` (low, high confidence), `dd-15` (low, high confidence)
@@ -1980,172 +2117,10 @@ The usage block lists list, run, compare, report, audit, eval, feedback and metr
 
 </details>
 
-### F096
-
-**OpenAPI declares every integer in the responses as integer-or-string, though the API only writes JSON numbers**
-
-- **Status:** open
-- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `src/CalendarGates.Api/Program.cs:8` · **area:** API, tests, docs
-- **Reported by:** `api-07` (low, high confidence)
-
-The web JSON defaults (`NumberHandling = AllowReadingFromString`) make the .NET 10 generator emit `type: [integer, string]` plus a digit pattern for isoYear, week, year, count, daysUntil, workdays and ProblemDetails.status (verified in /openapi/v1.json). The responses always carry numbers, and calendar.http asserts `Number.isInteger(...)` on them. `parity` is documented as a free string, although it is always `even` or `odd`. The API reads no JSON request bodies, so allowing numbers as strings gains nothing.
-
-*Failure scenario:* A TypeScript client generated from the document types `week` as `number | string`, and every consumer has to handle a string that never arrives.
-
-*Suggested fix:* Add `builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.NumberHandling = JsonNumberHandling.Strict)`. There are no request bodies, so behaviour doesn't change. Optionally add an enum or schema transformer for parity.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, trivial): Verified in /openapi/v1.json: every integer response property (isoYear, week, year, count, daysUntil, workdays) has type [integer, string] with a digit pattern, HttpValidationProblemDetails.status is [null, integer, string], and parity is a plain string. The cause is the web JSON default NumberHandling.AllowReadingFromString in the .NET 10 generator. The API reads no JSON bodies, so switching to Strict changes nothing at run time. Real but cosmetic: generated clients get number | string.
-- **maintainer** (CONFIRMED, info, trivial): The generated schemas give isoYear, week, year, count, daysUntil, workdays and ProblemDetails.status `type: [integer, string]` with a digit pattern, and the friday13 query parameter too. This comes from AllowReadingFromString in the web JSON defaults; the API only ever writes numbers. On a scratch copy, `ConfigureHttpJsonOptions(o => o.SerializerOptions.NumberHandling = Strict)` made them plain integers, with no change in behaviour because the API has no request bodies. A superset type is imprecise rather than wrong, so info.
-- **impact** (CONFIRMED, low, trivial): In my build's /openapi/v1.json every int32 in the responses (isoYear, week, year, count, daysUntil, workdays, ProblemDetails.status) is `type: [integer, string]` with a digit pattern, although the API only writes numbers. A generated TypeScript client would type them `number | string`, which costs every consumer a narrowing but never yields a wrong value, and no consumer exists. The API reads no JSON bodies, so JsonNumberHandling.Strict changes no behaviour.
-
-</details>
-
-### F098
-
-**The contract tests check the content type on 2 of 17 requests and leave out several error contracts**
-
-- **Status:** open
-- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
-- **Where:** `http/calendar.http:88` · **area:** API, tests, docs
-- **Reported by:** `api-10` (low, high confidence)
-
-Only 'Current ISO week' (application/json, line 21) and 'ISO week: invalid date' (application/problem+json, line 53) check `response.contentType`. The 400 requests for friday13?year=1500 (88-97), easter/1500 (127-136) and the reversed and over-10-year workdays ranges (151-171) check the status and an errors key, but not problem+json. There are no requests for an out-of-range /api/leap/{year}, workdays with a missing parameter, or a malformed year. This file is what http-tests, k8s-smoke and the release smoke run against the real container (the integration tests run in-process, as Development). new-endpoint.md asks each request to assert status, content type and invariants.
-
-*Failure scenario:* A change makes the year endpoints return their 400 as application/json or plain text, for example through a custom validation filter. It passes http-tests, k8s-smoke and the release smoke.
-
-*Suggested fix:* Assert the mimeType on every request: application/json for successes, application/problem+json for errors. Add an out-of-range leap request, a workdays request without `to`, and `friday13?year=abc`.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, info, small): The count is right: only 2 of the 17 requests ('Current ISO week' and 'ISO week: invalid date') assert the content type, and no .http request covers an out-of-range leap year, a missing workdays parameter or a malformed year. But another layer catches the failure scenario. ApiTestBase.GetJsonAsync asserts application/json or application/problem+json on every integration request, including every 400 through AssertValidationProblemAsync (MetaTests.LeapYearRejectsUnsupportedYears and the missing-parameter cases in WorkdaysTests among them). A filter that returned those 400s as application/json would therefore fail build-test / dotnet. Only an environment-specific difference would slip through (F081 shows such differences exist), hence info: the file doesn't follow new-endpoint.md's 'status, content type' convention.
-- **maintainer** (CONFIRMED, low, small): Only 'Current ISO week' (line 21) and 'ISO week: invalid date' (line 53), 2 of the 17 requests, assert response.contentType, although PLAN.md 3.4 and new-endpoint.md ask every handler to assert status, content type and invariants. There is no .http request for an out-of-range leap year, for workdays without a parameter, or for a malformed year. The integration tests do check the media type of every response, but in-process (Development). The real gap is the Production container, where F081 shows the behaviour can differ.
-- **impact** (CONFIRMED, low, small): Of calendar.http's 17 requests only 'Current ISO week' (line 21) and 'ISO week: invalid date' (line 53) assert the content type, and none covers an out-of-range leap year, workdays without `to`, or a malformed year. The failure scenario overstates the gap: ApiTestBase.GetJsonAsync asserts application/problem+json for every 4xx in the integration tests (including the easter, friday13 and leap range cases), so a content-type regression fails build-test unless it is environment-specific. That exception is real, though: F081 shows Development and Production diverge, and only the .http file runs against the Production container.
-
-</details>
-
-### F099
-
-**The blocking code-review prompt's scope and severity rubric cover only the date API, not the gate code most PRs change**
-
-- **Status:** open
-- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** medium
-- **Where:** `.claude/commands/llm-code-review.md:6` · **area:** API, tests, docs
-- **Reported by:** `cr-gate-15` (low, medium confidence)
-
-The prompt describes calendar-gates as a minimal date API, and 'What to look for' and every severity anchor are about C# endpoints (wrong dates, HTTP 500s, TimeProvider). ADR 0008 notes that most PRs here touch the gate (Python in tools/llm-gate, workflows, scripts) and are rated high, where code-review blocks on high. Yet the prompt says nothing about what a high-severity bug in gate code looks like, such as a verdict that passes a blocking finding. The eval set mirrors this: all of code-review's bug cases are in src/ or deploy/ (cr-001 to cr-004, cr-inj-001/002), and gate changes appear only as clean cases, so recall on the gate's own code is unmeasured.
-
-*Failure scenario:* A PR changes policy.decide so that an override also skips the error branch. With no anchor beyond 'the service does not start' or 'a 500 for valid input', the reviewer rates it medium or low, and code-review passes.
-
-*Suggested fix:* Add guidance and severity anchors for gate and CI code (a gate that can pass what it should block counts as high), plus planted-bug eval cases in tools/llm-gate and the workflows.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, medium): llm-code-review.md:6-50 frames the review, the look-for list and every severity anchor around the date API. Yet code-review has no paths filter, and per ADR 0008 most PRs here change the gate. The eval set matches: code-review's bug and injection cases (cr-001..004, cr-inj-001/002) touch only src/ or deploy/, and gate code appears only in clean cases. The audit log supports the failure mode. code-review's real findings on gate code in #52 and #53 were rated medium (cr-6a49, an attestation that leaves out PRs; cr-2121, kubectl debug unchecked) or low (cr-def4), so none blocked, though all were fixed anyway. The fix is a prompt change plus new cases, which goes through llm-eval and probably a baseline update.
-- **maintainer** (CONFIRMED, low, medium): llm-code-review.md describes the repository as the date API, and its look-for list and severity anchors are all about endpoints. Every code-review bug case is in src/ or deploy/ (cr-001..004, cr-inj-001/002); gate changes appear only as clean cases, so recall on gate code is unmeasured. The audit log backs this up: on #52 and #53, code-review rated real release and policy defects medium or low (cr-6a49, cr-def4, cr-2121), so the blocking check passed and only people acted on them. ADR 0008 accepts that most PRs are high risk, not this prompt scope. A fix needs new anchors, planted gate-bug cases and a new baseline, which costs credits.
-- **impact** (CONFIRMED, low, medium): llm-code-review.md introduces the repo as a date API, and every 'What to look for' item and severity anchor (high = 'a wrong result or a 500 for valid, ordinary input on a main path') is about the C# API; its eval set has planted bugs only in src/ and deploy/ (cr-001..004) plus injection cases, and gate changes appear only as clean cases. The audit log fits: all 5 high code-review findings are in src/CalendarGates.Api, and findings in tools/llm-gate and .github/workflows never went above medium. The risk is a gate bug rated below high passing the blocking check; security-review (blocks at medium), pytest and llm-eval also cover gate changes, so it's an unmeasured recall gap rather than an open door, and the fix is a prompt change plus planted-bug cases and a baseline update through llm-eval.
-
-</details>
-
-### F104
-
-**PLAN.md's drill table, which /gate-drill checks results against, predates reasoned overrides and the --no-verify ban**
-
-- **Status:** open
-- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
-- **Where:** `docs/PLAN.md:731` · **area:** API, tests, docs
-- **Reported by:** `dd-13` (low, high confidence)
-
-/gate-drill reads this table and asks Claude to "tell me whether the gate behaved as the table predicts" (gate-drill.md:25-26). Drill 5 predicts "add `llm-override` label → passes with warning". Since ADR 0005, a label without an unedited `/llm-override <reason>` by the person who added it is not honoured, and the check still fails (audit.find_override, llm-review.yml:239-268). Drill 1 (line 727) says to commit with `git commit --no-verify`, which AGENTS.md's Don'ts forbid (gate-drill.md:19-22 routes around it with scripts/commit-via-api.py). Drill 12 says `--atomic`, while the chart is installed with `--rollback-on-failure`. PLAN.md has no status note marking it historical (unlike PLAN-v2).
-
-*Failure scenario:* /gate-drill 5 adds only the label, the blocking checks stay red with "override not honoured", and the drill is reported as not matching the table, though the gate behaves as designed.
-
-*Suggested fix:* Update drill 5's expected column ("/llm-override <reason> → passes with warning; label alone → not honoured") and drill 1's method (commit through scripts/commit-via-api.py), or add a status note pointing to ADR 0005 and AGENTS.md.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, info, small): Drill 5's expected result (PLAN.md:731, 'add llm-override label → passes with warning') has been stale since ADR 0005. A label without a reasoned /llm-override is not honoured, and PLAN-v2's drill 20 tests exactly that, so /gate-drill 5 would report a mismatch where the gate behaves as designed. The other two points are weaker. gate-drill.md step 5 already overrides drill 1's --no-verify (commit through scripts/commit-via-api.py), and drill 12's --atomic is Helm 4's --rollback-on-failure, with the same rollback. PLAN.md has no status note, but it is the v1 plan kept as written.
-- **maintainer** (CONFIRMED, low, trivial): PLAN.md hasn't changed since the skeleton (db1dcb5) and has no status note, yet /gate-drill compares results with its table. Drill 5 predicts 'add llm-override label -> passes with warning', which ADR 0005's reason rule (and PLAN-v2's drill 20) makes 'not honoured'. Drill 1 prescribes --no-verify, which AGENTS.md forbids (gate-drill.md step 5 works around it). Drill 12 says --atomic, but Helm 4's --rollback-on-failure is what runs. PLAN-v2's 'kept as written' covers PLAN-v2 only, so this isn't ACCEPTED; a status note would keep PLAN.md as written and fix the drill comparison.
-- **impact** (CONFIRMED, low, small): PLAN.md, still headed 'No code yet' with no status note, predicts for drill 5 that adding the `llm-override` label passes with a warning, which ADR 0005 changed (label alone not honoured; PLAN-v2 drill 20 tests exactly that), tells drill 1 to use `git commit --no-verify`, which AGENTS.md forbids, and says `--atomic` for drill 12 where the chart uses `--rollback-on-failure`. gate-drill.md step 5 already overrides the --no-verify method, so the live effect is that a re-run of drill 5 would be reported as not matching the table although the gate behaves as designed.
-
-</details>
-
-### F111
-
-**/api/friday13/next's 404 (no Friday the 13th left before year 10000) has no test**
-
-- **Status:** open
-- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `src/CalendarGates.Api/Endpoints/Friday13Endpoints.cs:40` · **area:** API, tests, docs
-- **Reported by:** `tr-22` (low, high confidence)
-
-The endpoint returns NotFound when NextOnOrAfter returns null. The unit test covers the null; no integration test sets the FakeTimeProvider past 9999-08-13, so the endpoint's mapping of the null is untested.
-
-*Failure scenario:* The null branch changes, for example to `!.Value`, or the NotFound result goes. The endpoint then returns 500 (or a bogus 200) on 9999-08-14, and no test fails.
-
-*Suggested fix:* An integration test with the clock at 9999-08-14T00:00Z expecting a 404 with application/problem+json.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, small): No integration test moves the FakeTimeProvider past 9999-08-13 (Friday13Tests uses only 2026-02-12 and 02-13), and calendar.http can't, so Next's NotFound branch (Friday13Endpoints.cs:37-43) is untested at the endpoint. Only the calculator's null is tested (ReturnsNullPastTheLastRepresentableOne). The endpoint itself is correct today. A missing edge-case test for correct code: low.
-- **maintainer** (CONFIRMED, low, trivial): Friday13Endpoints.Next turns a null from NextOnOrAfter into NotFound. Only the unit test covers the null (ReturnsNullPastTheLastRepresentableOne); no integration test moves the FakeTimeProvider past 9999-08-13. One integration test (clock at 9999-08-14, expect a 404 with problem+json) closes the gap.
-- **impact** (CONFIRMED, info, trivial): No integration test sets the clock past 9999-08-13; the unit test covers NextOnOrAfter's null. A scratch test on the same factory with the clock at 9999-08-14 shows the endpoint returns 404 application/problem+json today, so the code is correct, and the untested branch only matters for a clock 7,973 years ahead.
-
-</details>
-
-### F113
-
-**VersionEndpoints.Read has no unit test, and the version/commit checks accept its fallbacks**
-
-- **Status:** open
-- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
-- **Where:** `src/CalendarGates.Api/Endpoints/VersionEndpoints.cs:24` · **area:** API, tests, docs
-- **Reported by:** `tr-24` (low, high confidence)
-
-Read splits MinVer's informational version on '+', prefers the Commit metadata over the suffix, and falls back to 'unknown' and '0.0.0'. MetaTests.VersionReportsVersionAndCommit asserts only non-empty strings, so 'unknown' passes. calendar.http checks only that the commit is non-empty. Only the release smoke compares the version with the tag, and nothing checks that the commit is the built one.
-
-*Failure scenario:* The Docker COMMIT build argument stops reaching the assembly. /api/version reports commit 'unknown', or the +sha suffix of another build, and every test passes.
-
-*Suggested fix:* Unit-test Read with a fake assembly: with and without the metadata, with and without '+'. In CI http-tests, compare the commit with the image's COMMIT build argument.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, small): VersionEndpoints.Read is internal and has no unit test. MetaTests.VersionReportsVersionAndCommit asserts only non-empty strings and calendar.http only a non-empty commit, so 'unknown' or another build's +sha would pass. The release smoke compares only the version with the tag (release.yml, smoke job). The fallbacks are live: an unflagged local build reports the SDK's full SourceRevisionId (mine returned 43ec3c2f019d...).
-- **maintainer** (CONFIRMED, low, small): MetaTests.VersionReportsVersionAndCommit asserts only non-empty strings, and calendar.http checks only a version prefix and a non-empty commit, so the fallbacks pass: '0.0.0', the Dockerfile's default '0.0.0-docker', and 'unknown'. Only the release smoke compares the version with the tag, and nothing checks the commit. Read is internal and the repo has no InternalsVisibleTo, so a unit test needs that or a small refactor.
-- **impact** (CONFIRMED, info, small): VersionEndpoints.Read has no unit test; MetaTests and calendar.http only require a non-empty commit, and the Dockerfile's default COMMIT=unknown passes both. The release smoke checks `version`, and releases are verified through digest-bound attestations rather than /api/version's commit, so a commit that silently became 'unknown' would mislead a human glance and nothing else.
-
-</details>
-
-### F114
-
-**The leap endpoint's year validation is tested only with 99999**
-
-- **Status:** open
-- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `tests/CalendarGates.IntegrationTests/MetaTests.cs:20` · **area:** API, tests, docs
-- **Reported by:** `tr-25` (low, high confidence)
-
-The Easter and Friday13 integration tests check both 1582 and 10000. LeapYearRejectsUnsupportedYears uses only 99999, so the leap endpoint's own [Range] lower bound and the 10000 boundary are untested there. Each endpoint declares its own attribute.
-
-*Failure scenario:* The leap endpoint's attribute becomes [Range(1, Years.Max)]. /api/leap/1582 then reaches the calculator, which throws, and the response is 500 instead of a 400 ValidationProblem.
-
-*Suggested fix:* Use [Arguments(1582)] and [Arguments(10000)], as in EasterTests.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, trivial): MetaTests.LeapYearRejectsUnsupportedYears uses only 99999, while EasterTests and Friday13Tests check 1582 and 10000, and calendar.http has no out-of-range leap request. So the leap endpoint's own [Range] lower bound is untested at the endpoint layer (the calculator's throw is unit-tested). The endpoint is correct today: /api/leap/1582 and /api/leap/10000 return the ValidationProblem. Adding two [Arguments] is trivial.
-- **maintainer** (CONFIRMED, low, trivial): MetaTests.LeapYearRejectsUnsupportedYears uses only 99999, while the Easter and Friday13 integration tests check 1582 and 10000. Each endpoint declares its own [Range], and no .http request covers an out-of-range leap year, so the leap endpoint's lower bound and the 10000 boundary are untested. Two [Arguments] rows fix it.
-- **impact** (CONFIRMED, low, trivial): LeapYearRejectsUnsupportedYears uses only 99999, while the Easter and Friday13 integration tests use 1582 and 10000, and each endpoint declares its own [Range]. Relaxing only the leap endpoint's range (plausible, since the Gregorian leap rule is defined for any year, see F087) would let 1582 reach LeapYearCalculator.IsLeap, which throws through Years.ThrowIfUnsupported: a 500 no test catches.
-
-</details>
-
 ### F091
 
 **The audit/v1 type lists in ADR 0005 and in the audit-log branch README are out of date**
 
-- **Status:** 🟡 partial — #63: ADR 0005's record types updated; the `audit-log` branch README is still stale
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `docs/adr/0005-audit-trail.md:18` · **area:** API, tests, docs
 - **Reported by:** `api-14` (low, high confidence), `dd-16` (low, high confidence), `dd-18` (low, high confidence)
@@ -2182,239 +2157,10 @@ The README on origin/audit-log was written once (a3173c2, 2026-10-16) and never 
 
 </details>
 
-### F055
-
-**pr-title accepts non-Conventional titles that start with 'Merge ', 'fixup! ', 'squash! ' or 'amend! '**
-
-- **Status:** ✅ fixed — #63: the Merge/fixup! exemption no longer applies to `--title`
-- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `scripts/check-commit-msg.sh:18` · **area:** workflows, release, deploy, scripts
-- **Reported by:** `cr-ops-07` (low, high confidence)
-
-The exemption for git-generated messages also applies with --title, which ci.yml's pr-title job uses for the PR title, and it exits before the length check. The PR title becomes the squash commit on main (squash_merge_commit_title=PR_TITLE, gh-setup), where neither autosquash markers nor merge subjects make sense. GitHub defaults a single-commit PR's title to that commit's subject, so a branch whose only commit is 'fixup! feat: x' opens a PR that passes the required gate as it is.
-
-*Failure scenario:* A PR titled 'fixup! feat: add leap endpoint', or a 150-character 'Merge ...' -> pr-title is green -> main gets a non-Conventional subject that is over the length limit.
-
-*Suggested fix:* Apply the exemptions only to message files. For --title, keep at most the 'Revert "' form (GitHub's revert button), and enforce max_length either way.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, trivial): Reproduced: scripts/check-commit-msg.sh --title exits 0 for 'fixup! feat: add leap endpoint', 'squash! anything at all' and a 155-character 'Merge xxx' title, because the exemption at line 18 runs before both the pattern and the length check, and exits 1 for 'WIP stuff'. ci.yml's pr-title uses exactly this mode, and gh-setup makes the PR title the squash subject on main. Needs an unusual title and only costs commit-subject hygiene, so low.
-- **maintainer** (CONFIRMED, low, trivial): Reproduced: scripts/check-commit-msg.sh --title 'fixup! feat: add leap endpoint' and --title 'Merge whatever I want here' both exit 0, because the git-message exemption at line 18 also applies to --title and returns before the pattern and length checks. The comment says the exemption is meant for git's own messages, so applying it to PR titles (which become the squash commit) isn't a recorded decision. Low: the owner merges and can edit the squash title anyway.
-- **impact** (CONFIRMED, low, trivial): Reproduced: check-commit-msg.sh --title exits 0 for 'fixup! feat: ...', 'amend! y' and 'Merge stuff that is not conventional', and for a 140-character 'Merge xxx...' title, because the exemption exits before the length check. The PR title becomes main's squash subject. Cosmetic (a non-Conventional subject on main), and the Revert " exemption is worth keeping for GitHub's revert button: low.
-
-</details>
-
-### F058
-
-**k8s-policy-up returns before the policies are ready, so a deploy right after it can be admitted unchecked**
-
-- **Status:** ✅ fixed — #63: `k8s-policy-up` waits for the policies to be Ready
-- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `justfile:180` · **area:** workflows, release, deploy, scripts
-- **Reported by:** `cr-ops-10` (low, medium confidence)
-
-The recipe applies deploy/policies and prints the list (justfile:180-181). release.yml's admission-smoke waits up to 120 s for status.conditionStatus.ready on every ValidatingPolicy and ImageValidatingPolicy before it tests anything (release.yml:412-422), because Kyverno only enforces a policy once its webhook is configured. Locally nothing waits. Drill 21, or `just k8s-up k8s-policy-up k8s-deploy`, can therefore have a pod admitted in calendar-gates during that window, which looks like a policy failure (or a pass).
-
-*Failure scenario:* just k8s-policy-up, then kubectl -n calendar-gates run edge --image=ghcr.io/gergodrazsdik/calendar-gates:edge within seconds -> the pod is admitted although the Deny policies exist.
-
-*Suggested fix:* Reuse admission-smoke's readiness loop in k8s-policy-up (or kubectl wait on the policies' Ready condition), and fail if they don't become ready.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, trivial): k8s-policy-up applies deploy/policies and lists them (justfile:180-181) without waiting for status.conditionStatus.ready, while release.yml's admission-smoke waits up to 120 s for exactly that before it tests anything (412-422). Kyverno configures the policies' webhooks asynchronously after apply, so a pod created in that window isn't sent to the policy. Not reproduced (no cluster access), but the code gap is clear and the CI counterpart shows the wait is needed; local drills only, so low.
-- **maintainer** (CONFIRMED, low, trivial): k8s-policy-up applies the policies and returns (justfile:180-181), whereas admission-smoke waits up to 120 s for conditionStatus.ready on every policy (release.yml:412-422) because enforcement starts only once Kyverno has configured the webhooks. A local deploy right after the recipe can therefore be admitted unchecked, which a drill would misread. Local only; reusing the existing loop is trivial.
-- **impact** (CONFIRMED, low, trivial): k8s-policy-up applies deploy/policies and lists them (justfile:180-181) with no readiness wait, whereas admission-smoke waits up to 120 s for status.conditionStatus.ready precisely because Kyverno enforces only once a policy's webhook is configured. A chained `just k8s-up k8s-policy-up k8s-deploy` can create a pod in calendar-gates seconds later, inside that window, and the admitted pod then keeps running unattested until recreated. Local cluster, misleading drill result rather than a real exposure: low. (Window not exercised here: no cluster access.)
-
-</details>
-
-### F059
-
-**k8s-cluster-down ignores cluster=, so with cluster=local it deletes the project cluster**
-
-- **Status:** ✅ fixed — #63: `k8s-cluster-down` honours `cluster=` and refuses kind-local
-- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `justfile:163` · **area:** workflows, release, deploy, scripts
-- **Reported by:** `cr-ops-11` (low, high confidence)
-- **Reports the council found wrong:** `cr-ops-11`
-
-The recipe hardcodes --name calendar-gates (justfile:162-163), while every other k8s recipe follows {{ cluster }}, and k8s-policy-up refuses cluster=local outright. `just cluster=local k8s-cluster-down` therefore deletes kind-calendar-gates along with Kyverno and the policies. Only the confirm text names the cluster, and --yes skips the confirm.
-
-*Failure scenario:* just cluster=local k8s-cluster-down, meant to reset kind-local -> 'y' -> the project cluster is deleted and kind-local is untouched.
-
-*Suggested fix:* Refuse cluster=local, as k8s-policy-up does, and delete {{ cluster }}.
-
-<details><summary>Council</summary>
-
-- **skeptic** (REJECTED, info, trivial): The behaviour is deliberate and documented: the recipe's doc comment says 'Delete the project cluster (never kind-local)', so it intentionally ignores cluster= to keep the machine-owned kind-local (ADR 0003) out of reach, and its [confirm] text names what it deletes ('Delete the kind cluster calendar-gates and everything in it?'). A user who meant kind-local is told the target before anything happens, and --yes is an explicit opt-out of that prompt. Refusing cluster=local would be a nicety, not a defect fix.
-- **maintainer** (CONFIRMED, low, trivial): k8s-cluster-down hardcodes --name calendar-gates (justfile:162-163), so 'just cluster=local k8s-cluster-down' deletes the project cluster. Never touching kind-local is intended (the doc comment says so, and ADR 0003 keeps kind-local out of the project's hands), but silently ignoring cluster= is a footgun. The confirm text names calendar-gates and the cluster is cheap to rebuild, hence low; refusing cluster=local as k8s-policy-up does is trivial.
-- **impact** (CONFIRMED, low, trivial): Reproduced: `just --dry-run --yes cluster=local k8s-cluster-down` prints `kind delete cluster --name calendar-gates`. The hardcoded name is deliberate (doc comment: never kind-local), but with cluster=local it deletes a different cluster than the one targeted. Mitigated by the confirm text, which names calendar-gates (skipped by --yes); the cluster is rebuilt with k8s-up k8s-policy-up in minutes and holds nothing persistent: low.
-
-</details>
-
-### F060
-
-**k8s-http doesn't notice a port-forward that failed to bind 18080, and tests whatever already listens there**
-
-- **Status:** ✅ fixed — #63: `k8s-http` fails when the port-forward didn't bind
-- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `justfile:219` · **area:** workflows, release, deploy, scripts
-- **Reported by:** `cr-ops-12` (low, medium confidence)
-
-The port-forward runs in the background and only the health URL is polled (justfile:219-223). If port 18080 is taken, for example by k8s-http for the other cluster (AGENTS.md says both clusters may run), kubectl exits at once. wait-for-health then gets a 200 from the other forward, and ijhttp tests the other cluster. Afterwards the EXIT trap's kill fails, and under set -e that turns the exit status into 1. I checked this: a failing kill in an EXIT trap after a successful body exits 1. So the run ends with 'kill: No such process' after green tests that ran against the wrong deployment.
-
-*Failure scenario:* just cluster=local k8s-http in one terminal and just k8s-http calendar-gates-dev in another -> the second run reports the kind-local deployment's results, then exits 1.
-
-*Suggested fix:* After wait-for-health, check `kill -0 "$forward"`, or let kubectl choose a free local port (`:80`) and read it back. Make the trap tolerant: `kill $forward 2>/dev/null || true`.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, trivial): k8s-http backgrounds the port-forward and only polls the health URL (justfile:219-223); if 18080 is already held (k8s-http for the other cluster, or a stale forward), kubectl exits at once, wait-for-health gets a 200 from the other listener and ijhttp tests the other deployment. Reproduced the exit-status part: under set -euo pipefail, a failing `kill` in the EXIT trap after a successful body makes bash print 'kill: No such process' and exit 1. Needs two forwards at once, so low.
-- **maintainer** (CONFIRMED, low, trivial): k8s-http starts the port-forward in the background and only polls the health URL (justfile:219-223). If 18080 is taken, for example by a k8s-http for the other cluster, kubectl exits at once and the tests run against whatever answers there. The EXIT trap's kill then fails, and bash lets an EXIT trap's status override the script's, so the run ends red after green tests. This was reported as checked; my own trap repro was blocked by the session's isolation guard, so I relied on bash's documented behaviour. Niche (two concurrent runs) and local; kill -0 plus a tolerant trap is trivial.
-- **impact** (CONFIRMED, low, trivial): The recipe never checks that the background port-forward is alive, so a busy 18080 lets wait-for-health and ijhttp test whatever already listens there. Reproduced the recipe's shape: with the background job already gone, the green body is followed by 'kill: No such process' and exit 1 under set -e. So the wrong-target run surfaces as a confusing failure, not a silent pass, and needs two forwards (or a stale one) on 18080 at once: low.
-
-</details>
-
-### F062
-
-**A failed push in just release leaves the local tag behind, and the retry stops at 'already exists'**
-
-- **Status:** ✅ fixed — #63: a failed push drops the local tag, so a retry works
-- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `justfile:284` · **area:** workflows, release, deploy, scripts
-- **Reported by:** `cr-ops-14` (low, high confidence)
-
-The existence check reads local refs (justfile:284-285), and the tag is created before the push (287-288). git push can fail: the SSH key isn't loaded after a restart (AGENTS.md says the first use needs the passphrase), the network drops, or the pre-push hook's just test fails. In each case the signed tag stays local. Re-running just release X.Y.Z then exits with 'vX.Y.Z already exists' after the confirm, with no hint to push or delete the tag.
-
-*Failure scenario:* just release 0.4.0 -> the push fails at the SSH passphrase -> just release 0.4.0 -> 'v0.4.0 already exists'.
-
-*Suggested fix:* Check the remote with `git ls-remote --exit-code --tags origin refs/tags/v$version`. If the tag exists only locally and points at HEAD, push it. Or delete the local tag in a trap when the push fails.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, info, trivial): Confirmed by reading: the existence check (justfile:284-285) reads local refs, and the signed tag is created (287) before the push (288). A failed push (SSH key not loaded after a restart, network, the pre-push test hook) leaves the tag local, and a retry stops at 'v$version already exists' with no hint. Recovery is one manual git push or git tag -d, so info.
-- **maintainer** (CONFIRMED, low, trivial): The recipe creates the signed tag (justfile:287) before pushing it (288), and the existence check (284-285) reads local refs. If the push fails (the SSH key not loaded after a restart, the pre-push hook's just test failing, the network), a retry stops at 'vX.Y.Z already exists' with no hint. Recovery is a manual git push of the same tag, which is safe because the tag points at a verified HEAD; a usability gap, not a gate problem.
-- **impact** (CONFIRMED, low, trivial): The existence check reads local refs after `git fetch origin main --tags` (justfile:280-285) and the signed tag is created before the push (287-288). A failed push (SSH key not loaded after a restart, network, the pre-push hook's just test) leaves the local tag, and the retry stops at 'vX.Y.Z already exists' with no hint. Plausible after a WSL restart; the fix by hand is `git push origin vX.Y.Z` or `git tag -d`. Annoyance only: low.
-
-</details>
-
-### F064
-
-**gh-setup uploads the whole pass entry as ANTHROPIC_API_KEY, while the other recipes use only its first line**
-
-- **Status:** ✅ fixed — #63: `gh-setup` sends only the entry's first line
-- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `justfile:387` · **area:** workflows, release, deploy, scripts
-- **Reported by:** `cr-ops-16` (low, medium confidence)
-
-llm and eval take `head -n 1` of `pass show api/anthropic-calendar-gates` (justfile:101, 133), following pass's convention of the secret on line one and metadata below. gh-setup pipes the full output into gh secret set (387). If the entry has a second line, the CI secret contains it too. The metadata then becomes part of a GitHub secret, and the x-api-key header becomes invalid, so every LLM check errors and the blocking ones fail closed.
-
-*Failure scenario:* A pass entry of 'sk-ant-...' plus a 'url: ...' line -> just gh-setup -> the CI ANTHROPIC_API_KEY holds both lines -> llm / code-review ends with an error verdict on every PR.
-
-*Suggested fix:* Use `pass show api/anthropic-calendar-gates | head -n 1 | gh secret set ANTHROPIC_API_KEY -R "$repo"`, as the other recipes do.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, info, trivial): Confirmed by reading: gh-setup pipes the full `pass show api/anthropic-calendar-gates` output into gh secret set (justfile:387), while llm and eval take head -n 1 (101, 133). It's latent: CI reviews have been running with the current secret (the audit log has paid reviews), so the entry is single-line today, and a metadata line added later would break every LLM check loudly (blocking checks fail closed, not open). Info.
-- **maintainer** (CONFIRMED, low, trivial): llm and eval take 'head -n 1' of the pass entry (justfile:101, 133), following pass's secret-on-line-one convention, while gh-setup pipes the whole output into gh secret set (387). The inconsistency is real; whether it bites depends on the entry having a second line, which I must not read. If it does, the CI key is invalid and every blocking check fails closed, visibly. Adding head -n 1 is trivial.
-- **impact** (CONFIRMED, low, trivial): gh-setup pipes the whole `pass show api/anthropic-calendar-gates` output into gh secret set (justfile:387) while llm and eval take head -n 1. Latent: CI reviews work today (224 paid runs), so the entry is single-line now; the bite comes only if metadata lines are added and gh-setup is re-run, and then every LLM check errors and the blocking ones fail closed, loud and safe. I did not read the pass entry (out of bounds). Low.
-
-</details>
-
-### F065
-
-**The timeout counts attempts, not seconds, because curl runs without --max-time**
-
-- **Status:** ✅ fixed — #63: `curl --max-time` plus a wall-clock deadline
-- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `scripts/wait-for-health.sh:10` · **area:** workflows, release, deploy, scripts
-- **Reported by:** `cr-ops-19` (low, high confidence)
-
-Each attempt is `curl -fsS` with no --max-time or --connect-timeout, followed by sleep 1. A listener that accepts the connection and never answers (for example a port-forward to a hung pod) holds one attempt open indefinitely, well past the timeout argument. In CI the jobs' timeout-minutes is the real bound; locally, http-docker and k8s-http can hang.
-
-*Failure scenario:* wait-for-health.sh http://localhost:18080/health 30 against a forward whose pod accepts but doesn't respond -> blocks far longer than 30 s instead of failing.
-
-*Suggested fix:* Use `curl --max-time 2`, or compute a deadline from $SECONDS.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, trivial): wait-for-health.sh:10 runs curl -fsS with no --max-time or --connect-timeout, so a single attempt can block far beyond the timeout argument against a listener that accepts and never answers; the loop counts attempts, not seconds. CI jobs are bounded by timeout-minutes; locally http-docker and k8s-http could hang. Real but narrow.
-- **maintainer** (CONFIRMED, low, trivial): wait-for-health.sh loops 'timeout' times over curl -fsS with no --max-time, so a listener that accepts and never answers holds one attempt open well past the stated seconds. In CI, timeout-minutes bounds it; locally http-docker and k8s-http can hang. A hung-but-accepting listener is rare (a port-forward usually errors fast), so low; --max-time 2 is trivial.
-- **impact** (CONFIRMED, low, trivial): Reproduced: against a local listener that accepts and never answers, `wait-for-health.sh http://127.0.0.1:18999/health 3` was still waiting after 15 s and was killed by timeout (124): curl has no --max-time, so one attempt can block indefinitely. Real listeners rarely behave so (port-forward and rootless port mapping reset when nothing listens), CI jobs have timeout-minutes, and locally Ctrl-C ends it: low (the repo's scale calls missing timeouts low).
-
-</details>
-
-### F082
-
-**OpenAPI documents only 200 for /api/easter/{year}, /api/leap/{year} and /api/friday13, which also return 400 ValidationProblem**
-
-- **Status:** ✅ fixed — #63: `.ProducesValidationProblem()` on the three year endpoints
-- **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `src/CalendarGates.Api/Endpoints/EasterEndpoints.cs:20` · **area:** API, tests, docs
-- **Reported by:** `api-02` (medium, high confidence), `cr-api-02` (low, high confidence)
-
-**`api-02`: OpenAPI documents only 200 for /api/easter/{year}, /api/leap/{year} and /api/friday13, which also return 400 ValidationProblem**
-
-EasterEndpoints.cs:20, LeapEndpoints.cs:20 and Friday13Endpoints.cs:27 return `Ok<T>` and validate with `[Range]` and `AddValidation()`. The validation filter's 400 is not added to the endpoint metadata. The /openapi/v1.json generated from a build of 43ec3c2 lists only `200` for GetEaster, GetLeapYear and GetFriday13s. GetWeek and GetWorkdays, whose `Results<..., ValidationProblem>` unions carry the metadata, document `400 application/problem+json HttpValidationProblemDetails`. So three of the five endpoints that take input leave out an error response they return every day, along with the binding-failure 400 from api-01. GetNextFriday13 also documents its `404` with no content, although UseStatusCodePages answers it with problem+json. The api-contract prompt lists 'response types that OpenAPI will document wrongly' as something to look for. new-endpoint.md says 'Use TypedResults so OpenAPI picks up the response types', but copying the `[Range]` pattern of the existing year endpoints quietly breaks that. The OpenAPI contract tests (calendar.http 'openapi: lists every route', MetaTests.OpenApiListsEveryRoute) compare only the path keys.
-
-*Failure scenario:* A client generated from /openapi/v1.json has no error type for `GET /api/easter/1500`. The 400 with `errors.year` that the API returns is an undeclared response. No test notices that GetEaster and GetWeek document their errors differently.
-
-*Suggested fix:* Add `.ProducesValidationProblem()` to the three endpoints, or return `Results<Ok<T>, ValidationProblem>`. Add `.ProducesProblem(404)` to /friday13/next. Extend the OpenAPI request in calendar.http to assert that every operation with parameters documents a 400.
-
-**`cr-api-02`: The OpenAPI document lists only 200 for /api/easter, /api/leap and /api/friday13, though all three return a 400 ValidationProblem**
-
-The handlers are declared as `Ok<EasterResponse> ForYear([Range] int year)` (EasterEndpoints.cs:20), `Ok<LeapResponse> ForYear([Range] int year)` (LeapEndpoints.cs:20) and `Ok<Friday13YearResponse> InYear([Range] int? year, ...)` (Friday13Endpoints.cs:27). The 400 comes from the `AddValidation()` endpoint filter, which adds no response metadata. I fetched `/openapi/v1.json` from the running API. The responses for `/api/easter/{year}`, `/api/leap/{year}` and `/api/friday13` are `["200"]` only. Endpoints that return `Results<..., ValidationProblem>` do list 400: `/api/week/{date}` and `/api/workdays` show `["200","400"]`. The integration and .http tests assert that these three endpoints return 400 with `errors.year`, so the published contract leaves out a response the tests treat as part of it. A client generated from the document has no type for that 400.
-
-*Failure scenario:* A generated client calls GET /api/easter/1582. The server answers 400 application/problem+json, but the OpenAPI document declares only 200, so the client has no model for the error and either throws a generic exception or mis-deserializes the body.
-
-*Suggested fix:* Add `.ProducesValidationProblem()` to the three `MapGet` calls, or declare the return types as `Results<Ok<T>, ValidationProblem>`. Then extend `OpenApiListsEveryRoute` or add a test that checks the 400 is documented.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, trivial): The /openapi/v1.json from the build lists only a 200 for GetEaster, GetLeapYear and GetFriday13s. GetWeek and GetWorkdays (Results<..., ValidationProblem>) list a 400 HttpValidationProblemDetails. GetNextFriday13's 404 has no content, although UseStatusCodePages answers it with problem+json. One mitigation the reports miss: the year parameters carry minimum 1583 and maximum 9999 in their schema, so a generated client knows the valid range. The undeclared 400 is still a real gap, and the route-list contract tests compare only path keys.
-- **maintainer** (CONFIRMED, low, trivial): In the built API's /openapi/v1.json, /api/easter/{year}, /api/leap/{year} and /api/friday13 list only 200, while week/{date} and workdays (`Results<..., ValidationProblem>`) list 400 problem+json. /api/friday13/next documents its 404 with no content, but UseStatusCodePages answers it with problem+json. This goes against new-endpoint.md's 'Use TypedResults so OpenAPI picks up the response types'. On a scratch copy, `.ProducesValidationProblem()` added the 400 and `.ProducesProblem(404)` the body. Nothing consumes the document today, so low.
-- **impact** (CONFIRMED, low, small): My build's /openapi/v1.json lists only 200 for GetEaster, GetLeapYear and GetFriday13s, while GetWeek and GetWorkdays document 400 application/problem+json; GetNextFriday13 documents its 404 with no content although the response is problem+json (seen in the test host). Calibrated down from api-02's medium: the year parameters carry `minimum: 1583, maximum: 9999` in their schemas, so a generated client knows the valid range, and an undeclared 400 surfaces as a generic API error, not a wrong result; no client of this API exists. The real cost is that new-endpoint.md promises TypedResults make OpenAPI right, and copying the [Range] pattern silently breaks it; `.ProducesValidationProblem()` on three MapGet calls plus `.ProducesProblem(404)` fixes it.
-
-</details>
-
-### F089
-
-**docs/gates.md's list of required checks leaves out llm-eval and says the other checks don't block**
-
-- **Status:** ✅ fixed — #63: the required-check list includes `llm-eval`
-- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `docs/gates.md:5` · **area:** API, tests, docs
-- **Reported by:** `api-15` (low, high confidence), `dd-02` (low, high confidence)
-
-**`api-15`: docs/gates.md's list of required checks leaves out llm-eval and says the other checks don't block**
-
-Lines 4-7 list the required checks from pr-title to llm / security-review and add 'The other checks report but don't block.'. But .github/rulesets/main.json also requires `llm-eval` (since #40; scripts/check-ruleset-consistency.py passes), and gates.md:53, README.md:41 and AGENTS.md all say it is required. Line 11 says the check names are the job names in ci.yml and llm-review.yml, leaving out llm-eval.yml, which the consistency script also reads.
-
-*Failure scenario:* Someone reads this section and expects to merge a gate-changing PR with llm-eval red. The ruleset blocks the merge.
-
-*Suggested fix:* Add `llm-eval` to the list on lines 5-7, and llm-eval.yml to line 11.
-
-**`dd-02`: gates.md's list of required checks omits llm-eval and says all other checks don't block**
-
-Lines 5-7 list ten required checks and then say "The other checks report but don't block". `.github/rulesets/main.json` requires 11, including `llm-eval`. The consistency script prints "11 required checks". README.md:41-42, AGENTS.md ("Required, on its own"), ADR 0006:51-53 and gates.md's own line 52-53 ("the llm / ... checks and llm-eval are required on their own") all say it is required. Line 11 also says the check names are the job names in ci.yml and llm-review.yml, but `llm-eval` comes from llm-eval.yml (WORKFLOWS in check-ruleset-consistency.py). #40 made llm-eval required and updated only line 52 of gates.md.
-
-*Failure scenario:* A reader using gates.md, the canonical gate reference, concludes that a red llm-eval is advisory. They merge-plan around it, then find the PR blocked by the ruleset.
-
-*Suggested fix:* Add `llm-eval` to the list on lines 5-7, and say the names are the job names in ci.yml, llm-review.yml and llm-eval.yml.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, trivial): .github/rulesets/main.json requires 11 contexts, including llm-eval since #40. gates.md:5-7 lists ten and adds 'The other checks report but don't block'. Line 11 names only ci.yml and llm-review.yml, although WORKFLOWS in check-ruleset-consistency.py includes llm-eval.yml. The same file contradicts itself at lines 52-53 ('llm-eval ... required on their own'), and README, AGENTS.md and ADR 0006 all say llm-eval is required. #40 updated only that later sentence.
-- **maintainer** (CONFIRMED, low, trivial): gates.md:5-7 lists ten required checks and says the others don't block. `.github/rulesets/main.json` requires eleven, including llm-eval. #40, which made llm-eval required, only changed gates.md's `gates` note (line 52-53). Line 11 also says the check names are the job names in ci.yml and llm-review.yml, but llm-eval comes from llm-eval.yml, which check-ruleset-consistency.py reads.
-- **impact** (CONFIRMED, low, trivial): main.json requires 11 checks including `llm-eval` (since #40, e466368), while gates.md:5-7 lists 10 and adds 'The other checks report but don't block', and line 11 names only ci.yml and llm-review.yml although check-ruleset-consistency.py's WORKFLOWS includes llm-eval.yml. The same file's table row (line 27) and lines 52-53, README and AGENTS.md say llm-eval is required, so a careful reader sees the contradiction and a skimming one meets a blocked merge. Nothing goes unenforced: the ruleset decides.
-
-</details>
-
 ### F092
 
 **Undocumented: llm-eval passes without running when there's no API key, and LLM_GATE_MISSING_KEY doesn't apply to it**
 
-- **Status:** ✅ fixed — #63: gates.md documents the keyless `llm-eval` pass
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `docs/gates.md:27` · **area:** API, tests, docs
 - **Reported by:** `dd-21` (low, high confidence), `wr-11` (low, high confidence)
@@ -2448,7 +2194,6 @@ When the PR is relevant but the key is missing, the eval steps are skipped and t
 
 **Kyverno update instructions point at "the chart version in the justfile", which doesn't exist**
 
-- **Status:** ✅ fixed — #63: the comment points at `deploy/kyverno/chart.sha256`
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `deploy/kyverno/values.yaml:5` · **area:** API, tests, docs
 - **Reported by:** `cr-ops-21` (info, high confidence), `dd-09` (low, high confidence)
@@ -2481,7 +2226,6 @@ The comment says 'Update all of them together, with the chart version in the jus
 
 **WRITEUP §5 says the metrics still count drill 19's /llm-fp marking; §3 and metrics.py say the later /llm-ack reversed it**
 
-- **Status:** ✅ fixed — #63: WRITEUP says the `/llm-ack` reversed it, and records #60's real false positive
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `docs/WRITEUP.md:169` · **area:** API, tests, docs
 - **Reported by:** `dd-04` (low, high confidence), `dd-05` (low, high confidence), `dd-06` (low, high confidence)
@@ -2522,7 +2266,6 @@ Line 151 ("The one false positive marked so far was on a drill"), line 165 ("The
 
 **"Denied in calendar-gates since v0.3.1": the Deny switch came after v0.3.1 and no release has exercised it**
 
-- **Status:** ✅ fixed — #63: ADR 0010 says Deny came after v0.3.1 and no release has exercised it
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `docs/adr/0010-admission-control.md:67` · **area:** API, tests, docs
 - **Reported by:** `dd-07` (low, high confidence), `dd-08` (low, medium confidence)
@@ -2551,11 +2294,76 @@ Under "Testing found what reading didn't", WRITEUP lists: "Two Deny policies in 
 
 </details>
 
+### F096
+
+**OpenAPI declares every integer in the responses as integer-or-string, though the API only writes JSON numbers**
+
+- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `src/CalendarGates.Api/Program.cs:8` · **area:** API, tests, docs
+- **Reported by:** `api-07` (low, high confidence)
+
+The web JSON defaults (`NumberHandling = AllowReadingFromString`) make the .NET 10 generator emit `type: [integer, string]` plus a digit pattern for isoYear, week, year, count, daysUntil, workdays and ProblemDetails.status (verified in /openapi/v1.json). The responses always carry numbers, and calendar.http asserts `Number.isInteger(...)` on them. `parity` is documented as a free string, although it is always `even` or `odd`. The API reads no JSON request bodies, so allowing numbers as strings gains nothing.
+
+*Failure scenario:* A TypeScript client generated from the document types `week` as `number | string`, and every consumer has to handle a string that never arrives.
+
+*Suggested fix:* Add `builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.NumberHandling = JsonNumberHandling.Strict)`. There are no request bodies, so behaviour doesn't change. Optionally add an enum or schema transformer for parity.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, trivial): Verified in /openapi/v1.json: every integer response property (isoYear, week, year, count, daysUntil, workdays) has type [integer, string] with a digit pattern, HttpValidationProblemDetails.status is [null, integer, string], and parity is a plain string. The cause is the web JSON default NumberHandling.AllowReadingFromString in the .NET 10 generator. The API reads no JSON bodies, so switching to Strict changes nothing at run time. Real but cosmetic: generated clients get number | string.
+- **maintainer** (CONFIRMED, info, trivial): The generated schemas give isoYear, week, year, count, daysUntil, workdays and ProblemDetails.status `type: [integer, string]` with a digit pattern, and the friday13 query parameter too. This comes from AllowReadingFromString in the web JSON defaults; the API only ever writes numbers. On a scratch copy, `ConfigureHttpJsonOptions(o => o.SerializerOptions.NumberHandling = Strict)` made them plain integers, with no change in behaviour because the API has no request bodies. A superset type is imprecise rather than wrong, so info.
+- **impact** (CONFIRMED, low, trivial): In my build's /openapi/v1.json every int32 in the responses (isoYear, week, year, count, daysUntil, workdays, ProblemDetails.status) is `type: [integer, string]` with a digit pattern, although the API only writes numbers. A generated TypeScript client would type them `number | string`, which costs every consumer a narrowing but never yields a wrong value, and no consumer exists. The API reads no JSON bodies, so JsonNumberHandling.Strict changes no behaviour.
+
+</details>
+
+### F098
+
+**The contract tests check the content type on 2 of 17 requests and leave out several error contracts**
+
+- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
+- **Where:** `http/calendar.http:88` · **area:** API, tests, docs
+- **Reported by:** `api-10` (low, high confidence)
+
+Only 'Current ISO week' (application/json, line 21) and 'ISO week: invalid date' (application/problem+json, line 53) check `response.contentType`. The 400 requests for friday13?year=1500 (88-97), easter/1500 (127-136) and the reversed and over-10-year workdays ranges (151-171) check the status and an errors key, but not problem+json. There are no requests for an out-of-range /api/leap/{year}, workdays with a missing parameter, or a malformed year. This file is what http-tests, k8s-smoke and the release smoke run against the real container (the integration tests run in-process, as Development). new-endpoint.md asks each request to assert status, content type and invariants.
+
+*Failure scenario:* A change makes the year endpoints return their 400 as application/json or plain text, for example through a custom validation filter. It passes http-tests, k8s-smoke and the release smoke.
+
+*Suggested fix:* Assert the mimeType on every request: application/json for successes, application/problem+json for errors. Add an out-of-range leap request, a workdays request without `to`, and `friday13?year=abc`.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, info, small): The count is right: only 2 of the 17 requests ('Current ISO week' and 'ISO week: invalid date') assert the content type, and no .http request covers an out-of-range leap year, a missing workdays parameter or a malformed year. But another layer catches the failure scenario. ApiTestBase.GetJsonAsync asserts application/json or application/problem+json on every integration request, including every 400 through AssertValidationProblemAsync (MetaTests.LeapYearRejectsUnsupportedYears and the missing-parameter cases in WorkdaysTests among them). A filter that returned those 400s as application/json would therefore fail build-test / dotnet. Only an environment-specific difference would slip through (F081 shows such differences exist), hence info: the file doesn't follow new-endpoint.md's 'status, content type' convention.
+- **maintainer** (CONFIRMED, low, small): Only 'Current ISO week' (line 21) and 'ISO week: invalid date' (line 53), 2 of the 17 requests, assert response.contentType, although PLAN.md 3.4 and new-endpoint.md ask every handler to assert status, content type and invariants. There is no .http request for an out-of-range leap year, for workdays without a parameter, or for a malformed year. The integration tests do check the media type of every response, but in-process (Development). The real gap is the Production container, where F081 shows the behaviour can differ.
+- **impact** (CONFIRMED, low, small): Of calendar.http's 17 requests only 'Current ISO week' (line 21) and 'ISO week: invalid date' (line 53) assert the content type, and none covers an out-of-range leap year, workdays without `to`, or a malformed year. The failure scenario overstates the gap: ApiTestBase.GetJsonAsync asserts application/problem+json for every 4xx in the integration tests (including the easter, friday13 and leap range cases), so a content-type regression fails build-test unless it is environment-specific. That exception is real, though: F081 shows Development and Production diverge, and only the .http file runs against the Production container.
+
+</details>
+
+### F099
+
+**The blocking code-review prompt's scope and severity rubric cover only the date API, not the gate code most PRs change**
+
+- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** medium
+- **Where:** `.claude/commands/llm-code-review.md:6` · **area:** API, tests, docs
+- **Reported by:** `cr-gate-15` (low, medium confidence)
+
+The prompt describes calendar-gates as a minimal date API, and 'What to look for' and every severity anchor are about C# endpoints (wrong dates, HTTP 500s, TimeProvider). ADR 0008 notes that most PRs here touch the gate (Python in tools/llm-gate, workflows, scripts) and are rated high, where code-review blocks on high. Yet the prompt says nothing about what a high-severity bug in gate code looks like, such as a verdict that passes a blocking finding. The eval set mirrors this: all of code-review's bug cases are in src/ or deploy/ (cr-001 to cr-004, cr-inj-001/002), and gate changes appear only as clean cases, so recall on the gate's own code is unmeasured.
+
+*Failure scenario:* A PR changes policy.decide so that an override also skips the error branch. With no anchor beyond 'the service does not start' or 'a 500 for valid input', the reviewer rates it medium or low, and code-review passes.
+
+*Suggested fix:* Add guidance and severity anchors for gate and CI code (a gate that can pass what it should block counts as high), plus planted-bug eval cases in tools/llm-gate and the workflows.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, medium): llm-code-review.md:6-50 frames the review, the look-for list and every severity anchor around the date API. Yet code-review has no paths filter, and per ADR 0008 most PRs here change the gate. The eval set matches: code-review's bug and injection cases (cr-001..004, cr-inj-001/002) touch only src/ or deploy/, and gate code appears only in clean cases. The audit log supports the failure mode. code-review's real findings on gate code in #52 and #53 were rated medium (cr-6a49, an attestation that leaves out PRs; cr-2121, kubectl debug unchecked) or low (cr-def4), so none blocked, though all were fixed anyway. The fix is a prompt change plus new cases, which goes through llm-eval and probably a baseline update.
+- **maintainer** (CONFIRMED, low, medium): llm-code-review.md describes the repository as the date API, and its look-for list and severity anchors are all about endpoints. Every code-review bug case is in src/ or deploy/ (cr-001..004, cr-inj-001/002); gate changes appear only as clean cases, so recall on gate code is unmeasured. The audit log backs this up: on #52 and #53, code-review rated real release and policy defects medium or low (cr-6a49, cr-def4, cr-2121), so the blocking check passed and only people acted on them. ADR 0008 accepts that most PRs are high risk, not this prompt scope. A fix needs new anchors, planted gate-bug cases and a new baseline, which costs credits.
+- **impact** (CONFIRMED, low, medium): llm-code-review.md introduces the repo as a date API, and every 'What to look for' item and severity anchor (high = 'a wrong result or a 500 for valid, ordinary input on a main path') is about the C# API; its eval set has planted bugs only in src/ and deploy/ (cr-001..004) plus injection cases, and gate changes appear only as clean cases. The audit log fits: all 5 high code-review findings are in src/CalendarGates.Api, and findings in tools/llm-gate and .github/workflows never went above medium. The risk is a gate bug rated below high passing the blocking check; security-review (blocks at medium), pytest and llm-eval also cover gate changes, so it's an unmeasured recall gap rather than an open door, and the fix is a prompt change plus planted-bug cases and a baseline update through llm-eval.
+
+</details>
+
 ### F100
 
 **AGENTS.md says only audit-collect.yml writes the audit-log branch; llm-feedback.yml writes to it too**
 
-- **Status:** ✅ fixed — #63: AGENTS.md names `llm-feedback.yml` as a writer too
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `AGENTS.md:21` · **area:** API, tests, docs
 - **Reported by:** `dd-03` (low, high confidence)
@@ -2578,7 +2386,6 @@ The Layout row reads "Audit records of the LLM gate, written only by `audit-coll
 
 **The kyverno test file says it runs in `just lint`; it runs in `just lint-policies`**
 
-- **Status:** ✅ fixed — #63: the test file says `just lint-policies`
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `deploy/policies/tests/kyverno-test.yaml:1` · **area:** API, tests, docs
 - **Reported by:** `dd-10` (low, high confidence)
@@ -2601,7 +2408,6 @@ The Layout row reads "Audit records of the LLM gate, written only by `audit-coll
 
 **The lint gate's local equivalent and tool list omit the kyverno policy tests that CI's lint job runs**
 
-- **Status:** ✅ fixed — #63: the lint row lists the policy tests, mypy and `lint-policies`
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `docs/gates.md:20` · **area:** API, tests, docs
 - **Reported by:** `dd-11` (low, high confidence)
@@ -2624,7 +2430,6 @@ gates.md's lint row gives Local: `just lint lint-chart`, and lists "actionlint, 
 
 **/gate-drill sends "drills 13 and up" to PLAN-v2, but drill 13 is in PLAN.md and v2 starts at 14**
 
-- **Status:** ✅ fixed — #63: `/gate-drill` sends drills 1-13 to PLAN.md, 14+ to PLAN-v2
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `.claude/commands/gate-drill.md:7` · **area:** API, tests, docs
 - **Reported by:** `dd-12` (low, high confidence)
@@ -2643,11 +2448,32 @@ gates.md's lint row gives Local: `just lint lint-chart`, and lists "actionlint, 
 
 </details>
 
+### F104
+
+**PLAN.md's drill table, which /gate-drill checks results against, predates reasoned overrides and the --no-verify ban**
+
+- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
+- **Where:** `docs/PLAN.md:731` · **area:** API, tests, docs
+- **Reported by:** `dd-13` (low, high confidence)
+
+/gate-drill reads this table and asks Claude to "tell me whether the gate behaved as the table predicts" (gate-drill.md:25-26). Drill 5 predicts "add `llm-override` label → passes with warning". Since ADR 0005, a label without an unedited `/llm-override <reason>` by the person who added it is not honoured, and the check still fails (audit.find_override, llm-review.yml:239-268). Drill 1 (line 727) says to commit with `git commit --no-verify`, which AGENTS.md's Don'ts forbid (gate-drill.md:19-22 routes around it with scripts/commit-via-api.py). Drill 12 says `--atomic`, while the chart is installed with `--rollback-on-failure`. PLAN.md has no status note marking it historical (unlike PLAN-v2).
+
+*Failure scenario:* /gate-drill 5 adds only the label, the blocking checks stay red with "override not honoured", and the drill is reported as not matching the table, though the gate behaves as designed.
+
+*Suggested fix:* Update drill 5's expected column ("/llm-override <reason> → passes with warning; label alone → not honoured") and drill 1's method (commit through scripts/commit-via-api.py), or add a status note pointing to ADR 0005 and AGENTS.md.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, info, small): Drill 5's expected result (PLAN.md:731, 'add llm-override label → passes with warning') has been stale since ADR 0005. A label without a reasoned /llm-override is not honoured, and PLAN-v2's drill 20 tests exactly that, so /gate-drill 5 would report a mismatch where the gate behaves as designed. The other two points are weaker. gate-drill.md step 5 already overrides drill 1's --no-verify (commit through scripts/commit-via-api.py), and drill 12's --atomic is Helm 4's --rollback-on-failure, with the same rollback. PLAN.md has no status note, but it is the v1 plan kept as written.
+- **maintainer** (CONFIRMED, low, trivial): PLAN.md hasn't changed since the skeleton (db1dcb5) and has no status note, yet /gate-drill compares results with its table. Drill 5 predicts 'add llm-override label -> passes with warning', which ADR 0005's reason rule (and PLAN-v2's drill 20) makes 'not honoured'. Drill 1 prescribes --no-verify, which AGENTS.md forbids (gate-drill.md step 5 works around it). Drill 12 says --atomic, but Helm 4's --rollback-on-failure is what runs. PLAN-v2's 'kept as written' covers PLAN-v2 only, so this isn't ACCEPTED; a status note would keep PLAN.md as written and fix the drill comparison.
+- **impact** (CONFIRMED, low, small): PLAN.md, still headed 'No code yet' with no status note, predicts for drill 5 that adding the `llm-override` label passes with a warning, which ADR 0005 changed (label alone not honoured; PLAN-v2 drill 20 tests exactly that), tells drill 1 to use `git commit --no-verify`, which AGENTS.md forbids, and says `--atomic` for drill 12 where the chart uses `--rollback-on-failure`. gate-drill.md step 5 already overrides the --no-verify method, so the live effect is that a re-run of drill 5 would be reported as not matching the table although the gate behaves as designed.
+
+</details>
+
 ### F105
 
 **The entry docs point only at docs/PLAN.md; PLAN-v2.md (Phases 13-21, drills 14-23) is never mentioned**
 
-- **Status:** ✅ fixed — #63: AGENTS.md points at PLAN-v2.md and the review findings
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `AGENTS.md:6` · **area:** API, tests, docs
 - **Reported by:** `dd-14` (low, high confidence)
@@ -2670,7 +2496,6 @@ AGENTS.md:6: "The full plan, phase by phase, is in `docs/PLAN.md`. Check which p
 
 **llm-eval also fails when a forbidden (fp-regression) finding returns; gates.md and WRITEUP don't say so**
 
-- **Status:** ✅ fixed — #63: gates.md lists `fp_regressions` as a failure mode
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `docs/gates.md:27` · **area:** API, tests, docs
 - **Reported by:** `dd-20` (low, high confidence)
@@ -2693,7 +2518,6 @@ gates.md's llm-eval row: "scores worse than evals/baseline.json beyond evals/thr
 
 **/new-endpoint skips the two exact OpenAPI route lists a new endpoint must be added to**
 
-- **Status:** ✅ fixed — #63: `/new-endpoint` names both OpenAPI route lists
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `.claude/commands/new-endpoint.md:21` · **area:** API, tests, docs
 - **Reported by:** `dd-22` (low, high confidence)
@@ -2716,7 +2540,6 @@ gates.md's llm-eval row: "scores worse than evals/baseline.json beyond evals/thr
 
 **The quick start's requirements don't cover `just setup` / `just ci`, which now need an exact kyverno CLI**
 
-- **Status:** ✅ fixed — #63: the README lists what `just lint` needs on PATH
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `README.md:21` · **area:** API, tests, docs
 - **Reported by:** `dd-23` (low, high confidence)
@@ -2735,13 +2558,78 @@ README: "Requires the .NET 10 SDK, just and uv; the container, Kubernetes and LL
 
 </details>
 
+### F111
+
+**/api/friday13/next's 404 (no Friday the 13th left before year 10000) has no test**
+
+- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `src/CalendarGates.Api/Endpoints/Friday13Endpoints.cs:40` · **area:** API, tests, docs
+- **Reported by:** `tr-22` (low, high confidence)
+
+The endpoint returns NotFound when NextOnOrAfter returns null. The unit test covers the null; no integration test sets the FakeTimeProvider past 9999-08-13, so the endpoint's mapping of the null is untested.
+
+*Failure scenario:* The null branch changes, for example to `!.Value`, or the NotFound result goes. The endpoint then returns 500 (or a bogus 200) on 9999-08-14, and no test fails.
+
+*Suggested fix:* An integration test with the clock at 9999-08-14T00:00Z expecting a 404 with application/problem+json.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, small): No integration test moves the FakeTimeProvider past 9999-08-13 (Friday13Tests uses only 2026-02-12 and 02-13), and calendar.http can't, so Next's NotFound branch (Friday13Endpoints.cs:37-43) is untested at the endpoint. Only the calculator's null is tested (ReturnsNullPastTheLastRepresentableOne). The endpoint itself is correct today. A missing edge-case test for correct code: low.
+- **maintainer** (CONFIRMED, low, trivial): Friday13Endpoints.Next turns a null from NextOnOrAfter into NotFound. Only the unit test covers the null (ReturnsNullPastTheLastRepresentableOne); no integration test moves the FakeTimeProvider past 9999-08-13. One integration test (clock at 9999-08-14, expect a 404 with problem+json) closes the gap.
+- **impact** (CONFIRMED, info, trivial): No integration test sets the clock past 9999-08-13; the unit test covers NextOnOrAfter's null. A scratch test on the same factory with the clock at 9999-08-14 shows the endpoint returns 404 application/problem+json today, so the code is correct, and the untested branch only matters for a clock 7,973 years ahead.
+
+</details>
+
+### F113
+
+**VersionEndpoints.Read has no unit test, and the version/commit checks accept its fallbacks**
+
+- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
+- **Where:** `src/CalendarGates.Api/Endpoints/VersionEndpoints.cs:24` · **area:** API, tests, docs
+- **Reported by:** `tr-24` (low, high confidence)
+
+Read splits MinVer's informational version on '+', prefers the Commit metadata over the suffix, and falls back to 'unknown' and '0.0.0'. MetaTests.VersionReportsVersionAndCommit asserts only non-empty strings, so 'unknown' passes. calendar.http checks only that the commit is non-empty. Only the release smoke compares the version with the tag, and nothing checks that the commit is the built one.
+
+*Failure scenario:* The Docker COMMIT build argument stops reaching the assembly. /api/version reports commit 'unknown', or the +sha suffix of another build, and every test passes.
+
+*Suggested fix:* Unit-test Read with a fake assembly: with and without the metadata, with and without '+'. In CI http-tests, compare the commit with the image's COMMIT build argument.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, small): VersionEndpoints.Read is internal and has no unit test. MetaTests.VersionReportsVersionAndCommit asserts only non-empty strings and calendar.http only a non-empty commit, so 'unknown' or another build's +sha would pass. The release smoke compares only the version with the tag (release.yml, smoke job). The fallbacks are live: an unflagged local build reports the SDK's full SourceRevisionId (mine returned 43ec3c2f019d...).
+- **maintainer** (CONFIRMED, low, small): MetaTests.VersionReportsVersionAndCommit asserts only non-empty strings, and calendar.http checks only a version prefix and a non-empty commit, so the fallbacks pass: '0.0.0', the Dockerfile's default '0.0.0-docker', and 'unknown'. Only the release smoke compares the version with the tag, and nothing checks the commit. Read is internal and the repo has no InternalsVisibleTo, so a unit test needs that or a small refactor.
+- **impact** (CONFIRMED, info, small): VersionEndpoints.Read has no unit test; MetaTests and calendar.http only require a non-empty commit, and the Dockerfile's default COMMIT=unknown passes both. The release smoke checks `version`, and releases are verified through digest-bound attestations rather than /api/version's commit, so a commit that silently became 'unknown' would mislead a human glance and nothing else.
+
+</details>
+
+### F114
+
+**The leap endpoint's year validation is tested only with 99999**
+
+- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `tests/CalendarGates.IntegrationTests/MetaTests.cs:20` · **area:** API, tests, docs
+- **Reported by:** `tr-25` (low, high confidence)
+
+The Easter and Friday13 integration tests check both 1582 and 10000. LeapYearRejectsUnsupportedYears uses only 99999, so the leap endpoint's own [Range] lower bound and the 10000 boundary are untested there. Each endpoint declares its own attribute.
+
+*Failure scenario:* The leap endpoint's attribute becomes [Range(1, Years.Max)]. /api/leap/1582 then reaches the calculator, which throws, and the response is 500 instead of a 400 ValidationProblem.
+
+*Suggested fix:* Use [Arguments(1582)] and [Arguments(10000)], as in EasterTests.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, trivial): MetaTests.LeapYearRejectsUnsupportedYears uses only 99999, while EasterTests and Friday13Tests check 1582 and 10000, and calendar.http has no out-of-range leap request. So the leap endpoint's own [Range] lower bound is untested at the endpoint layer (the calculator's throw is unit-tested). The endpoint is correct today: /api/leap/1582 and /api/leap/10000 return the ValidationProblem. Adding two [Arguments] is trivial.
+- **maintainer** (CONFIRMED, low, trivial): MetaTests.LeapYearRejectsUnsupportedYears uses only 99999, while the Easter and Friday13 integration tests check 1582 and 10000. Each endpoint declares its own [Range], and no .http request covers an out-of-range leap year, so the leap endpoint's lower bound and the 10000 boundary are untested. Two [Arguments] rows fix it.
+- **impact** (CONFIRMED, low, trivial): LeapYearRejectsUnsupportedYears uses only 99999, while the Easter and Friday13 integration tests use 1582 and 10000, and each endpoint declares its own [Range]. Relaxing only the leap endpoint's range (plausible, since the Gregorian leap rule is defined for any year, see F087) would let 1582 reach LeapYearCalculator.IsLeap, which throws through Years.ThrowIfUnsupported: a 500 no test catches.
+
+</details>
+
 #### Confirmed: info
 
 ### F028
 
 **eval add-from-fp looks up a 16-bit finding id across every PR and takes the last match**
 
-- **Status:** open
 - **Severity:** info (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `tools/llm-gate/src/llm_gate/evals.py:843` · **area:** llm-gate and review prompts
 - **Reported by:** `cr-gate-12` (low, high confidence)
@@ -2764,7 +2652,6 @@ A finding id is the check prefix plus 4 hex digits of a hash, so there are 65,53
 
 **gate_run records for checks that triage didn't need carry the configured blocking flag, not the effective one**
 
-- **Status:** open
 - **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `tools/llm-gate/src/llm_gate/cli.py:305` · **area:** llm-gate and review prompts
 - **Reported by:** `api-23` (info, high confidence)
@@ -2783,126 +2670,10 @@ When a check isn't needed, `_at_risk` returns the unplanned check, so the record
 
 </details>
 
-### F080
-
-**Tool versions pinned inside run: steps and with: inputs aren't covered by Dependabot**
-
-- **Status:** open
-- **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** medium
-- **Where:** `.github/workflows/ci.yml:72` · **area:** workflows, release, deploy, scripts
-- **Reported by:** `wr-21` (info, high confidence)
-
-The actionlint, hadolint, kubeconform, kyverno-cli and ijhttp images (by digest), zizmor, yamllint and ruff (uvx versions), grype v0.120.1 (in both ci.yml and release.yml), syft v1.54.1, helm v4.2.2, kind v0.33.0 and the kubectl versions are all pinned, but only change by hand. Dependabot's github-actions ecosystem updates the action SHAs, not these. grype's database is fetched fresh, so detection doesn't age with the binary, but the other tools will drift silently.
-
-*Failure scenario:* A security fix in kubeconform or kyverno-cli doesn't reach CI until someone notices.
-
-*Suggested fix:* A regex-based updater (Renovate custom manager) or a scheduled check for these pins.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, info, medium): Confirmed by reading: tools pinned in run: steps or with: inputs (grype-version v0.120.1, syft-version v1.54.1, helm v4.2.2, kind v0.33.0, the kubectl versions, the uvx versions, the ijhttp image by digest) are outside Dependabot's github-actions ecosystem, which updates uses: refs only. gates.md says they're bumped by hand together, but no ADR or PLAN-v2 decision accepts silent drift. Info.
-- **maintainer** (CONFIRMED, info, medium): Accurate observation: tool and image versions pinned inside run: steps and with: inputs (actionlint, hadolint, kubeconform, kyverno-cli and ijhttp digests, the uvx versions, grype, syft, helm, kind, kubectl) aren't covered by any Dependabot ecosystem in dependabot.yml. docs/gates.md says these are bumped by hand ('bump them together'), so it's known, but drift isn't recorded as an accepted consequence. Info: no defect today.
-- **impact** (CONFIRMED, info, small): True as stated: the actionlint, hadolint, kubeconform, kyverno-cli and ijhttp image digests, the uvx versions of zizmor, yamllint and ruff, and the grype, syft, helm, kind and kubectl versions live in run: strings and with: inputs, which Dependabot's github-actions ecosystem doesn't update. They are pinned (good) and drift silently (maintenance gap); grype's DB is fetched fresh, so detection doesn't age. Info.
-
-</details>
-
-### F110
-
-**Friday-the-13th lists are compared ignoring order**
-
-- **Status:** open
-- **Severity:** info (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `tests/CalendarGates.UnitTests/Friday13CalculatorTests.cs:17` · **area:** API, tests, docs
-- **Reported by:** `tr-21` (low, high confidence)
-
-TUnit's IsEquivalentTo ignores order by default (CollectionOrdering.Any, per the TUnit 1.75 XML docs). ListsFridaysThe13thInYear and Friday13Tests.DefaultsToTheCurrentYear both use it. Only the .http request for 2026 pins the order, and it runs against the container.
-
-*Failure scenario:* InYear returns the dates in reverse or hash order. The unit and integration tests still pass.
-
-*Suggested fix:* Use IsEquivalentTo(expected, CollectionOrdering.Matching), or compare the sequences in order.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, info, trivial): TUnit 1.75's own docs (TUnit.Assertions.xml) say IsEquivalentTo compares collections 'regardless of order (default)', so ListsFridaysThe13thInYear and Friday13Tests.DefaultsToTheCurrentYear would pass a reversed list. But calendar.http's 'friday13?year: exact values' (line 84) compares the 2026 list in order with JSON.stringify. That request runs in the required http-tests gate (and in k8s-smoke and the release smoke), so the scenario's regression can't merge. A weak assertion in one layer, so info.
-- **maintainer** (CONFIRMED, info, trivial): TUnit 1.75's IsEquivalentTo ignores order by default ('regardless of order (default)', CollectionOrdering.Any in its XML docs). Both Friday13CalculatorTests.ListsFridaysThe13thInYear and Friday13Tests.DefaultsToTheCurrentYear use it. The .http request for 2026 pins the order with JSON.stringify and runs in the required http-tests gate, so a reordering would still be caught there. Info.
-- **impact** (CONFIRMED, info, trivial): A scratch TUnit 1.75 test confirmed IsEquivalentTo passes for the same dates in reverse order, so ListsFridaysThe13thInYear and Friday13Tests.DefaultsToTheCurrentYear don't pin order. The required http-tests check does: calendar.http's 2026 request compares JSON.stringify of the dates, and any order regression in InYear would affect every year, so it can't merge; only where it's caught differs.
-
-</details>
-
-### F112
-
-**CurrentWeekUsesTodayInUtc can't tell UTC from local time**
-
-- **Status:** open
-- **Severity:** info (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `tests/CalendarGates.IntegrationTests/WeekTests.cs:6` · **area:** API, tests, docs
-- **Reported by:** `tr-23` (low, medium confidence)
-
-FakeTimeProvider's local time zone defaults to UTC, and the fixed clock is at 10:00Z, far from midnight. A regression from GetUtcNow() to GetLocalNow() in EndpointHelpers.Today gives the same date, so the test checks the fake clock but not the UTC part its name claims.
-
-*Failure scenario:* Today() is switched to time.GetLocalNow(). In production on a non-UTC host near midnight, the week is off by a day. The test passes.
-
-*Suggested fix:* Set the clock to 2026-02-15T23:30Z (Sunday, ISO week 7) and Time.SetLocalTimeZone to a UTC+2 zone (Monday 01:30 locally), and expect week 7.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, info, trivial): FakeTimeProvider's local time zone defaults to UTC: its assembly references TimeZoneInfo.Utc for _localTimeZone and never TimeZoneInfo.Local. The base clock is at 10:00Z. If EndpointHelpers.Today switched to GetLocalNow(), it would return the same date, and CurrentWeekUsesTodayInUtc would still pass: the test pins the injected clock, not the UTC part of its name. The production impact is small, because the chiseled image has no tzdata and its local zone is UTC anyway. The risk is `just run` on a non-UTC machine near midnight.
-- **maintainer** (CONFIRMED, low, trivial): The fixed clock is 2026-02-12T10:00Z. Whatever the provider's local zone, GetUtcNow and GetLocalNow give the same date for every realistic zone at that hour, so the test can't catch a switch to local time, despite its name. It still catches the real-clock regression (DateTime.Now). Shipped images run in UTC (chiseled, no tzdata), so in practice this only matters on dev machines; low.
-- **impact** (CONFIRMED, info, trivial): FakeTimeProvider's local zone defaults to UTC (checked in a scratch test) and the clock is 10:00Z, so a switch from GetUtcNow to GetLocalNow in EndpointHelpers.Today would pass CurrentWeekUsesTodayInUtc. The image is chiseled with no tzdata, so local time is UTC in the container and such a regression would change nothing in production; it would show only under `just run` on a non-UTC host near midnight, and the code-review prompt names 'today is the UTC date' as a convention. A misleading test name more than a gap that bites.
-
-</details>
-
-### F116
-
-**The api-contract prompt defines the contract as the /api routes and OpenAPI, leaving out /health, which checks.yaml gives as a reason to review Program.cs**
-
-- **Status:** open
-- **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** small
-- **Where:** `.claude/commands/llm-api-contract.md:7` · **area:** API, tests, docs
-- **Reported by:** `api-21` (info, medium confidence)
-
-checks.yaml:20-21 adds Program.cs to api-contract's paths for 'the /api group, OpenAPI, /health'. /health is what the chart's readiness and liveness probes call (values.yaml probes.path), and scripts/wait-for-health.sh, http-tests, k8s-smoke, the release smoke and calendar.http ('health: 200 Healthy') depend on it. The prompt's contract paragraph names only the /api routes and the OpenAPI document, so a reviewer following it won't treat a change to the health route or its body as a contract change. The deterministic gates still catch a broken path, as a health-wait timeout.
-
-*Failure scenario:* A PR maps the health checks to /healthz in Program.cs. api-contract runs, because Program.cs changed, but reports nothing. The breakage surfaces only as an http-tests or k8s-smoke timeout.
-
-*Suggested fix:* Add `/health` to the contract paragraph of llm-api-contract.md: status 200, body 'Healthy', used by the probes and the smoke tests.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, info, small): llm-api-contract.md:7-10 defines the contract as the /api routes, their JSON and status codes, and the OpenAPI document. checks.yaml:20-21 says api-contract watches Program.cs partly because of /health, which the chart's probes, scripts/wait-for-health.sh and calendar.http's first request depend on. Required deterministic gates still catch a /health change (http-tests waits on /health and asserts 'Healthy', and k8s-smoke has the probes), so the gap is only that an advisory check won't explain the break. A prompt edit goes through llm-eval, hence small.
-- **maintainer** (CONFIRMED, info, trivial): checks.yaml:20-21 gives 'the /api group, OpenAPI, /health' as the reason Program.cs is in api-contract's paths. llm-api-contract.md defines the contract as the /api routes and the OpenAPI document only. The chart probes, wait-for-health.sh, http-tests, k8s-smoke and the release smoke all rely on /health and catch a broken path deterministically, so the gap only affects the advisory check. A prompt edit is a gate change; ac-001 is its only eval case.
-- **impact** (CONFIRMED, info, small): checks.yaml:20-21 adds Program.cs to api-contract's paths for 'the /api group, OpenAPI, /health', but llm-api-contract.md's contract paragraph names only the /api routes and the OpenAPI document. api-contract is advisory, and a moved or broken /health fails http-tests (wait-for-health), the k8s-smoke probes and the release smoke deterministically, so the omission costs a comment, not a missed break; the prompt edit has to pass llm-eval.
-
-</details>
-
-### F128
-
-**The docs-drift gate's own list of docs leaves out the tool READMEs and command files, where drift collects**
-
-- **Status:** open
-- **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** small
-- **Where:** `.claude/commands/llm-docs-drift.md:6` · **area:** API, tests, docs
-- **Reported by:** `dd-34` (info, medium confidence)
-
-The prompt defines the documentation as README.md, AGENTS.md, CLAUDE.md, docs/, justfile recipe comments and config-file headers. It leaves out tools/llm-gate/README.md, tools/llm-gate/evals/README.md and .claude/commands/*.md (gate-drill, new-endpoint) and .claude/agents/. Those are the files where this review found stale CLI usage (dd-15), stale drill routing (dd-12) and a missing scaffold step (dd-22). A prompt change is a gate change (llm-eval and the ADR 0004 rule apply).
-
-*Failure scenario:* A PR adding an llm-gate subcommand is never flagged for the missing README entry.
-
-*Suggested fix:* Add "tools/llm-gate/README.md and evals/README.md, .claude/commands/ and .claude/agents/" to the list.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, info, small): llm-docs-drift.md:6-8 lists README.md, AGENTS.md, CLAUDE.md, docs/, justfile comments and config headers, but not tools/llm-gate/README.md, evals/README.md, .claude/commands/ or .claude/agents/. This review found drift in exactly those places (F090, F103, F108, F127). The effect is limited: docs-drift runs on the api engine with only the diff, so the list mainly tells it which docs to suggest. A prompt change goes through llm-eval, hence small.
-- **maintainer** (CONFIRMED, info, trivial): llm-docs-drift.md:6-8 defines the documentation as README.md, AGENTS.md, CLAUDE.md, docs/, the justfile comments and config-file headers. tools/llm-gate/README.md, evals/README.md, .claude/commands and .claude/agents aren't named, and this review found drift in exactly those files (F090, F103, F108, F127). Editing the prompt is a gate change, but docs-drift has no eval cases, so llm-eval costs nothing for it.
-- **impact** (CONFIRMED, info, small): llm-docs-drift.md:6-8 defines the documentation as README.md, AGENTS.md, CLAUDE.md, docs/, justfile recipe comments and config-file headers, leaving out tools/llm-gate/README.md, evals/README.md, .claude/commands/ and .claude/agents/, where several drift items in this batch sit (F090, F103, F108, F127). A suggestion for an advisory check; the prompt change has to pass llm-eval.
-
-</details>
-
 ### F061
 
 **audit-pull, and with it metrics, fails when the audit-log branch has no events/ directory**
 
-- **Status:** ✅ fixed — #63: `audit-pull` tolerates a branch with no `events/`
 - **Severity:** info (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `justfile:94` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `cr-ops-13` (low, high confidence)
@@ -2925,7 +2696,6 @@ The prompt defines the documentation as README.md, AGENTS.md, CLAUDE.md, docs/, 
 
 **just lint hands the user's full-scope gh OAuth token to a PyPI-fetched zizmor on every run**
 
-- **Status:** ✅ fixed — #63: `just lint` runs zizmor `--offline`, with no `gh` token
 - **Severity:** info (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `justfile:73` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `cr-ops-15` (low, high confidence)
@@ -2949,7 +2719,6 @@ The prompt defines the documentation as README.md, AGENTS.md, CLAUDE.md, docs/, 
 
 **The pre-commit ruff job skips scripts/*.py, which the lint gate checks**
 
-- **Status:** ✅ fixed — #63: a `ruff-scripts` pre-commit job covers `scripts/*.py`
 - **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `lefthook.yml:11` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `cr-ops-22` (info, high confidence)
@@ -2972,7 +2741,6 @@ The job is rooted at tools/llm-gate/, so edits to scripts/check-ruleset-consiste
 
 **llm and llm-list run uv without --locked, unlike every other recipe and CI**
 
-- **Status:** ✅ fixed — #63: `just llm` runs `uv run --locked`
 - **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `justfile:135` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `cr-ops-23` (info, high confidence)
@@ -2991,11 +2759,32 @@ The job is rooted at tools/llm-gate/, so edits to scripts/check-ruleset-consiste
 
 </details>
 
+### F080
+
+**Tool versions pinned inside run: steps and with: inputs aren't covered by Dependabot**
+
+- **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** medium
+- **Where:** `.github/workflows/ci.yml:72` · **area:** workflows, release, deploy, scripts
+- **Reported by:** `wr-21` (info, high confidence)
+
+The actionlint, hadolint, kubeconform, kyverno-cli and ijhttp images (by digest), zizmor, yamllint and ruff (uvx versions), grype v0.120.1 (in both ci.yml and release.yml), syft v1.54.1, helm v4.2.2, kind v0.33.0 and the kubectl versions are all pinned, but only change by hand. Dependabot's github-actions ecosystem updates the action SHAs, not these. grype's database is fetched fresh, so detection doesn't age with the binary, but the other tools will drift silently.
+
+*Failure scenario:* A security fix in kubeconform or kyverno-cli doesn't reach CI until someone notices.
+
+*Suggested fix:* A regex-based updater (Renovate custom manager) or a scheduled check for these pins.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, info, medium): Confirmed by reading: tools pinned in run: steps or with: inputs (grype-version v0.120.1, syft-version v1.54.1, helm v4.2.2, kind v0.33.0, the kubectl versions, the uvx versions, the ijhttp image by digest) are outside Dependabot's github-actions ecosystem, which updates uses: refs only. gates.md says they're bumped by hand together, but no ADR or PLAN-v2 decision accepts silent drift. Info.
+- **maintainer** (CONFIRMED, info, medium): Accurate observation: tool and image versions pinned inside run: steps and with: inputs (actionlint, hadolint, kubeconform, kyverno-cli and ijhttp digests, the uvx versions, grype, syft, helm, kind, kubectl) aren't covered by any Dependabot ecosystem in dependabot.yml. docs/gates.md says these are bumped by hand ('bump them together'), so it's known, but drift isn't recorded as an accepted consequence. Info: no defect today.
+- **impact** (CONFIRMED, info, small): True as stated: the actionlint, hadolint, kubeconform, kyverno-cli and ijhttp image digests, the uvx versions of zizmor, yamllint and ruff, and the grype, syft, helm, kind and kubectl versions live in run: strings and with: inputs, which Dependabot's github-actions ecosystem doesn't update. They are pinned (good) and drift silently (maintenance gap); grype's DB is fetched fresh, so detection doesn't age. Info.
+
+</details>
+
 ### F106
 
 **ADR 0005 says the untrusted llm job uploads with a read-only token; it holds pull-requests: write**
 
-- **Status:** ✅ fixed — #63: ADR 0005 says the job holds `pull-requests: write`
 - **Severity:** info (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `docs/adr/0005-audit-trail.md:30` · **area:** API, tests, docs
 - **Reported by:** `dd-17` (low, high confidence)
@@ -3014,11 +2803,54 @@ The job is rooted at tools/llm-gate/, so edits to scripts/check-ruleset-consiste
 
 </details>
 
+### F110
+
+**Friday-the-13th lists are compared ignoring order**
+
+- **Severity:** info (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `tests/CalendarGates.UnitTests/Friday13CalculatorTests.cs:17` · **area:** API, tests, docs
+- **Reported by:** `tr-21` (low, high confidence)
+
+TUnit's IsEquivalentTo ignores order by default (CollectionOrdering.Any, per the TUnit 1.75 XML docs). ListsFridaysThe13thInYear and Friday13Tests.DefaultsToTheCurrentYear both use it. Only the .http request for 2026 pins the order, and it runs against the container.
+
+*Failure scenario:* InYear returns the dates in reverse or hash order. The unit and integration tests still pass.
+
+*Suggested fix:* Use IsEquivalentTo(expected, CollectionOrdering.Matching), or compare the sequences in order.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, info, trivial): TUnit 1.75's own docs (TUnit.Assertions.xml) say IsEquivalentTo compares collections 'regardless of order (default)', so ListsFridaysThe13thInYear and Friday13Tests.DefaultsToTheCurrentYear would pass a reversed list. But calendar.http's 'friday13?year: exact values' (line 84) compares the 2026 list in order with JSON.stringify. That request runs in the required http-tests gate (and in k8s-smoke and the release smoke), so the scenario's regression can't merge. A weak assertion in one layer, so info.
+- **maintainer** (CONFIRMED, info, trivial): TUnit 1.75's IsEquivalentTo ignores order by default ('regardless of order (default)', CollectionOrdering.Any in its XML docs). Both Friday13CalculatorTests.ListsFridaysThe13thInYear and Friday13Tests.DefaultsToTheCurrentYear use it. The .http request for 2026 pins the order with JSON.stringify and runs in the required http-tests gate, so a reordering would still be caught there. Info.
+- **impact** (CONFIRMED, info, trivial): A scratch TUnit 1.75 test confirmed IsEquivalentTo passes for the same dates in reverse order, so ListsFridaysThe13thInYear and Friday13Tests.DefaultsToTheCurrentYear don't pin order. The required http-tests check does: calendar.http's 2026 request compares JSON.stringify of the dates, and any order regression in InYear would affect every year, so it can't merge; only where it's caught differs.
+
+</details>
+
+### F112
+
+**CurrentWeekUsesTodayInUtc can't tell UTC from local time**
+
+- **Severity:** info (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `tests/CalendarGates.IntegrationTests/WeekTests.cs:6` · **area:** API, tests, docs
+- **Reported by:** `tr-23` (low, medium confidence)
+
+FakeTimeProvider's local time zone defaults to UTC, and the fixed clock is at 10:00Z, far from midnight. A regression from GetUtcNow() to GetLocalNow() in EndpointHelpers.Today gives the same date, so the test checks the fake clock but not the UTC part its name claims.
+
+*Failure scenario:* Today() is switched to time.GetLocalNow(). In production on a non-UTC host near midnight, the week is off by a day. The test passes.
+
+*Suggested fix:* Set the clock to 2026-02-15T23:30Z (Sunday, ISO week 7) and Time.SetLocalTimeZone to a UTC+2 zone (Monday 01:30 locally), and expect week 7.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, info, trivial): FakeTimeProvider's local time zone defaults to UTC: its assembly references TimeZoneInfo.Utc for _localTimeZone and never TimeZoneInfo.Local. The base clock is at 10:00Z. If EndpointHelpers.Today switched to GetLocalNow(), it would return the same date, and CurrentWeekUsesTodayInUtc would still pass: the test pins the injected clock, not the UTC part of its name. The production impact is small, because the chiseled image has no tzdata and its local zone is UTC anyway. The risk is `just run` on a non-UTC machine near midnight.
+- **maintainer** (CONFIRMED, low, trivial): The fixed clock is 2026-02-12T10:00Z. Whatever the provider's local zone, GetUtcNow and GetLocalNow give the same date for every realistic zone at that hour, so the test can't catch a switch to local time, despite its name. It still catches the real-clock regression (DateTime.Now). Shipped images run in UTC (chiseled, no tzdata), so in practice this only matters on dev machines; low.
+- **impact** (CONFIRMED, info, trivial): FakeTimeProvider's local zone defaults to UTC (checked in a scratch test) and the clock is 10:00Z, so a switch from GetUtcNow to GetLocalNow in EndpointHelpers.Today would pass CurrentWeekUsesTodayInUtc. The image is chiseled with no tzdata, so local time is UTC in the container and such a regression would change nothing in production; it would show only under `just run` on a non-UTC host near midnight, and the code-review prompt names 'today is the UTC date' as a convention. A misleading test name more than a gap that bites.
+
+</details>
+
 ### F115
 
 **Header comments in checks.yaml and the workflows still describe the override label alone, a per-level model and a not-yet-required llm-eval**
 
-- **Status:** ✅ fixed — #63: the stale header comments in checks.yaml and llm-eval.yml
 - **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `tools/llm-gate/checks.yaml:3` · **area:** API, tests, docs
 - **Reported by:** `dd-30` (info, high confidence), `dd-38` (info, high confidence)
@@ -3047,11 +2879,32 @@ checks.yaml:3 says "(override: PR label `llm-override`)". Since ADR 0005 the lab
 
 </details>
 
+### F116
+
+**The api-contract prompt defines the contract as the /api routes and OpenAPI, leaving out /health, which checks.yaml gives as a reason to review Program.cs**
+
+- **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** small
+- **Where:** `.claude/commands/llm-api-contract.md:7` · **area:** API, tests, docs
+- **Reported by:** `api-21` (info, medium confidence)
+
+checks.yaml:20-21 adds Program.cs to api-contract's paths for 'the /api group, OpenAPI, /health'. /health is what the chart's readiness and liveness probes call (values.yaml probes.path), and scripts/wait-for-health.sh, http-tests, k8s-smoke, the release smoke and calendar.http ('health: 200 Healthy') depend on it. The prompt's contract paragraph names only the /api routes and the OpenAPI document, so a reviewer following it won't treat a change to the health route or its body as a contract change. The deterministic gates still catch a broken path, as a health-wait timeout.
+
+*Failure scenario:* A PR maps the health checks to /healthz in Program.cs. api-contract runs, because Program.cs changed, but reports nothing. The breakage surfaces only as an http-tests or k8s-smoke timeout.
+
+*Suggested fix:* Add `/health` to the contract paragraph of llm-api-contract.md: status 200, body 'Healthy', used by the probes and the smoke tests.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, info, small): llm-api-contract.md:7-10 defines the contract as the /api routes, their JSON and status codes, and the OpenAPI document. checks.yaml:20-21 says api-contract watches Program.cs partly because of /health, which the chart's probes, scripts/wait-for-health.sh and calendar.http's first request depend on. Required deterministic gates still catch a /health change (http-tests waits on /health and asserts 'Healthy', and k8s-smoke has the probes), so the gap is only that an advisory check won't explain the break. A prompt edit goes through llm-eval, hence small.
+- **maintainer** (CONFIRMED, info, trivial): checks.yaml:20-21 gives 'the /api group, OpenAPI, /health' as the reason Program.cs is in api-contract's paths. llm-api-contract.md defines the contract as the /api routes and the OpenAPI document only. The chart probes, wait-for-health.sh, http-tests, k8s-smoke and the release smoke all rely on /health and catch a broken path deterministically, so the gap only affects the advisory check. A prompt edit is a gate change; ac-001 is its only eval case.
+- **impact** (CONFIRMED, info, small): checks.yaml:20-21 adds Program.cs to api-contract's paths for 'the /api group, OpenAPI, /health', but llm-api-contract.md's contract paragraph names only the /api routes and the OpenAPI document. api-contract is advisory, and a moved or broken /health fails http-tests (wait-for-health), the k8s-smoke probes and the release smoke deterministically, so the omission costs a comment, not a missed break; the prompt edit has to pass llm-eval.
+
+</details>
+
 ### F119
 
 **ADR 0004's amendment names a job, `llm-plan`, that no longer exists**
 
-- **Status:** ✅ fixed — #63: ADR 0004 names the `triage` job, not `llm-plan`
 - **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `docs/adr/0004-gate-tooling-from-base-branch.md:40` · **area:** API, tests, docs
 - **Reported by:** `dd-24` (info, high confidence)
@@ -3074,7 +2927,6 @@ checks.yaml:3 says "(override: PR label `llm-override`)". Since ADR 0005 the lab
 
 **ADR 0009's job order and release.yml's header comment leave out admission-smoke**
 
-- **Status:** ✅ fixed — #63: ADR 0009 and release.yml's header include `admission-smoke`
 - **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `docs/adr/0009-build-once-attest-promote.md:18` · **area:** API, tests, docs
 - **Reported by:** `dd-25` (info, high confidence)
@@ -3097,7 +2949,6 @@ ADR 0009:18-26 says "release.yml runs these jobs in order" (verify ... publish, 
 
 **WRITEUP's cr-def4 doesn't match the finding the audit log records under that id**
 
-- **Status:** ✅ fixed — #63: WRITEUP explains what `cr-def4` records
 - **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `docs/WRITEUP.md:147` · **area:** API, tests, docs
 - **Reported by:** `dd-26` (info, medium confidence)
@@ -3121,7 +2972,6 @@ WRITEUP: "a re-run could move the X.Y.Z tag to new bytes (cr-def4)". The audit l
 
 **The turnaround row's unlabelled "1.0 / 2.3 min" is code-review's figure, not the overall one**
 
-- **Status:** ✅ fixed — #63: the turnaround row is labelled per check
 - **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `docs/WRITEUP.md:67` · **area:** API, tests, docs
 - **Reported by:** `dd-27` (info, medium confidence)
@@ -3144,7 +2994,6 @@ I recomputed `llm-gate metrics` offline from origin/audit-log as of 2026-10-17T1
 
 **WRITEUP §5 says high-risk PRs "get Opus", in the present tense, though #58 switched them back to Sonnet**
 
-- **Status:** ✅ fixed — #63: past tense, with #58 named
 - **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `docs/WRITEUP.md:160` · **area:** API, tests, docs
 - **Reported by:** `dd-28` (info, high confidence)
@@ -3167,7 +3016,6 @@ I recomputed `llm-gate metrics` offline from origin/audit-log as of 2026-10-17T1
 
 **"To regenerate (costs API credits)" includes `just metrics`, which spends nothing**
 
-- **Status:** ✅ fixed — #63: `just metrics` is marked as costing nothing
 - **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `docs/WRITEUP.md:107` · **area:** API, tests, docs
 - **Reported by:** `dd-29` (info, high confidence)
@@ -3190,7 +3038,6 @@ I recomputed `llm-gate metrics` offline from origin/audit-log as of 2026-10-17T1
 
 **values-kind.yaml calls itself kind-local's, but `just k8s-load`/`k8s-deploy` now target the project cluster**
 
-- **Status:** ✅ fixed — #63: `values-kind.yaml` says it serves either cluster
 - **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `deploy/helm/calendar-gates/values-kind.yaml:1` · **area:** API, tests, docs
 - **Reported by:** `dd-31` (info, high confidence)
@@ -3213,7 +3060,6 @@ I recomputed `llm-gate metrics` offline from origin/audit-log as of 2026-10-17T1
 
 **PLAN-v2's Status table says ADR 0008 records the rename rule; ADR 0008 never mentions renames**
 
-- **Status:** ✅ fixed — #63: PLAN-v2 points at where the rename rule really lives
 - **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `docs/PLAN-v2.md:28` · **area:** API, tests, docs
 - **Reported by:** `dd-32` (info, high confidence)
@@ -3236,7 +3082,6 @@ Row 17 says "renames rated by both paths" is recorded in ADR 0008. ADR 0008 (rul
 
 **gate-debugger still says docs/gates.md has details "when it exists"**
 
-- **Status:** ✅ fixed — #63: gate-debugger no longer says "when it exists"
 - **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `.claude/agents/gate-debugger.md:13` · **area:** API, tests, docs
 - **Reported by:** `dd-33` (info, high confidence)
@@ -3255,11 +3100,32 @@ docs/gates.md exists and is the reference for every gate's failure, fix and over
 
 </details>
 
+### F128
+
+**The docs-drift gate's own list of docs leaves out the tool READMEs and command files, where drift collects**
+
+- **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** small
+- **Where:** `.claude/commands/llm-docs-drift.md:6` · **area:** API, tests, docs
+- **Reported by:** `dd-34` (info, medium confidence)
+
+The prompt defines the documentation as README.md, AGENTS.md, CLAUDE.md, docs/, justfile recipe comments and config-file headers. It leaves out tools/llm-gate/README.md, tools/llm-gate/evals/README.md and .claude/commands/*.md (gate-drill, new-endpoint) and .claude/agents/. Those are the files where this review found stale CLI usage (dd-15), stale drill routing (dd-12) and a missing scaffold step (dd-22). A prompt change is a gate change (llm-eval and the ADR 0004 rule apply).
+
+*Failure scenario:* A PR adding an llm-gate subcommand is never flagged for the missing README entry.
+
+*Suggested fix:* Add "tools/llm-gate/README.md and evals/README.md, .claude/commands/ and .claude/agents/" to the list.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, info, small): llm-docs-drift.md:6-8 lists README.md, AGENTS.md, CLAUDE.md, docs/, justfile comments and config headers, but not tools/llm-gate/README.md, evals/README.md, .claude/commands/ or .claude/agents/. This review found drift in exactly those places (F090, F103, F108, F127). The effect is limited: docs-drift runs on the api engine with only the diff, so the list mainly tells it which docs to suggest. A prompt change goes through llm-eval, hence small.
+- **maintainer** (CONFIRMED, info, trivial): llm-docs-drift.md:6-8 defines the documentation as README.md, AGENTS.md, CLAUDE.md, docs/, the justfile comments and config-file headers. tools/llm-gate/README.md, evals/README.md, .claude/commands and .claude/agents aren't named, and this review found drift in exactly those files (F090, F103, F108, F127). Editing the prompt is a gate change, but docs-drift has no eval cases, so llm-eval costs nothing for it.
+- **impact** (CONFIRMED, info, small): llm-docs-drift.md:6-8 defines the documentation as README.md, AGENTS.md, CLAUDE.md, docs/, justfile recipe comments and config-file headers, leaving out tools/llm-gate/README.md, evals/README.md, .claude/commands/ and .claude/agents/, where several drift items in this batch sit (F090, F103, F108, F127). A suggestion for an advisory check; the prompt change has to pass llm-eval.
+
+</details>
+
 ### F129
 
 **"Lint tool versions are pinned in both ci.yml and the lint recipe" holds for only some of the tools**
 
-- **Status:** ✅ fixed — #63: gates.md separates the pinned tools from the system ones
 - **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `docs/gates.md:34` · **area:** API, tests, docs
 - **Reported by:** `dd-35` (info, high confidence)
@@ -3282,7 +3148,6 @@ The justfile pins zizmor 1.30.1, yamllint 1.38.0, ruff 0.16.10 and kyverno 1.19.
 
 **AGENTS.md says `just ci` runs "every deterministic gate"; http-tests, grype and k8s-smoke aren't in it**
 
-- **Status:** ✅ fixed — #63: AGENTS.md says what `just ci` actually runs
 - **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `AGENTS.md:26` · **area:** API, tests, docs
 - **Reported by:** `dd-36` (info, high confidence)
@@ -3305,7 +3170,6 @@ The justfile pins zizmor 1.30.1, yamllint 1.38.0, ruff 0.16.10 and kyverno 1.19.
 
 **The workflow-review prompt attributes workflow rules to AGENTS.md; they live in docs/PLAN.md**
 
-- **Status:** ✅ fixed — #63: the prompt points at docs/PLAN.md §11
 - **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `.claude/commands/llm-workflow-review.md:7` · **area:** API, tests, docs
 - **Reported by:** `dd-37` (info, high confidence)
@@ -3328,7 +3192,6 @@ The justfile pins zizmor 1.30.1, yamllint 1.38.0, ruff 0.16.10 and kyverno 1.19.
 
 **No doc or recipe explains how to create the Gate health issue and set GATE_HEALTH_ISSUE**
 
-- **Status:** ✅ fixed — #63: docs/metrics.md says how to create the issue and set the variable
 - **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `docs/metrics.md:6` · **area:** API, tests, docs
 - **Reported by:** `dd-39` (info, medium confidence)
@@ -3355,7 +3218,6 @@ metrics.md and metrics.yml need a pinned issue whose number is in the repository
 
 **Required checks are pinned to the GitHub Actions app, not to the jobs that produce them, while three PR jobs hold checks: write next to PR-controlled code**
 
-- **Status:** ⚪ unverifiable — settling it means building the bypass it describes
 - **Severity:** medium (reviewers: medium) · **outcome:** plausible · **fix cost:** small · **needs a CI repro**
 - **Where:** `.github/rulesets/main.json:30` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `cr-ops-06` (medium, low confidence)
@@ -3382,7 +3244,6 @@ Real, but an ADR or PLAN-v2's Status already accepts exactly this consequence.
 
 **Any collaborator PR can read ANTHROPIC_API_KEY, because PR-supplied code and workflows run with it**
 
-- **Status:** accepted
 - **Severity:** low (reviewers: low) · **outcome:** accepted · **fix cost:** medium
 - **Where:** `.github/workflows/llm-eval.yml:94` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `sec-08` (low, high confidence)
@@ -3406,7 +3267,6 @@ Real, but an ADR or PLAN-v2's Status already accepts exactly this consequence.
 
 **Admission checks that an LLM-review attestation exists, not what it says**
 
-- **Status:** accepted
 - **Severity:** low (reviewers: low) · **outcome:** accepted · **fix cost:** small
 - **Where:** `deploy/policies/base/llm-review.yaml:45` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `sec-11` (low, high confidence)
@@ -3430,7 +3290,6 @@ Real, but an ADR or PLAN-v2's Status already accepts exactly this consequence.
 
 **The llm-eval comment job posts an artifact written by the PR's own code without validating it**
 
-- **Status:** accepted
 - **Severity:** info (reviewers: low) · **outcome:** accepted · **fix cost:** small
 - **Where:** `.github/workflows/llm-eval.yml:163` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `sec-12` (low, high confidence)
@@ -3457,7 +3316,6 @@ Kept for the record: the finding, and why the council turned it down.
 
 **HTTP status errors (API engine) and the Agent SDK's ResultError/ClaudeSDKError conversions are untested**
 
-- **Status:** rejected
 - **Severity:** info (reviewers: low) · **outcome:** rejected · **fix cost:** trivial
 - **Where:** `tools/llm-gate/src/llm_gate/engines/api_engine.py:60` · **area:** llm-gate and review prompts
 - **Reported by:** `tr-18` (low, high confidence)
@@ -3475,7 +3333,6 @@ Kept for the record: the finding, and why the council turned it down.
 
 **workflow-review only sees .github/**, not the code the trusted workflows run**
 
-- **Status:** rejected
 - **Severity:** info (reviewers: info) · **outcome:** rejected · **fix cost:** trivial
 - **Where:** `tools/llm-gate/checks.yaml:25` · **area:** llm-gate and review prompts
 - **Reported by:** `wr-22` (info, high confidence)
@@ -3492,7 +3349,6 @@ Kept for the record: the finding, and why the council turned it down.
 
 **just release (and release.yml's verify job) accept versions that Helm rejects, so the release fails in publish after the immutable tag, attestations and image tag exist**
 
-- **Status:** rejected
 - **Severity:** info (reviewers: medium) · **outcome:** rejected · **fix cost:** trivial
 - **Where:** `justfile:276` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `cr-ops-04` (medium, high confidence)
@@ -3510,7 +3366,6 @@ Kept for the record: the finding, and why the council turned it down.
 
 **llm-review has no `gates`-style aggregator, so a failed `triage` job decides the fate of two required checks**
 
-- **Status:** rejected
 - **Severity:** info (reviewers: medium) · **outcome:** rejected · **fix cost:** small
 - **Where:** `.github/workflows/llm-review.yml:174` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `sec-06` (medium, medium confidence)
@@ -3528,7 +3383,6 @@ Kept for the record: the finding, and why the council turned it down.
 
 **zizmor (offline, default and auditor personas), actionlint, yamllint and shellcheck: every hit checked, none needs action**
 
-- **Status:** rejected
 - **Severity:** info (reviewers: info) · **outcome:** rejected · **fix cost:** trivial
 - **Where:** `.github/zizmor.yml:4` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `wr-20` (info, high confidence)
@@ -3545,7 +3399,6 @@ Kept for the record: the finding, and why the council turned it down.
 
 **/api/week/{date} and /api/workdays accept years 1 to 1582, which every year endpoint rejects as unsupported**
 
-- **Status:** rejected
 - **Severity:** info (reviewers: low) · **outcome:** rejected · **fix cost:** trivial
 - **Where:** `src/CalendarGates.Api/Endpoints/EndpointHelpers.cs:13` · **area:** API, tests, docs
 - **Reported by:** `api-08` (low, high confidence), `cr-api-04` (info, medium confidence)
@@ -3562,7 +3415,6 @@ Kept for the record: the finding, and why the council turned it down.
 
 **A non-numeric or Int32-overflowing year is 404 on /api/easter/{year:int} and /api/leap/{year:int}, but 400 elsewhere**
 
-- **Status:** rejected
 - **Severity:** info (reviewers: low) · **outcome:** rejected · **fix cost:** trivial
 - **Where:** `src/CalendarGates.Api/Endpoints/EasterEndpoints.cs:13` · **area:** API, tests, docs
 - **Reported by:** `api-05` (low, high confidence), `cr-api-05` (info, high confidence)
@@ -3579,7 +3431,6 @@ Kept for the record: the finding, and why the council turned it down.
 
 **The year is a path segment on easter and leap but a query parameter on friday13, and unknown query parameters are silently ignored**
 
-- **Status:** rejected
 - **Severity:** info (reviewers: low) · **outcome:** rejected · **fix cost:** trivial
 - **Where:** `src/CalendarGates.Api/Endpoints/Friday13Endpoints.cs:17` · **area:** API, tests, docs
 - **Reported by:** `api-09` (low, high confidence)
@@ -3596,7 +3447,6 @@ Kept for the record: the finding, and why the council turned it down.
 
 **The length of /api/version's commit depends on how the service was built: 40 characters under dotnet run, 7 in CI and release images**
 
-- **Status:** rejected
 - **Severity:** info (reviewers: info) · **outcome:** rejected · **fix cost:** trivial
 - **Where:** `src/CalendarGates.Api/Endpoints/VersionEndpoints.cs:32` · **area:** API, tests, docs
 - **Reported by:** `api-22` (info, medium confidence)
@@ -3613,7 +3463,6 @@ Kept for the record: the finding, and why the council turned it down.
 
 **The OpenAPI document's info.version is always 1.0.0, and the API has no version of its own**
 
-- **Status:** rejected
 - **Severity:** info (reviewers: info) · **outcome:** rejected · **fix cost:** trivial
 - **Where:** `src/CalendarGates.Api/Program.cs:8` · **area:** API, tests, docs
 - **Reported by:** `api-24` (info, high confidence)
@@ -3630,7 +3479,6 @@ Kept for the record: the finding, and why the council turned it down.
 
 **The 'today' requests check shape but not that the date is today**
 
-- **Status:** rejected
 - **Severity:** info (reviewers: info) · **outcome:** rejected · **fix cost:** trivial
 - **Where:** `http/calendar.http:14` · **area:** API, tests, docs
 - **Reported by:** `tr-30` (info, high confidence)
