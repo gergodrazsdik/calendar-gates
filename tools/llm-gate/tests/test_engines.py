@@ -1,5 +1,7 @@
 """Engines against stubbed SDKs: request shape and how each failure becomes an EngineError."""
 
+import asyncio
+import json
 from collections.abc import AsyncIterator
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,7 +14,7 @@ from conftest import make_check
 
 from llm_gate.diff import Diff
 from llm_gate.engines import EngineError, ReviewRequest
-from llm_gate.engines.agent_engine import READ_ONLY_TOOLS, AgentEngine
+from llm_gate.engines.agent_engine import READ_ONLY_TOOLS, AgentEngine, ToolCallLog
 from llm_gate.engines.api_engine import FALLBACK_BETA, ApiEngine, estimate_cost
 from llm_gate.models import Review
 
@@ -167,13 +169,22 @@ def test_agent_engine_options_are_read_only_and_load_nothing(tmp_path: Path) -> 
     options = AgentEngine().options(request(tmp_path, max_turns=7, budget_usd=0.25))
 
     assert options.tools == READ_ONLY_TOOLS
-    assert options.allowed_tools == READ_ONLY_TOOLS
+    # Path-scoped, not bare: a whole-tool "Read" allow rule outranks the CLI's path check and let
+    # the reviewer read anything the machine could (F003). Grep/Glob path rules are inert, so those
+    # two stay bare and the settings below are what fences them.
+    assert options.allowed_tools == ["Read(./**)", "Grep", "Glob"]
+    assert "Read" not in options.allowed_tools
     assert {"Bash", "Write", "Edit", "WebFetch"} <= set(options.disallowed_tools)
     assert options.permission_mode == "dontAsk"
     # Nothing from the reviewed repository or the machine: no CLAUDE.md, commands, hooks, ...
     assert options.setting_sources == []
     assert options.skills == []
-    assert options.settings == '{"disableAllHooks": true}'
+    settings = json.loads(options.settings or "{}")
+    assert settings["disableAllHooks"] is True
+    assert settings["permissions"]["blockReadsOutsideWorkingDirectories"] is True
+    assert "Read(//proc/**)" in settings["permissions"]["deny"]
+    # The checkout itself lives under /home/runner/work in CI, and a deny rule beats everything.
+    assert not any("//home" in rule for rule in settings["permissions"]["deny"])
     assert options.mcp_servers == {}
     assert "strict-mcp-config" in options.extra_args
     assert options.env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"
@@ -267,3 +278,199 @@ def test_an_unknown_model_has_no_estimate() -> None:
     """No guess for a model the table doesn't price: the metrics and the eval budget would be
     quietly wrong instead of visibly absent."""
     assert estimate_cost("claude-not-a-model", 1000, 200) is None
+
+
+# --- the read fence (F003) -----------------------------------------------------------------------
+# The reviewer's own process environment holds the API key, so "it may read the checkout" has to be
+# enforced, not assumed. The CLI's blockReadsOutsideWorkingDirectories is the primary control (its
+# behaviour lives in a compiled binary, so test_live.py checks that end); these tests cover the
+# in-process backstop, which must deny anything it can't parse and must never raise.
+
+
+def hook_call(
+    log: ToolCallLog, tool: str, tool_input: object, use: str | None = "toolu_1"
+) -> dict[str, Any]:
+    data = {"hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": tool_input}
+    return dict(asyncio.run(log.hook(data, use, {"signal": None})))  # type: ignore[arg-type]
+
+
+def denied(output: dict[str, Any]) -> bool:
+    decision = output.get("hookSpecificOutput", {}).get("permissionDecision")
+    return bool(decision == "deny")
+
+
+@pytest.mark.parametrize(
+    ("tool", "tool_input"),
+    [
+        ("Read", {"file_path": "/proc/self/environ"}),  # where the API key is
+        ("Read", {"file_path": "../../etc/passwd"}),  # relative, escaping
+        ("Read", {"file_path": "src/../../../etc/passwd"}),  # escaping after a detour inside
+        ("Grep", {"pattern": "ANTHROPIC", "path": "/proc/self"}),  # Grep returns content too
+        # Glob takes its search directory from the *pattern* when no path is given, so a path-only
+        # fence lets this one through and it lists the environment of every process.
+        ("Glob", {"pattern": "/proc/*/environ"}),
+        ("Glob", {"pattern": "**/*.cs", "path": "/etc"}),
+    ],
+)
+def test_the_hook_denies_a_read_outside_the_checkout(
+    tmp_path: Path, tool: str, tool_input: dict[str, Any]
+) -> None:
+    log = ToolCallLog(tmp_path)
+
+    assert denied(hook_call(log, tool, tool_input))
+
+    assert log.denied == 1
+    assert [c.denied for c in log.calls] == [True]  # refused, and on the record
+
+
+def test_the_hook_allows_a_read_inside_the_checkout(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "A.cs").write_text("class A {}\n")
+    log = ToolCallLog(tmp_path)
+
+    assert hook_call(log, "Read", {"file_path": f"{tmp_path}/src/A.cs"}) == {}
+    assert hook_call(log, "Read", {"file_path": "src/A.cs"}) == {}  # relative to the root
+    assert hook_call(log, "Glob", {"pattern": "**/*.cs"}) == {}
+
+    assert log.denied == 0
+    assert [c.input for c in log.calls] == [
+        "file_path=src/A.cs",
+        "file_path=src/A.cs",
+        "pattern=**/*.cs",
+    ]
+
+
+def test_the_hook_denies_a_read_through_a_symlink_committed_in_the_checkout(
+    tmp_path: Path,
+) -> None:
+    """git stores a symlink as one file (mode 120000) with any target the PR likes, so textual
+    normalisation is not enough on its own."""
+    (tmp_path / "evil").symlink_to("/etc")
+    log = ToolCallLog(tmp_path)
+
+    assert denied(hook_call(log, "Read", {"file_path": f"{tmp_path}/evil/hostname"}))
+
+
+def test_the_hook_allows_a_read_under_a_root_that_is_itself_a_symlink(tmp_path: Path) -> None:
+    """An eval run hands the engine a temporary directory, and `$TMPDIR` is a symlink on some
+    machines: comparing resolved paths with an unresolved root would deny every read there."""
+    real = tmp_path / "real"
+    (real / "src").mkdir(parents=True)
+    (real / "src" / "A.cs").write_text("class A {}\n")
+    link = tmp_path / "link"
+    link.symlink_to(real)
+    log = ToolCallLog(link)
+
+    assert hook_call(log, "Read", {"file_path": f"{link}/src/A.cs"}) == {}
+    assert [c.input for c in log.calls] == ["file_path=src/A.cs"]  # still repository-relative
+
+
+@pytest.mark.parametrize(
+    "tool_input",
+    [
+        {},
+        {"file_path": None},
+        {"file_path": ""},
+        {"file_path": ["/etc/passwd"]},
+        {"file_path": "a\x00b"},
+    ],
+)
+def test_the_hook_denies_a_tool_input_it_cannot_make_sense_of(
+    tmp_path: Path, tool_input: object
+) -> None:
+    """Including a Read with no file_path at all: unparseable is refused, never waved through."""
+    assert denied(hook_call(ToolCallLog(tmp_path), "Read", tool_input))
+
+
+def test_the_hook_denies_instead_of_raising_when_a_path_cannot_be_resolved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A callback that raises yields no decision and the call proceeds, so the fence would be gone
+    exactly when the filesystem is strange."""
+
+    def boom(self: Path, strict: bool = False) -> Path:
+        raise OSError("ELOOP")
+
+    monkeypatch.setattr(Path, "resolve", boom)
+
+    assert denied(hook_call(ToolCallLog(tmp_path), "Read", {"file_path": "src/A.cs"}))
+
+
+def test_the_hook_denies_an_unknown_tool_and_leaves_structured_output_alone(
+    tmp_path: Path,
+) -> None:
+    log = ToolCallLog(tmp_path)
+
+    # LSP reads `filePath`, a key this gate has never heard of; whatever the tool is, it isn't one
+    # of the three the review runs with.
+    assert denied(hook_call(log, "LSP", {"filePath": "/etc/passwd"}))
+    assert hook_call(log, "StructuredOutput", {"summary": "raw model output", "findings": []}) == {}
+
+    assert log.denied == 1
+    assert [(c.tool, c.denied) for c in log.calls] == [("other", True)]
+
+
+def test_denied_reads_are_counted_on_the_result(tmp_path: Path) -> None:
+    async def query(**kwargs: Any) -> AsyncIterator[object]:
+        (matcher,) = kwargs["options"].hooks["PreToolUse"]
+        for use, (name, tool_input) in enumerate(
+            [
+                ("Read", {"file_path": "/proc/self/environ"}),
+                ("Read", {"file_path": f"{tmp_path}/x.cs"}),
+                ("Grep", {"pattern": "KEY", "path": "/proc"}),
+            ]
+        ):
+            data = {"hook_event_name": "PreToolUse", "tool_name": name, "tool_input": tool_input}
+            await matcher.hooks[0](data, f"toolu_{use}", {"signal": None})
+        yield init()
+        yield result_message()
+
+    out = AgentEngine(query).review(request(tmp_path))
+
+    assert out.denied_reads == 2
+    assert [c.denied for c in out.tool_calls] == [True, False, True]
+
+
+def test_a_denial_the_cli_made_itself_is_recorded_once(tmp_path: Path) -> None:
+    """The CLI's own fence reports itself in a system message with a reason code; the engine used to
+    discard every message but the result, so a refused read left no trace. The same refusal is also
+    in the result's authoritative list, and must not be counted twice."""
+    denial = {
+        "tool_name": "Read",
+        "tool_use_id": "toolu_9",
+        "decision_reason_code": "outside_reads_blocked",
+    }
+    query = fake_query(
+        init(),
+        SystemMessage(subtype="permission_denied", data=denial),
+        result_message(permission_denials=[denial]),
+    )
+
+    out = AgentEngine(query).review(request(tmp_path))
+
+    assert out.denied_reads == 1
+    (call,) = out.tool_calls
+    assert (call.tool, call.denied) == ("Read", True)
+    assert "outside_reads_blocked" in call.input
+
+
+def test_a_review_whose_every_read_was_denied_still_returns(tmp_path: Path) -> None:
+    """A denial must not turn into an EngineError: that would fail the check closed, which is safe
+    but hands any PR a way to make code-review error at will. The diff is in the prompt already."""
+
+    async def query(**kwargs: Any) -> AsyncIterator[object]:
+        (matcher,) = kwargs["options"].hooks["PreToolUse"]
+        for use in range(3):
+            data = {
+                "hook_event_name": "PreToolUse",
+                "tool_name": "Read",
+                "tool_input": {"file_path": "/proc/self/environ"},
+            }
+            await matcher.hooks[0](data, f"toolu_{use}", {"signal": None})
+        yield init()
+        yield result_message()
+
+    out = AgentEngine(query).review(request(tmp_path))
+
+    assert out.review == REVIEW
+    assert out.denied_reads == 3

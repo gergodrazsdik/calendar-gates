@@ -43,7 +43,7 @@ without failing; an override without a reason is not honoured), `LLM_GATE_PR` an
 |---|---|---|
 | SDK | `anthropic` (Messages API) | `claude-agent-sdk` (Claude Code as a library) |
 | Input | the prompt as system prompt, the diff inline | the prompt text with the diff inline, run in `--repo` |
-| Context | the diff only | the diff plus whatever it reads (Read, Grep, Glob; nothing else). Loads no settings, `CLAUDE.md`, commands, skills, hooks or MCP servers from the repository (`setting_sources=[]`) |
+| Context | the diff only | the diff plus whatever it reads **inside `--repo`** (Read, Grep, Glob, fenced to the checkout; a read outside it is refused and counted). Loads no settings, `CLAUDE.md`, commands, skills, hooks or MCP servers from the repository (`setting_sources=[]`) |
 | Output | `messages.parse(output_format=Review)` | `output_format` JSON schema, `structured_output` |
 | Cost | one request | several turns, capped by `budget_usd` and `max_turns` |
 
@@ -56,8 +56,8 @@ policy turns into a pass or a fail according to `on_error`.
 Every `run` appends one `gate_run` record per engine (plus an `override` record when one is
 honoured) to `.llm-gate/audit.jsonl`, schema `audit/v1` ([ADR 0005](../../docs/adr/0005-audit-trail.md)).
 The record has hashes of the prompt, config and diff, the gate commit, usage and cost, the agent's
-tool calls (redacted summaries), the findings' ids and titles, and the verdict. It never holds the
-diff or the raw model output. Finding ids (`cr-3f2a`: check initials plus a hash of check, file and
+tool calls (redacted summaries, each flagged if it was refused), how many reads were refused, the
+findings' ids and titles, and the verdict. It never holds the diff or the raw model output. Finding ids (`cr-3f2a`: check initials plus a hash of check, file and
 title) are shown in the sticky comment, so people can refer to a finding.
 
 | Command | Side | |

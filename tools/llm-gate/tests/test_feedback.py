@@ -4,9 +4,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from conftest import finding, result
 
 from llm_gate import audit, feedback
 from llm_gate.cli import main
+from llm_gate.models import Severity, finding_id
+from llm_gate.report import render_markdown
+from llm_gate.runner import RunRecord
 
 NOW = datetime(2026, 10, 16, 12, 0, tzinfo=UTC)
 CONTEXT = audit.RunContext(repo="owner/repo", workflow_run_id=5, run_attempt=1)
@@ -187,20 +191,40 @@ def test_comments_outside_prs_and_bad_logins_do_nothing(audit_dir: Path) -> None
 # --- the sticky comment ---
 
 
-COMMENT = """<!-- llm-gate:code-review -->
-| Severity | ID | Location | Finding |
-|---|---|---|---|
-| 🔴 high **(blocking)** | `cr-1705` | `src/A.cs:15` | Off by one |
-| 🟡 low | `cr-0001` | `src/A.cs:3` | Name |
-"""
+HIGH = finding(Severity.HIGH, line=15).model_copy(update={"title": "Off by one"})
+LOW = finding(Severity.LOW, line=3).model_copy(update={"title": "Name"})
+
+
+def comment() -> str:
+    """The sticky comment as the gate actually renders it. Built from `render_markdown` rather than
+    written out here, so marking a row can't keep working against a comment shape the renderer no
+    longer produces."""
+    run = result(HIGH, LOW)
+    record = RunRecord(
+        check="code-review",
+        mode="blocking",
+        fail_on=Severity.HIGH,
+        engine=run.engine,
+        model=run.model,
+        verdict="fail",
+        exit_code=1,
+        reason="1 finding(s) at or above high",
+        result=run,
+        blocking=[HIGH],
+    )
+    return render_markdown(record)
+
+
+COMMENT = comment()
+HIGH_ID = finding_id("code-review", HIGH)
 
 
 def test_mark_false_positive() -> None:
-    marked = feedback.mark_false_positive(COMMENT, "cr-1705", "alice")
+    marked = feedback.mark_false_positive(COMMENT, HIGH_ID, "alice")
     assert marked is not None
     assert "| Off by one _(false positive: @alice)_ |" in marked
     assert "| Name |" in marked
-    assert feedback.mark_false_positive(marked, "cr-1705", "alice") is None  # once
+    assert feedback.mark_false_positive(marked, HIGH_ID, "alice") is None  # once
     assert feedback.mark_false_positive(COMMENT, "cr-ffff", "alice") is None
 
 
@@ -278,8 +302,7 @@ def test_cli_mark(
     body.write_text(COMMENT)
 
     assert (
-        main(["feedback", "mark", "--body-file", str(body), "--finding", "cr-1705", "--by", "a"])
-        == 0
+        main(["feedback", "mark", "--body-file", str(body), "--finding", HIGH_ID, "--by", "a"]) == 0
     )
     assert "_(false positive: @a)_" in capsys.readouterr().out
     assert (

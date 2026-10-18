@@ -52,6 +52,11 @@ missed bugs or annoyed authors later.
   threshold less sensitive to one case.
 - The cases are only as good as their coverage: a reviewer can score well here and miss a new
   kind of bug. Confirmed false positives (Phase 16) and new drill bugs should become cases.
+- **Amended 2026-10-18: an expectation may be file-level** (`lines: null`). A case whose right
+  answer is "nothing tests this behaviour" is about a file, and the models report it with a line one
+  repeat and without one the next; the matcher required a line, so `te-001` scored 0.67 in CI on an
+  unchanged prompt. File-level matching is weaker — any finding in that file at or above the
+  severity counts — so it is for cases whose answer genuinely has no line, not for planted bugs.
 - **Amended 2026-10-18 (F037): every check has at least one scored case.** `llm-eval` takes its
   check list from the cases, so a check no case names was never evaluated: `docs-drift` had no case
   at all, and `test-review` had only an fp-regression case, whose baseline recall was `null`. Both

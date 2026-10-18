@@ -31,13 +31,13 @@ A review of the whole repository at `43ec3c2` (2026-10-17), after PLAN-v2 was wr
 | accepted | 0 | 0 | 0 | 2 | 1 | 3 |
 | rejected | 0 | 0 | 0 | 0 | 11 | 11 |
 
-**Fixed so far: 72 of 119** (3 partial, 43 open, 1 unverifiable). By severity:
+**Fixed so far: 74 of 119** (3 partial, 41 open, 1 unverifiable). By severity:
 
 | Status | critical | high | medium | low | info | total |
 |---|---|---|---|---|---|---|
-| ✅ fixed | 0 | 2 | 14 | 37 | 19 | 72 |
+| ✅ fixed | 0 | 2 | 15 | 38 | 19 | 74 |
 | 🟡 partial | 0 | 0 | 1 | 2 | 0 | 3 |
-| open | 0 | 0 | 1 | 35 | 7 | 43 |
+| open | 0 | 0 | 0 | 34 | 7 | 41 |
 | ⚪ unverifiable | 0 | 0 | 1 | 0 | 0 | 1 |
 
 Each fix names the PR that made it. The status column is maintained by hand as fixes land; the verdicts and severities below are the review's own and are not revised.
@@ -118,7 +118,12 @@ exactly the bypass it describes, so it was not built. What is confirmed without 
 `http-tests` and `k8s-smoke` hold `checks: write` while running PR code. Moving test reporting to
 a job that runs no PR code removes the question.
 
-**Since the review (2026-10-18).** Thirteen things changed under this document:
+**Since the review (2026-10-18).** Fourteen things changed under this document:
+- **#77** closed the last medium and its twin: the agent reviewer's reads are fenced to the
+  checkout, refusals are counted in the record and named in the comment (F003), and everything the
+  model writes is redacted and stripped of link, image and tag markup before it is published
+  (F029). The fence was verified against the real CLI, which refused `/etc/hostname` through the
+  hook and `/proc/self/environ` through its own settings.
 - **#76** gave `docs-drift` and `test-review` a scored case each, so neither prompt can be cut
   down to "report nothing" and still pass `llm-eval` (F037).
 - **#75** made the override record follow the outcome instead of the label (F025) and put the
@@ -127,7 +132,7 @@ a job that runs no PR code removes the question.
   trusted-only record types, both audit size limits, the eval forbid rules and the metrics
   (F004's neighbours, ten items in all, each named on its own Status line).
 - **#73** pinned uv itself (F052) and made a malformed `?year=` the same ValidationProblem in both
-  environments (F081), leaving F003 as the last open medium.
+  environments (F081). F003 was the last open medium until #77; nothing above low is open now.
 - **#71** made the approval attestation required, proven on the project cluster: v0.3.2 admitted,
   v0.3.1 denied by name, an image volume denied. That test also found that the F058 readiness wait
   from #63 never matched Kyverno's actual condition, which #71 fixes.
@@ -179,7 +184,6 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 |---|---|---|---|---|---|---|---|
 | [F001](#f001) | ✅ fixed | high | high | A | A PR's own .gitattributes can hide its changes from every LLM reviewer and from triage's size rule | small | S:C/high M:C/high I:C/medium |
 | [F002](#f002) | ✅ fixed | high | high | A | Review results restored from the Actions cache are trusted unverified, and other workflows of the same PR can write that cache | medium | S:C/high M:C/high I:C/medium |
-| [F003](#f003) | open | medium | high | A | The agent reviewer's file reads are not fenced to the reviewed checkout, and its output is published unredacted | small | S:P/medium M:C/medium I:C/low |
 | [F012](#f012) | 🟡 partial | medium | medium | A | Cache keys ignore llm-gate's request code and engine settings, so llm-eval scores engine changes from main's cached reviews | small | S:C/medium M:C/medium I:C/medium |
 | [F004](#f004) | ✅ fixed | medium | high | A | The collector's triage recomputation (_triage_expected) has no test at all | small | S:C/medium M:C/medium I:C/low |
 | [F005](#f005) | ✅ fixed | medium | medium | A | Triage and the collector accept any risk_override record on audit-log, so a hand-pushed record can lower the risk with a forged author and an unbeatable timestamp | medium | S:C/medium M:C/medium I:C/medium |
@@ -195,6 +199,7 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F052](#f052) | ✅ fixed | medium | medium | B | uv itself is unpinned: every setup-uv step installs the newest uv release, in the signing job and the write-token jobs too | small | S:C/low M:C/medium I:C/medium |
 | [F081](#f081) | ✅ fixed | medium | medium | C | A malformed or empty ?year= on /api/friday13 gets a 400 without `errors` in Production and a 500 in Development, not the 400 ValidationProblem | small | S:C/medium M:C/medium I:C/medium |
 | [F084](#f084) | ✅ fixed | medium | medium | C | "A failed smoke leaves a draft; re-running the workflow refreshes it" no longer holds under build-once releases | trivial | S:C/medium M:C/medium I:C/medium |
+| [F003](#f003) | ✅ fixed | medium | high | A | The agent reviewer's file reads are not fenced to the reviewed checkout, and its output is published unredacted | small | S:P/medium M:C/medium I:C/low |
 | [F007](#f007) | open | low | medium | A | An override by label skips the write-role check that `/llm-override` enforces | trivial | S:C/low M:C/low I:C/low |
 | [F009](#f009) | open | low | medium | A | llm-eval scores security-review only on the API engine, but high-risk PRs (most of them) review it on the agent engine | small | S:C/low M:C/medium I:C/low |
 | [F018](#f018) | open | low | medium | A | The triage eval lets any one triage case fail in every repeat, tr-008 included; 4 of its 10 cases can't fail at all | small | S:C/low M:C/low I:C/low |
@@ -204,7 +209,6 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F024](#f024) | open | low | low | A | A PR that changes only http/calendar.http is rated low, where api-contract doesn't run, so its http/** filter never fires for such PRs | trivial | S:C/low M:C/low I:C/low |
 | [F026](#f026) | open | low | low | A | /llm-fp and /llm-ack on a finding from the current run are rejected as unknown_finding until audit-collect has written that run | small | S:C/low M:C/low I:C/low |
 | [F027](#f027) | open | low | low | A | The llm-review attestation doesn't list a PR whose merged head is missing a record for a blocking check | small | S:C/low M:C/low I:C/low |
-| [F029](#f029) | open | low | low | A | Model-written review text reaches the PR comment and job summary without redaction or markup neutralisation | small | S:C/low M:C/low I:C/low |
 | [F032](#f032) | open | low | low | A | The collector's paths for keyless PRs (skipped_no_key) and for a missing triage expectation are untested | small | S:C/low M:C/low I:C/low |
 | [F039](#f039) | open | low | low | A | Audit file paths use the date of collection, so re-running audit-collect or llm-feedback on another day writes duplicates | small | S:C/low M:C/low I:C/low |
 | [F045](#f045) | open | low | medium | B | The allow rules for just, uv run, dotnet and gh run auto-approve arbitrary and irreversible commands, which makes the deny list ineffective | small | S:C/low M:C/low I:C/low |
@@ -269,6 +273,7 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F025](#f025) | ✅ fixed | low | low | A | One /llm-override writes an override record per check job, including advisory, passing and not-applicable checks, and the release attestation repeats them all | trivial | S:C/low M:C/low I:C/low |
 | [F069](#f069) | ✅ fixed | low | low | B | No test exercises the admission rule 'no critical vulnerabilities' | medium | S:A/info M:C/low I:C/low |
 | [F037](#f037) | ✅ fixed | low | low | A | docs-drift has no eval case, and test-review has only an fp-regression case | medium | S:C/low M:C/low I:C/low |
+| [F029](#f029) | ✅ fixed | low | low | A | Model-written review text reaches the PR comment and job summary without redaction or markup neutralisation | small | S:C/low M:C/low I:C/low |
 | [F028](#f028) | open | info | low | A | eval add-from-fp looks up a 16-bit finding id across every PR and takes the last match | trivial | S:C/info M:C/low I:C/info |
 | [F040](#f040) | open | info | info | A | gate_run records for checks that triage didn't need carry the configured blocking flag, not the effective one | trivial | S:C/info M:C/info I:C/info |
 | [F080](#f080) | open | info | info | B | Tool versions pinned inside run: steps and with: inputs aren't covered by Dependabot | medium | S:C/info M:C/info I:C/info |
@@ -381,7 +386,7 @@ The llm job restores .llm-gate/cache with `restore-keys: llm-gate-<check>-pr<N>-
 
 **The agent reviewer's file reads are not fenced to the reviewed checkout, and its output is published unredacted**
 
-- **Status:** open
+- **Status:** ✅ fixed — #77: reads fenced to the checkout three ways (CLI setting, path-scoped allow rule, in-process hook), refusals counted and published; the rendered review is redacted and defanged
 - **Severity:** medium (reviewers: high) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/engines/agent_engine.py:89` · **area:** llm-gate and review prompts
 - **Reported by:** `sec-03` (high, medium confidence), `wr-19` (medium, low confidence)
@@ -1122,7 +1127,7 @@ A PR goes into `unreviewed` only when its merged head has no gate_run at all, or
 
 **Model-written review text reaches the PR comment and job summary without redaction or markup neutralisation**
 
-- **Status:** open
+- **Status:** ✅ fixed — #77: one `safe_text`/`inert` pair in redact.py, used by the comment, the job summary, the SARIF and the release notes
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/report.py:101` · **area:** llm-gate and review prompts
 - **Reported by:** `sec-07` (low, high confidence)

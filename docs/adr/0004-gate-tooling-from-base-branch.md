@@ -36,6 +36,19 @@ approve, the v1 configuration reported no findings on an obvious bug; with nothi
   its prompts. It just doesn't review itself. Interactive use is unchanged: `/llm-code-review` in
   Claude Code still runs the same prompt file.
 
+- **Amended 2026-10-18 (F003): it also covers *which files* the reviewer may read.** "The reviewed
+  repository's files are data it may read" was unbounded in the direction that matters: the engine
+  passed bare `Read`, `Grep` and `Glob` in `allowed_tools`, and a bare tool name is a whole-tool
+  allow rule that the CLI honours *before* it checks the path, so an "ask" for a path outside the
+  checkout became an "allow". The reviewer's own process environment holds the API key. The reads
+  are now fenced three ways: `permissions.blockReadsOutsideWorkingDirectories` and
+  `Read(//proc/**)`-style deny rules in the inline settings, a path-scoped `Read(./**)` allow rule
+  instead of the bare one, and the engine's `PreToolUse` callback, which refuses anything it can't
+  place inside the checkout. The callback is the *backstop*, not the authority: a hook that raises
+  or times out yields no decision and the call proceeds, so the CLI setting is the primary control
+  and the hook is what records the refusal. A refusal never fails the check — the review goes on
+  with the diff it already has — because a verdict that text in the PR's files can trigger is a
+  verdict the PR author controls.
 - **Amended 2026-10-18**: the principle covers the **attributes** too. `git diff` reads
   `.gitattributes` from the working tree, so the PR-head checkout decided what the reviewers could
   see until the diff was built with `git --attr-source=<base>` (F001). Exclusions live in

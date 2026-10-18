@@ -1,6 +1,7 @@
 """Engine-vs-engine report for one check: findings, overlap, verdict agreement, time and cost."""
 
 from .models import Finding, Severity
+from .report import cell, plain_path
 from .runner import RunRecord
 
 LINE_TOLERANCE = 3
@@ -87,5 +88,8 @@ def render_comparison(a: RunRecord, b: RunRecord) -> str:
         only = [f for f in findings if id(f) not in matched]
         if only:
             lines += ["", f"Only `{record.engine}`:"]
-            lines += [f"- {f.severity}: `{f.file}:{f.line or '-'}` {f.title}" for f in only]
+            lines += [
+                f"- {f.severity}: `{plain_path(f.file)}:{f.line or '-'}` {cell(f.title)}"
+                for f in only
+            ]
     return "\n".join(lines) + "\n"

@@ -8,8 +8,10 @@ from pydantic import ValidationError
 
 from .models import EngineResult
 
-# Bump when the Review schema or the engines' requests change in a way that makes old entries wrong.
-CACHE_VERSION = "1"
+# Bump when the Review schema or the engines' requests change in a way that makes old entries
+# wrong. "2": the agent engine's reads are fenced to the checkout (F003), so a cached review from
+# before the fence was taken with tools this one doesn't have.
+CACHE_VERSION = "2"
 
 
 def cache_key(check: str, engine: str, model: str, prompt: str, diff: str) -> str:

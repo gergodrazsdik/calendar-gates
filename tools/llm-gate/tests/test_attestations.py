@@ -280,7 +280,9 @@ def test_override_reasons_are_quoted_in_the_notes_and_the_log_start_is_a_time(
     notes = attestations.render_notes(
         attestations.llm_review([commit(1)], log, range_from=None, range_to="v1.0.0")
     )
-    assert "overridden by @alice: `see [this](https://example.com) 'x'`" in notes
+    # The release notes use the same helper as the PR comment, so a link in an override reason
+    # can't make the notes fetch anything either (F029).
+    assert "overridden by @alice: `see \\[this\\](https[:]//example.com) 'x'`" in notes
     # Merged before the first record, in a different but equal-meaning time format.
     early = attestations.llm_review(
         [commit(2, merged_at="2026-10-17T11:59:59+02:00")], log, range_from=None, range_to="v1"

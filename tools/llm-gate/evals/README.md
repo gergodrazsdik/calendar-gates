@@ -23,7 +23,9 @@ description: Workdays drop the inclusive end day.
 base: 7e1faf97961a83dbc659b9b8f884d554790c7714   # diff.patch applies to this commit
 expect:
   - file: src/CalendarGates.Api/Domain/WorkdaysCalculator.cs
-    lines: [15, 15]                # new-file lines; a finding may be up to 3 lines off
+    lines: [15, 15]                # new-file lines; a finding may be up to 3 lines off.
+                                   # `null` expects it in the file at any line or none at all,
+                                   # for answers that are about a file ("nothing tests this")
     min_severity: high             # at least this severity counts as found (recall)
     blocking: true                 # optional: the gate should fail on it (verdict accuracy);
                                    # default: min_severity is at or above the check's fail_on

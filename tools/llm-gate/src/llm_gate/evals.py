@@ -58,10 +58,16 @@ class Expectation(_Strict):
     on it (verdict accuracy); by default, when `min_severity` is at or above the check's
     `fail_on`. Keep the two apart where the right severity is a judgment call: "found it" and
     "rated it high enough to block" vary independently between runs. `category` documents the
-    intent; it isn't matched (models name it freely)."""
+    intent; it isn't matched (models name it freely).
+
+    `lines: null` expects the finding in the file, at any line **or none at all**. Some right
+    answers have no line: "this behaviour has no test anywhere" is about a file, not a line, and
+    the models report it both ways between repeats (CI on #77 scored a case 0.67 because one repeat
+    left the line out). Use it only where that is true; a planted bug has a line and should say so.
+    """
 
     file: str
-    lines: tuple[int, int]
+    lines: tuple[int, int] | None
     min_severity: Severity
     blocking: bool | None = None
     category: str | None = None
@@ -240,7 +246,11 @@ def case_diff(case: LoadedCase) -> Diff:
 
 
 def matches(finding: Finding, expectation: Expectation) -> bool:
-    if finding.file != expectation.file or finding.line is None:
+    if finding.file != expectation.file:
+        return False
+    if expectation.lines is None:  # the file is the answer; a line is optional
+        return finding.severity.at_least(expectation.min_severity)
+    if finding.line is None:
         return False
     low, high = expectation.lines
     in_range = low - LINE_SLACK <= finding.line <= high + LINE_SLACK
