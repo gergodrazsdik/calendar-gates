@@ -122,7 +122,12 @@ a job that runs no PR code removes the question.
 - **#79** reordered the release: approval attests and publishes nothing, the smoke and admission
   tests run on the digest and a locally packaged chart, and only then does `promote` push the
   version tags, that same chart tarball and the GitHub Release. A failed test no longer leaves
-  public tags behind or burns the version (F071). Proven by releasing v0.3.3.
+  public tags behind or burns the version (F071). **Demonstrated on v0.3.3**, which failed: its
+  `admission-smoke` hit a stale assertion (the unattested image was refused by
+  `calendar-gates-approved`, which the regex didn't name since #71 made it Deny — fixed in #80) and
+  the release left **no** version tags, no chart and no GitHub Release behind, with `promote`
+  skipped. Under the old order `0.3.3` and the moving `0.3` tag would both have been public and the
+  version burnt. v0.3.4 is the first release to come out the other end.
 - **#78** took the open items that still affected whether the gate can be talked around or its
   records can be wrong: an override by label needed no write access (F007), the gates' own
   configuration was rated medium (F021), a `checks.yaml` merging mid-review turned that run into

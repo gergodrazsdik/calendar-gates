@@ -400,8 +400,8 @@ jobs:
           done
       - name: Unattested and foreign images are denied in calendar-gates
         run: |
-          # Each image policy has its own webhook, called in parallel: an image that fails both
-          # Deny policies may be refused by either one first, so the check takes a regex.
+          # Each image policy has its own webhook, called in parallel: an image that fails several
+          # Deny policies may be refused by any one of them first, so the check takes a regex.
           refused() { # pod name, image, the policy (an ERE) that must refuse it
             if out=$(kubectl -n calendar-gates run "$1" --image="$2" --restart=Never --dry-run=server 2>&1); then
               echo "::error::$2 was admitted in calendar-gates"; exit 1
@@ -409,7 +409,11 @@ jobs:
             echo "$out"
             grep -qE "Policy ($3) failed" <<< "$out" || { echo "::error::$2 was not refused by $3"; exit 1; }
           }
-          unattested='calendar-gates-release|calendar-gates-llm-review'
+          # All three attestation policies deny `edge`, and their webhooks are called in parallel,
+          # so any one of them can be the one that answers first. `calendar-gates-approved` has
+          # been in that set since it went Deny in v0.3.2 (#71) but wasn't listed here, which made
+          # this assertion a race: v0.3.3 failed on it after refusing the image correctly.
+          unattested='calendar-gates-release|calendar-gates-llm-review|calendar-gates-approved'
           refused edge "$IMAGE:edge" "$unattested"
           refused foreign "$FOREIGN" calendar-gates-images
           # An unattested image hidden in an init container, next to the attested release.

@@ -74,8 +74,10 @@ not ready.
 and policies on the runner, then checks:
 
 - the just-published chart is admitted and runs the release digest;
-- `edge` and a foreign image are denied, each by the expected policy. `edge` fails both
-  attestation policies, and their webhooks run in parallel, so either one may refuse it;
+- `edge` and a foreign image are denied, each by the expected policy. `edge` fails **all three**
+  attestation policies — release, llm-review and, since v0.3.2, approved — and their webhooks run
+  in parallel, so any one of them may be the one that refuses it (v0.3.3's run failed on an
+  assertion that still named only the first two);
 - `calendar-gates-dev` admits `edge` and reports it as failing.
 
 `smoke`, which publishes the release, waits for it. `kyverno test` covers the one policy that needs
