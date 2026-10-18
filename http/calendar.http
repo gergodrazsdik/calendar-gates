@@ -96,6 +96,33 @@ Accept: application/json
   });
 %}
 
+### Fridays the 13th: a year that isn't a number
+# F081: this used to fail parameter binding, so it answered 400 with no `errors` in Production and
+# 500 in Development. Both environments now give the same ValidationProblem.
+GET {{baseUrl}}/api/friday13?year=abc
+Accept: application/json
+
+> {%
+  client.test("friday13?year=abc: 400 ValidationProblem", () => {
+    client.assert(response.status === 400, `status ${response.status}`);
+    client.assert(response.contentType.mimeType === "application/problem+json",
+      response.contentType.mimeType);
+    client.assert(response.body.errors.year.length > 0, "errors.year missing");
+  });
+%}
+
+### Fridays the 13th: an empty year means this year
+GET {{baseUrl}}/api/friday13?year=
+Accept: application/json
+
+> {%
+  client.test("friday13?year= : this year", () => {
+    client.assert(response.status === 200, `status ${response.status}`);
+    const now = new Date();
+    client.assert(response.body.year === now.getUTCFullYear(), `year ${response.body.year}`);
+  });
+%}
+
 ### Next Friday the 13th
 GET {{baseUrl}}/api/friday13/next
 Accept: application/json

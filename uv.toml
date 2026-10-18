@@ -1,0 +1,9 @@
+# uv itself, pinned like the linters in ci.yml and the `lint` recipe (F052 in
+# docs/v2-review-findings.md). `astral-sh/setup-uv` reads `required-version` from here, so all nine
+# setup-uv steps install this exact version instead of whatever was released last: the attest job
+# signs with an OIDC token, and the collector and feedback jobs hold write tokens, so "the newest
+# uv, no cooldown" is the one unpinned tool in the trusted path.
+#
+# Bumping it is a deliberate PR, as with the other pinned tools. A local `uv` of another version
+# fails loudly ("project requires uv ==...") rather than drifting, which is the point.
+required-version = "==0.13.0"

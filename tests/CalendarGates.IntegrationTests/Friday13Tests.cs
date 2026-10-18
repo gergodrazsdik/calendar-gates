@@ -30,6 +30,31 @@ public class Friday13Tests : ApiTestBase
         await AssertValidationProblemAsync($"/api/friday13?year={year}", "year");
     }
 
+    /// <summary>
+    /// A year the framework can't bind used to fail before the validation filter: a 400 with no
+    /// `errors` in Production and a 500 here, where the test host runs in Development (F081).
+    /// </summary>
+    [Test]
+    [Arguments("abc")]
+    [Arguments("2026.0")]
+    [Arguments("99999999999")]
+    [Arguments("%20")] // whitespace is not a year; a raw space in a URI is normalised away
+    [Arguments("-2026")]
+    [Arguments("2026&year=2027")] // a repeated parameter binds as "2026,2027"
+    public async Task RejectsAYearItCannotParse(string year)
+    {
+        await AssertValidationProblemAsync($"/api/friday13?year={year}", "year");
+    }
+
+    /// <summary>An empty `year=` means "this year", as an absent parameter does.</summary>
+    [Test]
+    public async Task AnEmptyYearIsThisYear()
+    {
+        var json = await GetJsonAsync("/api/friday13?year=");
+
+        await Assert.That(json.GetProperty("year").GetInt32()).IsEqualTo(2026);
+    }
+
     [Test]
     public async Task NextIsTomorrow()
     {
