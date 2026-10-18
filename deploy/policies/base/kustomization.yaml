@@ -6,3 +6,4 @@ resources:
   - images.yaml
   - release.yaml
   - llm-review.yaml
+  - approved.yaml

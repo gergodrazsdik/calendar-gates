@@ -87,6 +87,13 @@ all of the policy.
   an edit to the description between the run and the collection can show up as a mismatch on the
   AI flag. Runs from workflows older than triage have no triage record. Their records are accepted
   with no risk, and a record that claims a risk without a triage record is flagged.
+- **A lowering is tied to its head** (2026-10-18). `/llm-risk low` used to decide every later
+  push to the PR: the record carried no head, and a manual level won outright, so code pushed
+  after the person had looked went unreviewed, at a level where nothing blocks. The record now
+  carries the PR's head when the comment arrived, and a level at or below the rules' floor applies
+  only to that head; a **raise** still persists, because it only ever adds review. Triage and the
+  collector share one rule (`triage.manual_applies`), so a run that honoured a stale lowering is
+  flagged instead of accepted. An older record with no head can no longer lower anything.
 - **A size that can't be counted is high risk** (2026-10-18). `git diff --numstat` prints `-` for
   a file it won't diff, which used to count as 0 changed lines: a binary file, or a text file with
   a NUL byte in it, slipped past the size rule entirely. Such a file now raises the floor to high

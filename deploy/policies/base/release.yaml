@@ -1,6 +1,8 @@
 # Release images only (docs/adr/0010-admission-control.md): build provenance and a vulnerability
 # scan without critical findings, both attested by release.yml on a v* tag (ADR 0009). CI already
 # fails a release on high findings; admission fails on critical: two layers, two thresholds.
+# The approval itself is a separate policy (approved.yaml), because no release before v0.3.2
+# carries that attestation.
 apiVersion: policies.kyverno.io/v1
 kind: ImageValidatingPolicy
 metadata:

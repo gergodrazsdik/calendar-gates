@@ -293,6 +293,9 @@ jobs:
     permissions:
       contents: write # draft GitHub Release
       packages: write # version tags and chart on ghcr.io
+      id-token: write # keyless signing of the approval attestation
+      attestations: write # the repository's attestation store
+      artifact-metadata: write # storage records for the pushed attestation
     env:
       VERSION: ${{ needs.verify.outputs.version }}
       TAG: ${{ github.ref_name }}
@@ -330,6 +333,24 @@ jobs:
             got=$(docker buildx imagetools inspect "$tag" --format '{{.Manifest.Digest}}')
             [ "$got" = "$DIGEST" ] || { echo "::error::$tag is $got, not $DIGEST"; exit 1; }
           done
+      # The one attestation that can only exist after a person approved this job's environment, so
+      # admission can tell an approved release from a candidate that was built, scanned and
+      # attested and then rejected (F048, ADR 0010). The other four are made in `attest`, before
+      # the gate, on purpose: the approver sees bytes that are already attested (ADR 0009).
+      - name: Attest the approval
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ env.DIGEST }}
+          predicate-type: https://github.com/gergodrazsdik/calendar-gates/attestations/release-approved/v1
+          # yamllint disable rule:line-length
+          predicate: >-
+            {"version": "${{ needs.verify.outputs.version }}",
+             "tag": "${{ github.ref_name }}",
+             "approved_in": "release",
+             "run": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}"}
+          # yamllint enable rule:line-length
+          push-to-registry: true
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v4.2.2

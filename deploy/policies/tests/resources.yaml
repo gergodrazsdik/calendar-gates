@@ -53,3 +53,52 @@ spec:
   containers:
     - name: app
       image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+---
+# An image volume from another registry, next to the attested release container: KEP-4639 mounts it
+# read-only but promises nothing about noexec, so it is an image like any other (F047).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: foreign-image-volume
+  namespace: calendar-gates
+spec:
+  volumes:
+    - name: tools
+      image:
+        reference: docker.io/library/busybox:latest
+  containers:
+    - name: app
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      volumeMounts:
+        - name: tools
+          mountPath: /tools
+---
+# Even the release's own image as a volume: the ImageValidatingPolicies can't see volumes, so no
+# image volume can be verified, and an unverifiable image is refused here.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: release-image-volume
+  namespace: calendar-gates
+spec:
+  volumes:
+    - name: assets
+      image:
+        reference: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+  containers:
+    - name: app
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+---
+# A pod with ordinary volumes and no image volume: the new check must not trip on them.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: release-with-plain-volumes
+  namespace: calendar-gates
+spec:
+  volumes:
+    - name: tmp
+      emptyDir: {}
+  containers:
+    - name: app
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5

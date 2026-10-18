@@ -334,6 +334,7 @@ verify-release version:
         sbom=https://spdx.dev/Document/v2.3
         vuln-scan=https://github.com/$repo/attestations/vuln-scan/v1
         llm-review=https://github.com/$repo/attestations/llm-review/v1
+        release-approved=https://github.com/$repo/attestations/release-approved/v1
     )
     for entry in "${types[@]}"; do
         name=${entry%%=*}
@@ -348,6 +349,9 @@ verify-release version:
     echo
     echo "Vulnerabilities (grype $(jq -r '.[0].verificationResult.statement.predicate.scanner.version' "$tmp/vuln-scan.json")):"
     jq -r '.[0].verificationResult.statement.predicate.results[] | "  \(.platform): \(.counts | to_entries | map("\(.key) \(.value)") | join(", "))"' "$tmp/vuln-scan.json"
+    echo "Approved in the release environment:"
+    jq -r '.[0].verificationResult.statement.predicate
+        | "  version \(.version), tag \(.tag), run \(.run)"' "$tmp/release-approved.json"
     echo "LLM review:"
     jq -r '.[0].verificationResult.statement.predicate
         | "  \(.prs | length) PR(s) from \(.range.from // "the first commit") to \(.range.to)",

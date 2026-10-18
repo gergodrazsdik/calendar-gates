@@ -93,6 +93,23 @@ no registry (`just lint-policies`, ci.yml).
 - **Verification is slow when cold.** A cold check fetches every attestation and the Sigstore
   trust root, which took more than the 10 s webhook default. The image policies allow 30 s, the
   maximum, and Kyverno caches results for an hour.
+- **Image volumes are refused** (2026-10-18, F047). An image volume (KEP-4639, beta and on by
+  default in Kubernetes 1.35) mounts a registry image into a pod read-only, with no promise that
+  what's in it can't be executed, and the `ImageValidatingPolicy` collections (`images.containers`
+  and the two container kinds) can't reach them: an image volume cannot be attestation-verified at
+  all. A pod whose only container was the attested release could therefore run code from any
+  registry beside it. `calendar-gates-images` now denies any pod with an image volume, the release
+  chart uses none, and `kyverno test` covers a foreign one, the release's own, and plain volumes.
+- **The approval is its own attestation** (2026-10-18, F048). The other four are created in
+  `attest`, which runs before the approval-gated `publish` on purpose (ADR 0009: the approver sees
+  attested bytes). The consequence was that a candidate built, scanned, attested and then
+  *rejected* carried everything admission asked for, and drill 23 showed a `candidate-v…` tag
+  being admitted. `publish` now also attests `release-approved/v1`, which can only exist after a
+  person approved that environment, and `calendar-gates-approved` requires it.
+  **It starts as Audit**, because no release up to v0.3.1 carries it and denying now would make
+  the current releases undeployable; it flips to Deny once v0.3.2 is out, the same path the
+  LLM-review policy took. `just verify-release` already requires it, so it fails on older
+  releases for that type, as it does for v0.1.0 and v0.2.0 on the newer ones.
 - **Admission trusts the signing identity, not where the commit sits** (2026-10-18). The
   attestors accept `release.yml@refs/tags/v…`, which a tag on an unmerged commit also gets
   (ADR 0009's amendment). The cluster can't check whether a commit is on `main`, so that check
