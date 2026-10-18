@@ -64,9 +64,11 @@ not ready.
 
    It also sets `mutateDigest`, so what runs is the digest that was verified.
 3. **`calendar-gates-llm-review`** (`ImageValidatingPolicy`): the LLM-review attestation is
-   present. It started as Audit while no release carried the attestation yet, and has **denied in
-   `calendar-gates` since v0.3.1** (2026-10-17), once v0.3.0 and v0.3.1 carried it. The dev
-   namespace only audits.
+   present. It started as Audit while no release carried the attestation yet, and **denies in
+   `calendar-gates` since #54** (2026-10-17), which merged after the v0.3.1 tag: v0.3.0 and v0.3.1
+   both carry the attestation, but the tagged trees still have the policy on Audit, so the first
+   release whose `admission-smoke` exercises Deny is the next one. The dev namespace only
+   audits.
 
 **Proof on every release.** `release.yml`'s `admission-smoke` builds the same cluster, Kyverno
 and policies on the runner, then checks:

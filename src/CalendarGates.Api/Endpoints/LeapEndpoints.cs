@@ -13,7 +13,8 @@ public static class LeapEndpoints
         app.MapGet("/leap/{year:int}", ForYear)
             .WithTags("Leap years")
             .WithName("GetLeapYear")
-            .WithSummary("Whether a year is a Gregorian leap year");
+            .WithSummary("Whether a year is a Gregorian leap year")
+            .ProducesValidationProblem();
         return app;
     }
 

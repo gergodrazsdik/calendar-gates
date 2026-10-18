@@ -1,4 +1,4 @@
-# Offline tests for the policy that needs no registry (`just lint`, ci.yml lint). The image
+# Offline tests for the policy that needs no registry (`just lint-policies`, ci.yml lint). The image
 # verification policies are proven by release.yml's admission-smoke against real attestations.
 apiVersion: cli.kyverno.io/v1alpha1
 kind: Test

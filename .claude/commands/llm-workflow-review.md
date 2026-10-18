@@ -4,7 +4,8 @@ argument-hint: "[diff file; default: this branch vs origin/main]"
 ---
 
 Review changes to the GitHub Actions setup of calendar-gates (`.github/workflows/`,
-`.github/actions/`, `dependabot.yml`, rulesets). The repository's rules (`AGENTS.md`): every
+`.github/actions/`, `dependabot.yml`, rulesets). The repository's rules (`docs/PLAN.md` §11, with
+the gate list in `AGENTS.md`): every
 third-party action is pinned by full commit SHA with a version comment, workflows start from
 `permissions: {}` and grant per job, untrusted input never goes straight into `run:`, no
 `pull_request_target`, and job names are the required check names in the ruleset.

@@ -10,7 +10,8 @@ and `gh pr view` / `gh pr checks` calls, plus `git log` / `git diff`.
 
 1. Find the run: from a PR, `gh pr checks <pr>`; from an id or URL, `gh run view <id>`.
 2. `gh run view <id> --log-failed` for the failing jobs' logs. Identify which gate failed
-   (`AGENTS.md` lists them; `docs/gates.md` has details when it exists).
+   (`AGENTS.md` lists them; `docs/gates.md` has the details, including each gate's local
+   equivalent and how an override is recorded).
 3. Find the cause in the repo: the workflow file, the failing test, the finding, the config.
 4. Report:
    - **Gate**: the check name.

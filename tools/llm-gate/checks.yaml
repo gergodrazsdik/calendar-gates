@@ -5,7 +5,8 @@
 #     max_diff_kb unreviewed (ADR 0002). Other errors always fail closed.
 #   advisory: reports findings, never fails
 # paths: the check only runs when the diff touches one of these globs.
-# ${VAR:-default} is expanded from the environment (CI sets LLM_MODEL / LLM_MODEL_CHEAP).
+# ${VAR:-default} is expanded from the environment (CI sets LLM_MODEL / LLM_MODEL_CHEAP; a risk
+# level can change the engine, not the model, since #58).
 
 defaults:
   engine: api

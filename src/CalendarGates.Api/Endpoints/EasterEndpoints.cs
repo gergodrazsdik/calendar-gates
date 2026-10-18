@@ -13,7 +13,10 @@ public static class EasterEndpoints
         app.MapGet("/easter/{year:int}", ForYear)
             .WithTags("Easter")
             .WithName("GetEaster")
-            .WithSummary("Western and Orthodox Easter Sunday (Gregorian dates)");
+            .WithSummary("Western and Orthodox Easter Sunday (Gregorian dates)")
+            // The validation filter answers an out-of-range year with a ValidationProblem; the
+            // handler's return type can't show that, so declare it (docs/v2-review-findings F082).
+            .ProducesValidationProblem();
         return app;
     }
 

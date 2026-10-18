@@ -3,7 +3,8 @@
 # and pushes it by digest (tag `candidate-vX.Y.Z` only), scans that digest, and attests provenance,
 # SBOM, the vulnerability scan and the LLM review of the release's PRs on it. Only after approval
 # in the `release` environment does the digest get its version tags (`X.Y.Z`, `X.Y`) and a chart
-# pinned to it; the GitHub Release goes public after the contract tests passed on those bytes.
+# pinned to it; then `admission-smoke` proves Kyverno admits those bytes and denies an unattested
+# image (ADR 0010), and the GitHub Release goes public after the contract tests passed on them.
 # Attestations are signed keyless and logged in the public Rekor log: releases only (ADR 0009).
 name: release
 

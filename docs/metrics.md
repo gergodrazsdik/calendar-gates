@@ -4,7 +4,9 @@
 branch ([ADR 0005](adr/0005-audit-trail.md)), the merged PRs from the GitHub API and the latest
 eval run ([ADR 0006](adr/0006-llm-eval-gate.md)). Locally: `just metrics [days]`. Weekly:
 `metrics.yml` writes the report into the pinned "Gate health" issue (repository variable
-`GATE_HEALTH_ISSUE`).
+`GATE_HEALTH_ISSUE`). To set that up once: open an issue (any title, "Gate health" by convention),
+pin it, then `gh variable set GATE_HEALTH_ISSUE --body <number>`. With the variable unset the
+weekly job still runs and leaves the report in its job summary, so nothing is lost.
 
 The window is the last 30 days (`--since-days`), but never earlier than the first audit record:
 PRs merged before the log existed can't be covered.

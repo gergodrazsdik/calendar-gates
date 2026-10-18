@@ -64,8 +64,8 @@ rate below as an anecdote with a denominator.
 | Metric | Value |
 |---|---|
 | Coverage: merged PRs where every blocking check decided | 100% |
-| Review turnaround, p50 / p90 | 1.0 / 2.3 min (security-review 71 s / 2.2 min) |
-| Findings marked false positive | 0 of 234. The one `/llm-fp` (drill 19, on a planted bug) was reversed with `/llm-ack` once it turned out to be a true positive; one acked finding is too few for an fp/(fp+ack) rate |
+| Review turnaround, p50 / p90 | code-review 1.0 / 2.3 min, security-review 71 s / 2.2 min (per check; there is no overall figure) |
+| Findings marked false positive | 0 of 234 at the time of this snapshot. Drill 19's `/llm-fp` (on a planted bug) was reversed with `/llm-ack` once it turned out to be a true positive, and the latest feedback per finding wins (#57). A real false positive came later (`tr-835a`, #60, §5); one marked finding either way is too few for an fp/(fp+ack) rate |
 | Overrides | 2 of 6 PRs with blocking findings, both drills |
 | Cost (paid reviews; cache hits are free) | $7.36 in total; per PR p50 $0.06, p90 $1.28 |
 | Triage mix | high 62%, low 25%, medium 12%; AI-assisted 75% |
@@ -104,7 +104,8 @@ two disagree for Haiku, so treat the starred numbers as approximate.
 - **Biggest drop measured:** drill 14 weakened the security prompt to "only report critical
   issues", and recall fell from 1.00 to 0.17, so `llm-eval` failed the PR.
 
-**To regenerate (costs API credits):**
+**To regenerate** (the eval runs cost API credits; `just metrics` reads the audit log and costs
+nothing):
 - **Production numbers:** `just metrics`, or the weekly "Gate health" issue.
 - **Baseline:** `just eval`.
 - **Model rows:** `just eval --check code-review --check security-review --engine agent --model
@@ -144,7 +145,9 @@ two disagree for Haiku, so treat the starred numbers as approximate.
   fixed before merge:
   - a rename moved a protected file under `docs/` and was rated low (`sr-21b4`);
   - a final release's attestation skipped PRs that had shipped in an rc (`cr-6a49`);
-  - a re-run could move the `X.Y.Z` tag to new bytes (`cr-def4`);
+  - a re-run could move the `X.Y.Z` tag to new bytes (answered in #52 by the never-move check in
+    `publish`, with the release notes refreshed; `cr-def4` on that PR's final head is the audit
+    log's record of the fix, not of the problem);
   - attestation checks ignored init containers (`sr-d677`);
   - they also ignored `kubectl debug` (`cr-2121`).
 
@@ -157,17 +160,24 @@ two disagree for Haiku, so treat the starred numbers as approximate.
   - Two Deny policies in parallel webhooks made the denial message nondeterministic, and the smoke
     test would have failed a correct release.
   - Two kind clusters exhausted the host's inotify limit and crashed a .NET pod.
-- **The high-risk reviewer choice doesn't hold up yet.** Since Phase 17, high-risk PRs, about 60% of
-  those triaged here, get Opus on the agent engine. The evals measured afterwards (§3) show no recall gain over
+- **The high-risk reviewer choice didn't hold up.** From Phase 17 until #58, high-risk PRs, about
+  60% of those triaged here, got Opus on the agent engine. The evals measured afterwards (§3) showed no recall gain over
   Sonnet on these cases, at three to four times the cost and with more noise. Haiku on the agent engine
   was the most expensive of all, because it explores more. So on 2026-10-17 high risk went back to
   Sonnet, still on the agent engine, and the difference can go to more eval cases.
-- **A false positive turned out to be a true one.** The only `/llm-fp` so far (drill 19) marked a
-  finding on a drill PR that had planted the bug, so the finding was correct and marking it only
-  tested the command. `eval add-from-fp` turned it into a case that would have forbidden the right
-  answer and contradicted eval case `cr-003`. Reading the generated case caught it, and it was
-  discarded. Feedback is input to a person's decision, not ground truth: the metrics still count
-  that marking.
+- **A false positive turned out to be a true one.** Drill 19's first `/llm-fp` marked a finding on
+  a drill PR that had planted the bug, so the finding was correct and marking it only tested the
+  command. `eval add-from-fp` turned it into a case that would have forbidden the right answer and
+  contradicted eval case `cr-003`. Reading the generated case caught it, and it was discarded; an
+  `/llm-ack` on the same finding then reversed the marking, and because the latest feedback per
+  finding wins (#57), the metrics no longer count it as a false positive. Feedback is input to a
+  person's decision, not ground truth.
+- **The loop closed on a real false positive (#60).** test-review on #53 reported `$IMAGE` as
+  undefined in `admission-smoke`, though `release.yml` sets it at the workflow level. `/llm-fp`
+  made it eval case `fp-tr-835a`, which failed `llm-eval` 3 of 3 until the prompt was fixed to
+  check where a name can come from; after the fix, 0 of 9 locally and 0 of 3 in CI. The case also
+  forced a sturdier matcher: a `forbid` rule can match the finding's title by regex, because
+  categories are named freely by the model.
 - **Digests, not tags (drill 23).** The attested v0.3.0 digest under another tag
   (`candidate-v0.3.0`) is admitted. A local build tagged `0.3.1` and loaded straight onto the node
   is *admitted too*, but Kyverno resolves the tag on the registry and pins the pod to the attested

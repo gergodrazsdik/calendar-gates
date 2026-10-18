@@ -16,7 +16,8 @@ public static class Friday13Endpoints
         group
             .MapGet("", InYear)
             .WithName("GetFriday13s")
-            .WithSummary("Fridays the 13th in a year (default: this year)");
+            .WithSummary("Fridays the 13th in a year (default: this year)")
+            .ProducesValidationProblem();
         group
             .MapGet("/next", Next)
             .WithName("GetNextFriday13")
