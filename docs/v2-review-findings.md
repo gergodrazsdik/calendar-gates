@@ -31,12 +31,12 @@ A review of the whole repository at `43ec3c2` (2026-10-17), after PLAN-v2 was wr
 | accepted | 0 | 0 | 0 | 2 | 1 | 3 |
 | rejected | 0 | 0 | 0 | 0 | 11 | 11 |
 
-**Fixed so far: 112 of 119** (4 partial, 2 open, 1 unverifiable). By severity:
+**Fixed so far: 113 of 119** (3 partial, 2 open, 1 unverifiable). By severity:
 
 | Status | critical | high | medium | low | info | total |
 |---|---|---|---|---|---|---|
-| ✅ fixed | 0 | 2 | 15 | 70 | 25 | 112 |
-| 🟡 partial | 0 | 0 | 1 | 3 | 0 | 4 |
+| ✅ fixed | 0 | 2 | 15 | 71 | 25 | 113 |
+| 🟡 partial | 0 | 0 | 1 | 2 | 0 | 3 |
 | open | 0 | 0 | 0 | 1 | 1 | 2 |
 | ⚪ unverifiable | 0 | 0 | 1 | 0 | 0 | 1 |
 
@@ -126,8 +126,9 @@ a job that runs no PR code removes the question.
   risk gives it, an ambiguous finding id is an error); the policy tests cover ephemeral containers,
   `verify-release` checks the chart, `pr-title` re-runs on an edited title, a required check that a
   job's `if:` can skip is an error, and a stale uv cooldown fails lint. F045's settings edit is
-  yours to apply (`.claude/settings.proposed.json`); the rest of it — narrowing `gh run` and
-  writing down that the sandbox, not the deny list, is the boundary — is in.
+  applied by you from `.claude/settings.proposed.json`, since the sandbox won't let an agent write
+  its own permissions; narrowing `gh run` and writing down that the sandbox, not the deny list, is
+  the boundary came with it.
 - **#79** reordered the release: approval attests and publishes nothing, the smoke and admission
   tests run on the digest and a locally packaged chart, and only then does `promote` push the
   version tags, that same chart tarball and the GitHub Release. A failed test no longer leaves
@@ -301,7 +302,7 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F076](#f076) | ✅ fixed | low | low | B | Dependabot's uv updates for tools/llm-gate will stall at the fixed exclude-newer date in pyproject.toml | small | S:C/low M:C/low I:P/low |
 | [F090](#f090) | ✅ fixed | low | low | C | llm-gate's README leaves out the triage and attest subcommands and --risk/LLM_GATE_RISK, which the workflows call | small | S:C/low M:C/low I:C/low |
 | [F104](#f104) | ✅ fixed | low | low | C | PLAN.md's drill table, which /gate-drill checks results against, predates reasoned overrides and the --no-verify ban | small | S:C/info M:C/low I:C/low |
-| [F045](#f045) | 🟡 partial | low | medium | B | The allow rules for just, uv run, dotnet and gh run auto-approve arbitrary and irreversible commands, which makes the deny list ineffective | small | S:C/low M:C/low I:C/low |
+| [F045](#f045) | ✅ fixed | low | medium | B | The allow rules for just, uv run, dotnet and gh run auto-approve arbitrary and irreversible commands, which makes the deny list ineffective | small | S:C/low M:C/low I:C/low |
 | [F080](#f080) | open | info | info | B | Tool versions pinned inside run: steps and with: inputs aren't covered by Dependabot | medium | S:C/info M:C/info I:C/info |
 | [F061](#f061) | ✅ fixed | info | low | B | audit-pull, and with it metrics, fails when the audit-log branch has no events/ directory | trivial | S:C/info M:C/low I:C/info |
 | [F063](#f063) | ✅ fixed | info | low | B | just lint hands the user's full-scope gh OAuth token to a PyPI-fetched zizmor on every run | trivial | S:R/info M:C/low I:C/info |
@@ -1248,7 +1249,7 @@ collect() writes events/<today>/<run>-<attempt>-<check>.jsonl with day = datetim
 
 **The allow rules for just, uv run, dotnet and gh run auto-approve arbitrary and irreversible commands, which makes the deny list ineffective**
 
-- **Status:** 🟡 partial — #82: `gh run` narrowed to read-only subcommands and the posture documented; the settings.json edit itself is in .claude/settings.proposed.json for you to apply (the sandbox denies an agent writing its own permissions)
+- **Status:** ✅ fixed — #82: `gh run` narrowed to read-only subcommands, applied by the owner (the sandbox denies an agent writing its own permissions, so the new file was proposed and moved into place); `just`/`dotnet`/`uv run` left as they are, with docs/gates.md saying why the sandbox and the bash guard are the boundary rather than the deny list
 - **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `.claude/settings.json:5` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `cr-ops-05` (medium, medium confidence), `sec-13` (low, high confidence)
