@@ -617,8 +617,22 @@ def _triage_expected(args: argparse.Namespace) -> audit.TriageExpected | None:
         triage.changes_from_compare(files), ai_assisted=detection.assisted, config=config.triage
     )
     started = _timestamp(data.get("run_started_at"))
-    required = triage.latest_risk_override(args.audit_dir, args.pr, before=started)
-    latest = triage.latest_risk_override(args.audit_dir, args.pr)
+    # Only records that match a real `/llm-risk` comment count (F005): a record appended straight
+    # to audit-log is reported here and then can't explain the run's risk, so the collector flags
+    # the run instead of accepting a lowered one.
+    writers = (
+        {str(login) for login in json.loads(args.writers.read_text(encoding="utf-8"))}
+        if args.writers
+        else set()
+    )
+    comments = json.loads(args.comments.read_text(encoding="utf-8")) if args.comments else []
+    usable, problems = feedback.verified_risk_overrides(
+        triage.risk_overrides(args.audit_dir, args.pr), comments, writers=writers
+    )
+    for problem in problems:
+        log.warning("audit collect: %s", problem)
+    required = next((m for m in reversed(usable) if started is None or m.ts <= started), None)
+    latest = usable[-1] if usable else None
     plans: dict[Risk, dict[str, bool | None]] = {
         risk: {
             name: None if check is None else check.blocking

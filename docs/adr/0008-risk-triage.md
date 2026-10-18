@@ -87,5 +87,17 @@ all of the policy.
   an edit to the description between the run and the collection can show up as a mismatch on the
   AI flag. Runs from workflows older than triage have no triage record. Their records are accepted
   with no risk, and a record that claims a risk without a triage record is flagged.
+- **A partial re-run reuses the triage record** (2026-10-18). GitHub's "Re-run failed jobs"
+  doesn't re-run a successful `triage` job, so the new attempt has no triage artifact and every
+  re-run verdict carrying a risk was recorded as a tamper event, leaving the PR unreviewed and
+  unverified in the release attestation. The collector now takes the latest earlier attempt's
+  triage artifact, validates it against that attempt and marks it `reused_from_attempt`, which
+  only it may set. Only triage is reusable, because only triage isn't re-run.
+- **The model can't crash triage** (2026-10-18). The Messages SDK validates structured output
+  inside `parse`, so output that doesn't fit the schema arrived as a `pydantic.ValidationError`
+  and killed the job, and with it every `llm / <check>` of the run. It is an `EngineError` now,
+  which is what `assess`'s "the floor stands" always meant. `TriageAssessment.reasons` no longer
+  caps the list client-side: the API doesn't enforce `maxItems`, so the cap only turned a verbose
+  model into a failed gate. Callers take the first three.
 - **The evals cover triage:** `kind: triage` cases with `expect_risk`, scored as risk accuracy.
   Any result below the floor fails the eval outright.

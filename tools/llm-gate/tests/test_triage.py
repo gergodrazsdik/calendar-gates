@@ -12,7 +12,7 @@ from conftest import git
 from test_audit import EXPECTED, artifact, gate_run
 from test_engines import StubMessages, stub_client
 
-from llm_gate import aidetect, audit, triage
+from llm_gate import aidetect, audit, feedback, triage
 from llm_gate.cli import main
 from llm_gate.config import (
     AiMarkers,
@@ -734,3 +734,234 @@ def test_the_job_summary_quotes_model_and_comment_text_inertly() -> None:
         "`see ![x](https://evil.example/a.png) 'code' next line`"
     )
     assert len(_inert("a" * 1000)) < 210
+
+
+def sdk_client(text: str, stop_reason: str = "end_turn") -> Any:
+    """The real SDK against an httpx MockTransport: `parse` validates the text itself, which is
+    where schema failures come from. No request leaves the machine."""
+    import anthropic
+    import httpx2 as httpx
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "id": "msg_1",
+                "type": "message",
+                "role": "assistant",
+                "model": "claude-haiku-5-5",
+                "content": [{"type": "text", "text": text}],
+                "stop_reason": stop_reason,
+                "stop_sequence": None,
+                "usage": {"input_tokens": 10, "output_tokens": 10},
+            },
+        )
+
+    return anthropic.Anthropic(
+        api_key="test-key-not-real",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+        max_retries=0,
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "stop_reason", "why"),
+    [
+        # More items than the prompt asks for: the API never enforced the old max_length.
+        (json.dumps({"risk": "high", "reasons": [f"r{n}" for n in range(11)]}), "end_turn", None),
+        # Truncated JSON fails the SDK's own validation before `structured_call` can look at
+        # stop_reason, so it surfaces as a schema failure; the max_tokens branch still catches a
+        # response cut off on a token boundary that happens to parse.
+        ('{"risk": "high", "reasons": ["a long rea', "max_tokens", "did not match the schema"),
+        ('{"risk": "nope", "reasons": []}', "end_turn", "did not match the schema"),
+        ("I can't help with that.", "end_turn", "did not match the schema"),
+    ],
+)
+def test_the_model_cannot_crash_triage(
+    tc: TriageConfig, text: str, stop_reason: str, why: str | None
+) -> None:
+    """`assess` never raises: the rules' floor stands and the failure is on the record
+    (ADR 0008). Before this, a pydantic error from the SDK's parse killed the triage job and with
+    it every llm / <check> of the run."""
+    got = triage.assess(
+        tc, [], "", base="origin/main", cache_dir=None, client=sdk_client(text, stop_reason)
+    )
+
+    if why is None:  # 11 reasons is valid now, truncated to three by the caller
+        assert got.risk == "high"
+        assert len(got.reasons) == 3
+        assert got.error is None
+    else:
+        assert got.risk is None  # the floor stands
+        assert why in (got.error or "")
+
+
+def test_a_malformed_or_future_dated_record_cannot_steer_triage(tmp_path: Path) -> None:
+    """Anyone with `contents: write` can append to audit-log (ADR 0005). Such a record must not
+    crash triage, and must not outrank a genuine later `/llm-risk` by claiming a future `ts`."""
+    day = tmp_path / "events" / "2026" / "10" / "17"
+    day.mkdir(parents=True)
+    (day / "junk.jsonl").write_text('[]\n"a string"\n{"type": "risk_override"}\nnot json\n')
+    (day / "feedback-1.jsonl").write_text(risk_override(7, "low", "2099-01-01T00:00:00Z") + "\n")
+    (day / "feedback-2.jsonl").write_text(risk_override(7, "high", "2026-10-17T09:00:00Z") + "\n")
+
+    latest = triage.latest_risk_override(tmp_path, 7)
+
+    assert latest is not None
+    assert latest.to == "high"  # the future-dated record is ignored, not the winner
+    assert latest.comment_id == 2
+    assert [m.to for m in triage.risk_overrides(tmp_path, 7)] == ["high"]
+
+
+def comment(
+    comment_id: int, body: str, *, login: str = "alice", edited: bool = False
+) -> dict[str, Any]:
+    at = "2026-10-17T09:00:00Z"
+    return {
+        "id": comment_id,
+        "user": {"login": login},
+        "body": body,
+        "created_at": at,
+        "updated_at": "2026-10-17T09:05:00Z" if edited else at,
+    }
+
+
+@pytest.mark.parametrize(
+    ("comments", "why"),
+    [
+        ([], "no such comment"),
+        ([comment(2, "/llm-risk high because", login="mallory")], "written by someone else"),
+        ([comment(2, "/llm-risk high because", edited=True)], "was edited"),
+        ([comment(2, "/llm-risk low because")], "does not ask for that level"),
+        ([comment(2, "just a comment")], "does not ask for that level"),
+    ],
+)
+def test_the_collector_rejects_a_risk_record_without_a_matching_comment(
+    tmp_path: Path, comments: list[dict[str, Any]], why: str
+) -> None:
+    day = tmp_path / "events" / "2026" / "10" / "17"
+    day.mkdir(parents=True)
+    (day / "feedback-2.jsonl").write_text(risk_override(7, "high", "2026-10-17T09:00:00Z") + "\n")
+    records = triage.risk_overrides(tmp_path, 7)
+
+    usable, problems = feedback.verified_risk_overrides(
+        records, comments, writers={"alice", "mallory"}
+    )
+
+    assert usable == []
+    assert len(problems) == 1
+    assert why in problems[0]
+
+
+def test_the_collector_accepts_a_risk_record_that_matches_its_comment(tmp_path: Path) -> None:
+    day = tmp_path / "events" / "2026" / "10" / "17"
+    day.mkdir(parents=True)
+    (day / "feedback-2.jsonl").write_text(risk_override(7, "high", "2026-10-17T09:00:00Z") + "\n")
+    records = triage.risk_overrides(tmp_path, 7)
+
+    usable, problems = feedback.verified_risk_overrides(
+        records, [comment(2, "/llm-risk high the chart change deserves it")], writers={"alice"}
+    )
+
+    assert [m.to for m in usable] == ["high"]
+    assert problems == []
+
+
+def test_a_writer_check_is_not_skipped_for_risk_records(tmp_path: Path) -> None:
+    day = tmp_path / "events" / "2026" / "10" / "17"
+    day.mkdir(parents=True)
+    (day / "feedback-2.jsonl").write_text(risk_override(7, "low", "2026-10-17T09:00:00Z") + "\n")
+    records = triage.risk_overrides(tmp_path, 7)
+
+    usable, problems = feedback.verified_risk_overrides(
+        records, [comment(2, "/llm-risk low looks fine")], writers=set()
+    )
+
+    assert usable == []
+    assert "no write access" in problems[0]
+
+
+def test_a_partial_re_run_reuses_the_triage_record_of_the_earlier_attempt(tmp_path: Path) -> None:
+    """ "Re-run failed jobs" doesn't re-run a successful triage job, so attempt 2 has no triage
+    artifact. Without the reuse, every re-run verdict carrying a risk became a tamper event and
+    the PR read as unreviewed (F006)."""
+    second = EXPECTED.__class__(
+        repo="owner/repo", workflow_run_id=100, run_attempt=2, head_sha="a" * 40, pr=7
+    )
+    artifact(tmp_path, "audit-100-1-triage", audit.dumps(triage_record()))
+    # The re-run succeeded this time, which is why someone pressed the button.
+    rerun = gate_run(
+        risk="medium", run_attempt=2, run_url=second.run_url, verdict="pass", exit_code=0
+    )
+    artifact(tmp_path, "audit-100-2-code-review", audit.dumps(rerun))
+
+    out = tmp_path / "out"
+    collected = audit.collect(
+        tmp_path / "artifacts",
+        expected=second,
+        checks=CHECKS,
+        jobs={"llm / code-review": "success"},  # no triage job in this attempt
+        workflow_modified=False,
+        override="no llm-override label",
+        out=out,
+        day=date(2026, 10, 17),
+        triage=expected(),
+    )
+
+    assert not any(c.tamper for c in collected)
+    records = {
+        c.artifact: [json.loads(x) for x in (out / c.path).read_text().splitlines()]
+        for c in collected
+    }
+    (triage_line,) = records["audit-100-1-triage"]
+    assert triage_line["type"] == "triage"
+    assert triage_line["reused_from_attempt"] == 1  # the log says where it came from
+    assert triage_line["run_attempt"] == 1
+    (verdict,) = records["audit-100-2-code-review"]
+    assert verdict["type"] == "gate_run"  # not tamper_suspected
+    assert verdict["risk"] == "medium"
+
+
+def test_a_triage_artifact_of_the_current_attempt_wins_over_an_earlier_one(tmp_path: Path) -> None:
+    second = EXPECTED.__class__(
+        repo="owner/repo", workflow_run_id=100, run_attempt=2, head_sha="a" * 40, pr=7
+    )
+    artifact(tmp_path, "audit-100-1-triage", audit.dumps(triage_record(final_risk="high")))
+    artifact(
+        tmp_path,
+        "audit-100-2-triage",
+        audit.dumps(triage_record(run_attempt=2, run_url=second.run_url)),
+    )
+
+    out = tmp_path / "out"
+    collected = audit.collect(
+        tmp_path / "artifacts",
+        expected=second,
+        checks=CHECKS,
+        jobs={"triage": "success"},
+        workflow_modified=False,
+        override="no llm-override label",
+        out=out,
+        day=date(2026, 10, 17),
+        triage=expected(),
+    )
+
+    # The earlier one is not reused and is flagged by name, as any stray artifact is.
+    kinds = {
+        c.artifact: json.loads((out / c.path).read_text().splitlines()[0])["type"]
+        for c in collected
+    }
+    assert kinds["audit-100-1-triage"] == "tamper_suspected"
+    assert kinds["audit-100-2-triage"] == "triage"
+
+
+def test_an_artifact_may_not_claim_a_reused_attempt(tmp_path: Path) -> None:
+    raw = json.loads(audit.dumps(triage_record()))
+    raw["reused_from_attempt"] = 1
+    artifact(tmp_path, "audit-100-1-triage", json.dumps(raw))
+
+    result = collect_run(tmp_path, triage_expected=expected())
+
+    assert "sets fields only the collector may set" in " ".join(
+        problems(result, "audit-100-1-triage")
+    )

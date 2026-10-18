@@ -77,6 +77,15 @@ output can't simply be trusted either.
   needs an organization: a personal repository's ruleset rejects the app as a bypass actor
   ("must be part of the ruleset source or owner organization"). Added commits stay visible, and
   the collector's own are signed by GitHub and made by `github-actions[bot]`.
+- **Amended 2026-10-18: an appended record can't quietly steer a review.** Appending stays
+  possible, so what changed is what reading does with it. `triage.risk_overrides` skips a line
+  that isn't a JSON object or whose fields don't fit (a bare `[]` used to crash triage for every
+  PR) and ignores a `ts` more than ten minutes in the future, so a forged record can no longer
+  outrank every genuine `/llm-risk` by date. The collector goes further: `/llm-risk` records count
+  only when the comment they name (`feedback-<comment_id>.jsonl`) still exists on the PR, is
+  unedited, was written by the login in the record, and asks for the same level, the way
+  `find_override` checks an override's reason. A record that fails is reported and can't explain
+  the run's risk, so the run is flagged instead of accepted.
 - Artifact and file names include the attempt, which the plan's `<run_id>-<check>` didn't: a
   re-run of failed jobs keeps the first attempt's artifacts in the run, and its records would
   otherwise overwrite (or be mistaken for) the new attempt's.

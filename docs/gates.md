@@ -103,6 +103,11 @@ is required too (see below).
   Phase 14) and triage rates them high (ADR 0008); a team repository would also require CODEOWNERS
   review for `tools/llm-gate/`, `.claude/` and `.github/`. Fork code never runs with the key: `pull_request`
   withholds secrets from forks, and `llm-compare` refuses PRs whose branch is not in this repository.
+- **A command during a running review** ([ADR 0008](adr/0008-risk-triage.md)): `/llm-risk` and
+  `/llm-override` only reach a review that starts after them, because triage reads `/llm-risk`
+  when the run starts and each check reads the labels before reviewing. The feedback workflow
+  therefore waits up to 7 minutes for a run in flight and then re-runs it; if it is still going,
+  it says so in a PR comment and the command applies to the next run.
 - **Overrides need a reason** ([ADR 0005](adr/0005-audit-trail.md)): the `llm-override` label is
   honoured only with an unedited `/llm-override <reason>` comment by whoever added the label last,
   written since the label was last removed. Comment first, then add the label, or just comment
