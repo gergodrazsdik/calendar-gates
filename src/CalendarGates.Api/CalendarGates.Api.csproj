@@ -3,6 +3,12 @@
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
   </ItemGroup>
 
+  <!-- VersionEndpoints.Read is internal; its fallbacks are what a build without MinVer tags or a
+       Commit arg reports, so they are unit-tested rather than taken on trust (F113). -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="CalendarGates.UnitTests" />
+  </ItemGroup>
+
   <!-- `dotnet publish -p:Commit=<sha>` (Dockerfile build arg); read by /api/version -->
   <ItemGroup Condition="'$(Commit)' != ''">
     <AssemblyMetadata Include="Commit" Value="$(Commit)" />

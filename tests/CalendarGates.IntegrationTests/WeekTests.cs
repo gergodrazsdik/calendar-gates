@@ -5,6 +5,18 @@ public class WeekTests : ApiTestBase
     [Test]
     public async Task CurrentWeekUsesTodayInUtc()
     {
+        // 10:00Z on 2026-02-12 is already the 13th in Kiritimati (UTC+14) and still the 11th in
+        // Baker Island (UTC-12), so a handler reading local time would answer a different date.
+        // Without a local zone the test couldn't tell the two apart (F112).
+        Time.SetLocalTimeZone(
+            TimeZoneInfo.CreateCustomTimeZone(
+                "plus-14",
+                TimeSpan.FromHours(14),
+                "plus-14",
+                "plus-14"
+            )
+        );
+
         var json = await GetJsonAsync("/api/week");
 
         await Assert.That(json.GetProperty("date").GetString()).IsEqualTo("2026-02-12");

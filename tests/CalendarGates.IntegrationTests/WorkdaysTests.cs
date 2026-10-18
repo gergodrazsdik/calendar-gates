@@ -20,6 +20,18 @@ public class WorkdaysTests : ApiTestBase
         await Assert.That(json.GetProperty("workdays").GetInt32()).IsEqualTo(2609);
     }
 
+    /// <summary>
+    /// Above year 9989 the ten-year span would run past DateOnly.MaxValue, so the endpoint clamps
+    /// the limit to 9999-12-31 instead of overflowing. Nothing covered that branch (F085).
+    /// </summary>
+    [Test]
+    public async Task ClampsTheSpanLimitNearTheMaximumYear()
+    {
+        var json = await GetJsonAsync("/api/workdays?from=9995-01-02&to=9999-12-31");
+
+        await Assert.That(json.GetProperty("workdays").GetInt32()).IsEqualTo(1305);
+    }
+
     [Test]
     [Arguments("/api/workdays", new[] { "from", "to" })]
     [Arguments("/api/workdays?from=2026-10-12", new[] { "to" })]

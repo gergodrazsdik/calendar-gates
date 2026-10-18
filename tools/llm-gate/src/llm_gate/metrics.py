@@ -15,7 +15,10 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-REAL_VERDICTS = frozenset({"pass", "fail", "not_applicable"})  # the check reached a decision
+# The check reached a decision. `not_needed` is one of them (F083): the triage plan decided the
+# check wasn't needed at that risk level, which is an answer, and counting it as a gap made every
+# merged low-risk PR look uncovered.
+REAL_VERDICTS = frozenset({"pass", "fail", "not_applicable", "not_needed"})
 NO_DATA = "_no data yet_"
 
 
@@ -110,6 +113,11 @@ def compute(
     durations: dict[str, list[float]] = defaultdict(list)
     for run in runs:
         start, end = _when(run.get("pr_event_at")), _when(run.get("finished_at"))
+        # Attempt 1 only: a re-run keeps the original event's payload, so `pr_event_at` is when the
+        # PR was pushed, not when the re-run started, and the measurement would include however
+        # long someone took to press the button (F053).
+        if run.get("run_attempt") not in (None, 1):
+            continue
         if start and end and run.get("verdict") in {"pass", "fail", "error"}:
             durations[str(run["check"])].append((end - start).total_seconds())
     report.turnaround = {

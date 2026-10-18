@@ -385,6 +385,10 @@ class Metrics(BaseModel):
     # Triage runs only (check "triage"): final risk == expect_risk, and results below the rules'
     # floor (a hard failure: the model may only raise).
     risk_accuracy: float | None = None
+    # Triage cases that were wrong in *every* repeat. An average hides one case that is always
+    # wrong — ten cases and a 0.15 allowance let a case fail three times out of three and still
+    # pass — and a case that never gets the right answer is exactly what the eval is for (F018).
+    cases_wrong_every_repeat: int = 0
     # The model's own answer below the rules' floor, per repeat. `floor_violations` used to be
     # computed from final_risk(), which takes the higher of the two, so it could never be non-zero
     # and the "hard assertion" it stood for was true by construction (F030). The invariant is a
@@ -607,6 +611,9 @@ def run_triage_eval(
             "fp_regressions": 0,
             "risk_accuracy": _ratio(sum(1 for a in attempts if a.exit_code == 0), len(attempts)),
             "model_below_floor": sum(a.forbidden_hits for a in attempts),
+            "cases_wrong_every_repeat": sum(
+                1 for r in results if r.attempts and all(a.exit_code != 0 for a in r.attempts)
+            ),
         }
     )
     return EvalRun(
@@ -716,6 +723,15 @@ def compare(run: EvalRun, baseline: Mapping[str, Any], thresholds: Thresholds) -
 
     if run.check == TRIAGE:
         delta_row("risk_accuracy", new.risk_accuracy, thresholds.max_risk_accuracy_drop, -1)
+        rows.append(
+            Comparison(
+                metric="cases_wrong_every_repeat",
+                baseline=old.get("cases_wrong_every_repeat"),
+                current=float(new.cases_wrong_every_repeat),
+                limit="0",
+                ok=new.cases_wrong_every_repeat == 0,
+            )
+        )
         rows.append(
             Comparison(
                 metric="model_below_floor",
@@ -901,20 +917,33 @@ def case_from_false_positive(
     audit_dir: Path,
     repo_root: Path,
     cases_dir: Path,
+    pr: int | None = None,
 ) -> Path:
     """Turn a finding from the audit log into an fp-regression case: the same diff, and the
     finding (file, line, category) must not come back."""
-    found: tuple[dict[str, Any], dict[str, Any]] | None = None
+    # A finding id is a check prefix plus 16 bits of hash, so it is not unique across PRs. Taking
+    # the last match silently built the case from someone else's diff; now an ambiguous id is an
+    # error and `--pr` is how you resolve it (F028).
+    matches: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for path in sorted(audit_dir.glob("events/**/*.jsonl")):
         for line in path.read_text(encoding="utf-8").splitlines():
             record = json.loads(line)
             if record.get("type") != "gate_run":
                 continue
+            if pr is not None and record.get("pr") != pr:
+                continue
             for finding in record.get("findings", []):
                 if finding.get("id") == finding_id:
-                    found = (record, finding)
-    if found is None:
-        raise EvalError(f"finding {finding_id} is not in {audit_dir} (run `just audit-pull`)")
+                    matches.append((record, finding))
+    if not matches:
+        where = f" on PR #{pr}" if pr is not None else ""
+        raise EvalError(
+            f"finding {finding_id}{where} is not in {audit_dir} (run `just audit-pull`)"
+        )
+    prs = sorted({int(record["pr"]) for record, _ in matches if record.get("pr") is not None})
+    if len(prs) > 1:
+        raise EvalError(f"finding {finding_id} appears on PRs {prs}: pass --pr to say which one")
+    found = matches[-1]  # the same PR, latest run: the newest diff for that finding
     record, finding = found
     if record.get("workflow_modified"):
         raise EvalError(f"{finding_id} comes from a run whose workflow was modified; not usable")

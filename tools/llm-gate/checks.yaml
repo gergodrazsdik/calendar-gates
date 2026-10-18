@@ -29,10 +29,22 @@ checks:
   security-review: {mode: blocking, fail_on: medium}
   test-review: {mode: advisory, model: "${LLM_MODEL_CHEAP:-claude-haiku-5-5}"}
   # The contract also lives outside Endpoints/: Domain records returned as-is (IsoWeekInfo is the
-  # /api/week JSON) and Program.cs (the /api group, OpenAPI, /health).
+  # /api/week JSON) and Program.cs (the /api group, OpenAPI, /health). And outside .cs entirely
+  # (F023): the csproj and Directory.Packages.props carry the OpenAPI generator's version, the
+  # Commit metadata /api/version reports, and Directory.Build.props the TargetFramework and
+  # Nullable that decide how the document is generated; appsettings' AllowedHosts turns requests
+  # into 400s.
   api-contract:
     mode: advisory
-    paths: ["src/**/Endpoints/**", "src/**/Domain/**", "src/**/Program.cs", "http/**"]
+    paths:
+      - src/**/Endpoints/**
+      - src/**/Domain/**
+      - src/**/Program.cs
+      - src/**/*.csproj
+      - src/**/appsettings*.json
+      - Directory.Build.props
+      - Directory.Packages.props
+      - http/**
   workflow-review: {mode: advisory, paths: [".github/**"]}
   docs-drift: {mode: advisory, model: "${LLM_MODEL_CHEAP:-claude-haiku-5-5}"}
 
@@ -84,7 +96,9 @@ triage:
   size: {medium_over_lines: 200, high_over_lines: 800} # added + deleted, lock files excluded
   ai_assisted_raise: 1
   levels:
-    low: {run: [code-review, docs-drift], blocking: []}
+    # api-contract runs here too, advisory as everything at this level: an http/**-only PR is
+    # rated low, so the glob it was given never fired for exactly the PRs it was meant for (F024).
+    low: {run: [code-review, docs-drift, api-contract], blocking: []}
     medium:
       run: [code-review, security-review, test-review, api-contract, docs-drift]
       blocking: [code-review, security-review]

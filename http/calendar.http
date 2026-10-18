@@ -1,5 +1,9 @@
 # Contract tests for the calendar API, run by ijhttp (`just http`, `just http-docker`).
 # Requests about "today" assert shape and invariants, never today's values; fixed inputs assert exact values.
+# Every request checks its content type, because a ProblemDetails body with the wrong type is not
+# the contract either (F098). Two cases can't live here: the year-10000 404 of /api/friday13/next and
+# the workdays clamp above year 9989 both need a clock this file can't set, so they are integration
+# tests (Friday13Tests, WorkdaysTests).
 
 ### Health
 GET {{baseUrl}}/health
@@ -7,6 +11,7 @@ GET {{baseUrl}}/health
 > {%
   client.test("health: 200 Healthy", () => {
     client.assert(response.status === 200, `status ${response.status}`);
+    client.assert(response.contentType.mimeType === "text/plain", response.contentType.mimeType);
     client.assert(response.body === "Healthy", `body ${response.body}`);
   });
 %}
@@ -35,6 +40,7 @@ Accept: application/json
 > {%
   client.test("week/{date}: exact values", () => {
     client.assert(response.status === 200, `status ${response.status}`);
+    client.assert(response.contentType.mimeType === "application/json", response.contentType.mimeType);
     const b = response.body;
     client.assert(b.date === "2027-01-01", `date ${b.date}`);
     client.assert(b.isoYear === 2026, `isoYear ${b.isoYear}`);
@@ -62,6 +68,7 @@ Accept: application/json
 > {%
   client.test("friday13: shape and invariants", () => {
     client.assert(response.status === 200, `status ${response.status}`);
+    client.assert(response.contentType.mimeType === "application/json", response.contentType.mimeType);
     const b = response.body;
     client.assert(b.count >= 1 && b.count <= 3, `count ${b.count}`);
     client.assert(b.dates.length === b.count, `dates ${b.dates.length} vs count ${b.count}`);
@@ -79,6 +86,7 @@ Accept: application/json
 > {%
   client.test("friday13?year: exact values", () => {
     client.assert(response.status === 200, `status ${response.status}`);
+    client.assert(response.contentType.mimeType === "application/json", response.contentType.mimeType);
     const b = response.body;
     client.assert(b.year === 2026 && b.count === 3, `year ${b.year} count ${b.count}`);
     client.assert(JSON.stringify(b.dates) === JSON.stringify(["2026-02-13", "2026-03-13", "2026-11-13"]), JSON.stringify(b.dates));
@@ -92,6 +100,7 @@ Accept: application/json
 > {%
   client.test("friday13?year: 400 ValidationProblem", () => {
     client.assert(response.status === 400, `status ${response.status}`);
+    client.assert(response.contentType.mimeType === "application/problem+json", response.contentType.mimeType);
     client.assert(response.body.errors.year.length > 0, "errors.year missing");
   });
 %}
@@ -118,6 +127,7 @@ Accept: application/json
 > {%
   client.test("friday13?year= : this year", () => {
     client.assert(response.status === 200, `status ${response.status}`);
+    client.assert(response.contentType.mimeType === "application/json", response.contentType.mimeType);
     const now = new Date();
     client.assert(response.body.year === now.getUTCFullYear(), `year ${response.body.year}`);
   });
@@ -130,6 +140,7 @@ Accept: application/json
 > {%
   client.test("friday13/next: shape and invariants", () => {
     client.assert(response.status === 200, `status ${response.status}`);
+    client.assert(response.contentType.mimeType === "application/json", response.contentType.mimeType);
     const b = response.body;
     client.assert(b.date.endsWith("-13"), `date ${b.date}`);
     client.assert(new Date(`${b.date}T00:00:00Z`).getUTCDay() === 5, `${b.date} is not a Friday`);
@@ -144,6 +155,7 @@ Accept: application/json
 > {%
   client.test("easter: exact values", () => {
     client.assert(response.status === 200, `status ${response.status}`);
+    client.assert(response.contentType.mimeType === "application/json", response.contentType.mimeType);
     const b = response.body;
     client.assert(b.year === 2026, `year ${b.year}`);
     client.assert(b.western === "2026-04-05", `western ${b.western}`);
@@ -158,6 +170,7 @@ Accept: application/json
 > {%
   client.test("easter: 400 ValidationProblem", () => {
     client.assert(response.status === 400, `status ${response.status}`);
+    client.assert(response.contentType.mimeType === "application/problem+json", response.contentType.mimeType);
     client.assert(response.body.errors.year.length > 0, "errors.year missing");
   });
 %}
@@ -169,6 +182,7 @@ Accept: application/json
 > {%
   client.test("workdays: exact values", () => {
     client.assert(response.status === 200, `status ${response.status}`);
+    client.assert(response.contentType.mimeType === "application/json", response.contentType.mimeType);
     const b = response.body;
     client.assert(b.from === "2026-10-12" && b.to === "2026-10-18", `range ${b.from}..${b.to}`);
     client.assert(b.workdays === 5, `workdays ${b.workdays}`);
@@ -182,6 +196,7 @@ Accept: application/json
 > {%
   client.test("workdays: 400 on reversed range", () => {
     client.assert(response.status === 400, `status ${response.status}`);
+    client.assert(response.contentType.mimeType === "application/problem+json", response.contentType.mimeType);
     client.assert(response.body.errors.to.length > 0, "errors.to missing");
   });
 %}
@@ -193,6 +208,7 @@ Accept: application/json
 > {%
   client.test("workdays: 400 on spans over 10 years", () => {
     client.assert(response.status === 400, `status ${response.status}`);
+    client.assert(response.contentType.mimeType === "application/problem+json", response.contentType.mimeType);
     client.assert(response.body.errors.to.length > 0, "errors.to missing");
   });
 %}
@@ -204,6 +220,7 @@ Accept: application/json
 > {%
   client.test("leap: 2000 is a leap year", () => {
     client.assert(response.status === 200, `status ${response.status}`);
+    client.assert(response.contentType.mimeType === "application/json", response.contentType.mimeType);
     client.assert(response.body.year === 2000 && response.body.isLeap === true, JSON.stringify(response.body));
   });
 %}
@@ -215,6 +232,7 @@ Accept: application/json
 > {%
   client.test("leap: 1900 is not a leap year", () => {
     client.assert(response.status === 200, `status ${response.status}`);
+    client.assert(response.contentType.mimeType === "application/json", response.contentType.mimeType);
     client.assert(response.body.isLeap === false, JSON.stringify(response.body));
   });
 %}
@@ -226,6 +244,7 @@ Accept: application/json
 > {%
   client.test("version: shape", () => {
     client.assert(response.status === 200, `status ${response.status}`);
+    client.assert(response.contentType.mimeType === "application/json", response.contentType.mimeType);
     const b = response.body;
     client.assert(/^\d+\.\d+\.\d+/.test(b.version), `version ${b.version}`);
     client.assert(typeof b.commit === "string" && b.commit.length > 0, `commit ${b.commit}`);
@@ -239,9 +258,59 @@ Accept: application/json
 > {%
   client.test("openapi: lists every route", () => {
     client.assert(response.status === 200, `status ${response.status}`);
+    client.assert(response.contentType.mimeType === "application/json", response.contentType.mimeType);
     const expected = ["/api/easter/{year}", "/api/friday13", "/api/friday13/next", "/api/leap/{year}",
       "/api/version", "/api/week", "/api/week/{date}", "/api/workdays"];
     const actual = Object.keys(response.body.paths).sort();
     client.assert(JSON.stringify(actual) === JSON.stringify(expected), JSON.stringify(actual));
+  });
+%}
+
+### Leap year out of range
+GET {{baseUrl}}/api/leap/99999
+Accept: application/json
+
+> {%
+  client.test("leap?year: 400 ValidationProblem", () => {
+    client.assert(response.status === 400, `status ${response.status}`);
+    client.assert(response.contentType.mimeType === "application/problem+json", response.contentType.mimeType);
+    client.assert(response.body.errors.year.length > 0, "errors.year missing");
+  });
+%}
+
+### Workdays without parameters
+GET {{baseUrl}}/api/workdays
+Accept: application/json
+
+> {%
+  client.test("workdays: both parameters are required", () => {
+    client.assert(response.status === 400, `status ${response.status}`);
+    client.assert(response.contentType.mimeType === "application/problem+json", response.contentType.mimeType);
+    client.assert(response.body.errors.from.length > 0, "errors.from missing");
+    client.assert(response.body.errors.to.length > 0, "errors.to missing");
+  });
+%}
+
+### Workdays with an unparsable date
+GET {{baseUrl}}/api/workdays?from=yesterday&to=2026-10-12
+Accept: application/json
+
+> {%
+  client.test("workdays?from=yesterday: 400 ValidationProblem", () => {
+    client.assert(response.status === 400, `status ${response.status}`);
+    client.assert(response.contentType.mimeType === "application/problem+json", response.contentType.mimeType);
+    client.assert(response.body.errors.from.length > 0, "errors.from missing");
+  });
+%}
+
+### Unknown route
+GET {{baseUrl}}/api/nothing
+Accept: application/json
+
+> {%
+  client.test("unknown route: 404 ProblemDetails", () => {
+    client.assert(response.status === 404, `status ${response.status}`);
+    client.assert(response.contentType.mimeType === "application/problem+json", response.contentType.mimeType);
+    client.assert(response.body.status === 404, JSON.stringify(response.body));
   });
 %}

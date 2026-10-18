@@ -5,5 +5,8 @@ max_false_block_increase: 0 # no new false blocks
 max_verdict_accuracy_drop: 0.10 # absolute; one case drifting in every repeat is about 0.06
 max_flip_rate: 0.10 # absolute, on the current run
 max_cost_increase: 0.25 # relative
-max_risk_accuracy_drop: 0.15 # absolute, triage cases (a result below the rules floor always fails)
+# Absolute, over all triage repeats. On its own it would let one case be wrong every time, so
+# `cases_wrong_every_repeat` must also be 0 (F018); `model_below_floor` is reported, not gated,
+# because the floor wins whatever the model says (F030).
+max_risk_accuracy_drop: 0.15
 budget_usd: 6 # per `llm-gate eval run`, all checks and engines together

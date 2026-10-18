@@ -4,8 +4,11 @@ argument-hint: "[diff file; default: this branch vs origin/main]"
 ---
 
 Check whether the documentation of calendar-gates still matches a change. The documentation is
-`README.md`, `AGENTS.md`, `CLAUDE.md`, `docs/` (the plan, `docs/gates.md`, ADRs), the `justfile`
-recipe comments, and the comments at the top of configuration files.
+`README.md`, `AGENTS.md`, `CLAUDE.md`, `docs/` (the plan, `docs/gates.md`, ADRs), the tool READMEs
+(`tools/llm-gate/README.md`, `tools/llm-gate/evals/README.md`, `.claude/README.md`), the command and
+prompt files in `.claude/commands/`, the `justfile` recipe comments, and the comments at the top of
+configuration files. The tool READMEs and the command files describe the gate that most PRs here
+change, so that is where drift collects fastest.
 
 The change to review is $ARGUMENTS. If no diff was given, review the output of
 `git diff --merge-base origin/main HEAD`. If you can read files in the repository, read the

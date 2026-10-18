@@ -3,7 +3,8 @@ id: tr-005-workflow-change
 kind: triage
 checks: [triage]
 source: phase-17
-description: A workflow change, high by the rules alone.
+description: 'A workflow change, high by the rules alone. A floor pin, not a model test: the rules decide
+  it, so no model answer can fail it.'
 base: 0b407197a6271a3a3c5aeaae89b1a3e3027cb774
 expect_risk: high
 expect: []

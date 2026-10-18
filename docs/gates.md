@@ -30,6 +30,20 @@ is required too (see below).
 | `llm-eval` (`llm-eval.yml`) | `just eval` | The PR changes a review prompt or `tools/llm-gate/` and scores worse than `evals/baseline.json` beyond `evals/thresholds.yaml` (recall, false blocks, flips, cost), or a `forbid` rule of an fp-regression case matches again (`fp_regressions`, which updating the baseline cannot clear), or **a check's engine/model has no baseline entry** (change one and the entry comes with it), or the eval doesn't finish within its budget | Fix the prompt or code; or, if the new scores are the intended trade-off, update the baseline in the same PR (`just eval-baseline`) and say why | `evals/thresholds.yaml` (changing it weakens the gate: say so) |
 | `gates` | n/a | Any gate it needs did not succeed (failed, cancelled or skipped) | Fix that gate | none |
 
+## What the agent's permissions do and don't buy you
+
+`.claude/settings.json` pre-approves `just`, `dotnet`, `uv run` and read-only `gh run` commands and
+denies a handful (`git push --force`, `gh secret`, `gh api -X DELETE`). Worth being precise about
+what that means (F045): the allow rules are **convenience, not a boundary**. `just`, `dotnet` and
+`uv run` run arbitrary project code by design — `just release` pushes a tag, `uv run python -c …`
+runs anything — so the deny list can always be reached another way, and a longer deny list would be
+security theatre. What actually bounds the agent here is the Claude Code sandbox
+(`.claude/settings.local.json`: read-only home, no network except the allowlisted registries) and
+the machine's `claude-bash-guard` hook, which asks before sudo, secrets, GitHub writes and
+destructive recipes whatever the project's settings say. The deny rules stay as a tripwire for the
+obvious, and `gh run` is narrowed to its read-only subcommands because `gh run delete|cancel|rerun`
+changes CI state for no convenience gain.
+
 ## Notes per gate
 
 - **format**: CSharpier owns layout, `dotnet format` only checks rules ([ADR 0001](adr/0001-csharpier-owns-formatting.md)).
@@ -93,7 +107,10 @@ is required too (see below).
   model. A check the level doesn't need still reports success with "not needed at risk: <level>",
   so required checks never go missing (and that record says `blocking: false`, because it blocked
   nothing). The job summary shows why the PR got its level.
-- **api-contract** runs when a PR touches `Endpoints/`, `Domain/`, `Program.cs` or `http/`. The JSON
+- **api-contract** runs when a PR touches `Endpoints/`, `Domain/`, `Program.cs`, the API's `.csproj`
+  or `appsettings*.json`, `Directory.Build.props`, `Directory.Packages.props` or `http/` — all of
+  which can change the contract (F023) — and it runs at every risk level, including `low`, where an
+  `http/`-only PR lands (F024). The JSON
   contract isn't only in `Endpoints/`: `IsoWeekInfo` (in `Domain/`) is returned as-is by `/api/week`, and
   `Program.cs` holds the `/api` group and OpenAPI. Found by the evals (`ac-001`, drill 3), where the
   narrower filter made the check "not applicable".

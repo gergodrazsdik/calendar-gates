@@ -1,0 +1,33 @@
+# The PR title becomes the squash commit, so it has to be a Conventional Commit. Its own workflow
+# since 2026-10-19 (F072): in ci.yml the check never re-ran when the title was *edited*, so it could
+# stay green on a title that no longer passes, and adding `edited` to ci.yml's triggers would re-run
+# every gate — LLM reviews included — on each edit.
+name: pr-title
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, edited]
+
+permissions: {}
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-title:
+    name: pr-title
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: scripts
+          persist-credentials: false
+      - name: Conventional Commit title (becomes the squash commit)
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: scripts/check-commit-msg.sh --title "$TITLE"

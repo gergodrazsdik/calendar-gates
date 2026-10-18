@@ -102,3 +102,32 @@ spec:
   containers:
     - name: app
       image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+---
+# `kubectl debug` adds an ephemeral container to a running pod, and the policy counts those images
+# like any other. Nothing tested that: removing ephemeralContainers from the images expression left
+# every test green (F046).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: foreign-ephemeral-container
+  namespace: calendar-gates
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+  ephemeralContainers:
+    - name: debugger
+      image: docker.io/library/busybox@sha256:0000000000000000000000000000000000000000000000000000000000000000
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: release-ephemeral-container
+  namespace: calendar-gates
+spec:
+  containers:
+    - name: app
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+  ephemeralContainers:
+    - name: debugger
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5

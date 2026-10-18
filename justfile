@@ -7,10 +7,13 @@ k8s_ns := "calendar-gates"
 
 # Kubernetes (docs/adr/0010-admission-control.md): the project's own kind cluster, with Kyverno, is
 # the default; `just cluster=local <recipe>` targets kind-local as in v1. The project cluster's
-# kubeconfig lives in the state dir, so ~/.kube/config is never touched.
+# kubeconfig lives in the state dir, so ~/.kube/config is never touched. `cluster=local` names
+# ~/.kube/config outright rather than inheriting $KUBECONFIG (F057): `kind-local` writes its
+# context there, and exporting KUBECONFIG for the project cluster — which AGENTS.md suggests —
+# would otherwise send the local recipes at the project cluster's file.
 cluster := "calendar-gates"
 kube_context := "kind-" + cluster
-export KUBECONFIG := if cluster == "local" { env("KUBECONFIG", home_directory() / ".kube" / "config") } else { home_directory() / ".local" / "state" / "calendar-gates" / "kubeconfig" }
+export KUBECONFIG := if cluster == "local" { home_directory() / ".kube" / "config" } else { home_directory() / ".local" / "state" / "calendar-gates" / "kubeconfig" }
 
 # List recipes
 default:
@@ -83,6 +86,7 @@ lint:
     uv run --directory tools/llm-gate --locked mypy
     uv run --directory tools/llm-gate --locked pytest -q
     uv run --locked --script scripts/check-ruleset-consistency.py
+    uv run --locked --script scripts/check-cooldown-date.py
 
 # Fetch the audit-log branch into .audit-log/ for local queries (jq over events/**/*.jsonl)
 [group('llm')]
@@ -155,6 +159,16 @@ k8s-up:
     mkdir -p -m 700 "$(dirname "$KUBECONFIG")"
     if kind get clusters 2> /dev/null | grep -qx "{{ cluster }}"; then
         podman start "{{ cluster }}-control-plane" > /dev/null
+        # A restarted rootless node gets a new published API port, so the kubeconfig in the state
+        # dir points at the old one, and the API server needs a moment either way: without both of
+        # these the next recipe failed against a cluster that was in fact coming up (F056). The
+        # same two steps are what `kind-local start` does for the machine's cluster.
+        kind export kubeconfig --name "{{ cluster }}" --kubeconfig "$KUBECONFIG" > /dev/null
+        for _ in $(seq 60); do
+            kubectl --context {{ kube_context }} get --raw /readyz > /dev/null 2>&1 && break
+            sleep 2
+        done
+        kubectl --context {{ kube_context }} wait --for=condition=Ready node --all --timeout=120s
         echo "started {{ cluster }}"
     else
         kind create cluster --name "{{ cluster }}" --config deploy/kind/cluster.yaml --wait 120s
@@ -225,12 +239,19 @@ k8s-deploy ns=k8s_ns:
         --set-string "podAnnotations.calendar-gates/image-id=$(podman image inspect --format '{{{{.Id}}' {{ image }} | cut -c1-12)" \
         --reset-values --rollback-on-failure --timeout 2m
 
-# Deploy a published release: chart and image from GHCR (after `just release`)
+# Deploy a published release: chart (resolved to a digest) and image from GHCR (after `just release`)
 [group('k8s')]
 k8s-deploy-release version ns=k8s_ns:
-    @# --reset-values: without it, an upgrade with no values reuses the previous release's.
-    helm upgrade --install calendar-gates oci://ghcr.io/gergodrazsdik/charts/calendar-gates \
-        --version {{ version }} --kube-context {{ kube_context }} -n {{ ns }} --create-namespace \
+    #!/usr/bin/env bash
+    set -euo pipefail
+    chart=ghcr.io/gergodrazsdik/charts/calendar-gates
+    # `--version X.Y.Z` is an OCI *tag*, which `helm push` can overwrite, so what deploys could
+    # differ from what was released (F054). Resolve it once and install that digest.
+    digest=$(crane digest "$chart:{{ version }}")
+    echo "chart {{ version }} is $digest"
+    # --reset-values: without it, an upgrade with no values reuses the previous release's.
+    helm upgrade --install calendar-gates "oci://$chart@$digest" \
+        --kube-context {{ kube_context }} -n {{ ns }} --create-namespace \
         --reset-values --rollback-on-failure --timeout 3m
 
 # HTTP contract tests through a port-forward (localhost:18080)
@@ -365,6 +386,20 @@ verify-release version:
     echo "Approved in the release environment:"
     jq -r '.[0].verificationResult.statement.predicate
         | "  version \(.version), tag \(.tag), run \(.run)"' "$tmp/release-approved.json"
+    # The chart is the deployable unit and nothing verified it (F054): no attestation covers it, so
+    # what can be checked is that it pins the image this run just verified, and that the copy in
+    # the registry is the copy attached to the release.
+    digest=$(jq -r '.[0].verificationResult.statement.subject[0].digest.sha256' "$tmp/provenance.json")
+    helm pull oci://ghcr.io/gergodrazsdik/charts/calendar-gates --version "$version" -d "$tmp"
+    tar -xzf "$tmp/calendar-gates-$version.tgz" -C "$tmp" calendar-gates/values.yaml
+    pinned=$(yq -r '.image.digest' "$tmp/calendar-gates/values.yaml")
+    [ "$pinned" = "sha256:$digest" ] || {
+        echo "the chart pins $pinned, but the verified image is sha256:$digest" >&2; exit 1; }
+    gh release download "v$version" -R "$repo" -p "calendar-gates-$version.tgz" -D "$tmp/asset"
+    if ! cmp -s "$tmp/calendar-gates-$version.tgz" "$tmp/asset/calendar-gates-$version.tgz"; then
+        echo "the chart in the registry differs from the one attached to the release" >&2; exit 1
+    fi
+    echo "chart $version: pins the verified image, and matches the release asset"
     echo "LLM review:"
     jq -r '.[0].verificationResult.statement.predicate
         | "  \(.prs | length) PR(s) from \(.range.from // "the first commit") to \(.range.to)",
@@ -467,6 +502,26 @@ gh-rulesets:
             gh api -X POST "repos/$repo/rulesets" --input "$file" --jq '"created \(.name) (\(.id))"'
         fi
     done
+
+# Compare the live rulesets with .github/rulesets/*.json (what gh-rulesets would apply)
+[group('github')]
+gh-rulesets-diff:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    repo={{ repo }}
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    status=0
+    for file in .github/rulesets/*.json; do
+        name=$(jq -r .name "$file")
+        id=$(gh api "repos/$repo/rulesets" | jq -r --arg name "$name" '.[] | select(.name == $name) | .id')
+        if [ -z "$id" ]; then
+            echo "::error::$name is not applied to $repo"; status=1; continue
+        fi
+        gh api "repos/$repo/rulesets/$id" > "$tmp/live.json"
+        uv run --locked --script scripts/ruleset-live-diff.py "$file" "$tmp/live.json" || status=1
+    done
+    exit "$status"
 
 # Turn on CodeQL default setup (languages are detected from the repo, so run it once code exists)
 [group('github')]

@@ -17,9 +17,12 @@ public class MetaTests : ApiTestBase
     }
 
     [Test]
-    public async Task LeapYearRejectsUnsupportedYears()
+    [Arguments(1582)] // just below Years.Min
+    [Arguments(10000)] // just above Years.Max
+    [Arguments(99999)]
+    public async Task LeapYearRejectsUnsupportedYears(int year)
     {
-        await AssertValidationProblemAsync("/api/leap/99999", "year");
+        await AssertValidationProblemAsync($"/api/leap/{year}", "year");
     }
 
     [Test]
@@ -59,6 +62,46 @@ public class MetaTests : ApiTestBase
                 "/api/leap/{year}",
                 "/api/version",
             ]);
+    }
+
+    /// <summary>
+    /// The document used to say every integer was `[integer, string]` with a digits pattern, because
+    /// the web JSON defaults read numbers from strings (F096), and the date parameters had no format
+    /// and claimed to be optional (F086). Only the route list was pinned, so neither showed up.
+    /// </summary>
+    [Test]
+    public async Task OpenApiDescribesDatesAndIntegers()
+    {
+        var json = await GetJsonAsync("/openapi/v1.json");
+        var paths = json.GetProperty("paths");
+
+        var workdays = paths
+            .GetProperty("/api/workdays")
+            .GetProperty("get")
+            .GetProperty("parameters")
+            .EnumerateArray();
+        foreach (var parameter in workdays)
+        {
+            await Assert.That(parameter.GetProperty("required").GetBoolean()).IsTrue();
+            await Assert
+                .That(parameter.GetProperty("schema").GetProperty("format").GetString())
+                .IsEqualTo("date");
+        }
+
+        var date = paths
+            .GetProperty("/api/week/{date}")
+            .GetProperty("get")
+            .GetProperty("parameters")[0]
+            .GetProperty("schema");
+        await Assert.That(date.GetProperty("format").GetString()).IsEqualTo("date");
+
+        var week = json.GetProperty("components")
+            .GetProperty("schemas")
+            .GetProperty("IsoWeekInfo")
+            .GetProperty("properties")
+            .GetProperty("week");
+        await Assert.That(week.GetProperty("type").GetString()).IsEqualTo("integer");
+        await Assert.That(week.TryGetProperty("pattern", out _)).IsFalse();
     }
 
     [Test]

@@ -12,14 +12,22 @@ PR carries an honoured `llm-override`, which accepts the diff unreviewed ([ADR 0
 ```
 llm-gate list    [--json] [--blocking]
 llm-gate run     --check <name> [--engine api|agent|both] [--base origin/main] [--out .llm-gate]
-                 [--no-cache] [--override --override-reason <why> [--override-by <who>]]
+                 [--no-cache] [--risk low|medium|high]
+                 [--override --override-reason <why> [--override-by <who>]]
+llm-gate triage  [--base origin/main] [--pr-data <json>] [--audit-dir <dir>] [--no-model]
+                 [--out .llm-gate] [--no-cache]                        (ADR 0008)
 llm-gate compare --check <name> [--in .llm-gate]
 llm-gate report  [--in .llm-gate] [--check <name>] [--format md|sarif]
 llm-gate audit   skip | validate | collect | override   (see "Audit records")
+llm-gate attest  vuln-scan --grype <file>... --out <file>
+                 | llm-review --from <tag> --to <tag> --commits <json> --audit-dir <dir>
+                   [--config <checks.yaml>] --out <file> [--notes <file>]   (release.yml, ADR 0009)
 llm-gate eval    run [--check <c>]... [--engine api|agent|both] [--model <m>] [--repeats 3]
-                 [--jobs 4] [--cases <glob>] [--budget-usd <x>] [--compare]
-                 | baseline | add-from-fp <finding-id>   (see evals/README.md)
-llm-gate feedback handle --event <file> --audit-dir <dir> --out <dir> | mark ...   (llm-feedback.yml)
+                 [--jobs 4] [--cases <glob>] [--budget-usd <x>] [--compare] [--out <dir>]
+                 [--no-cache]
+                 | baseline | add-from-fp <finding-id> [--pr <n>]   (see evals/README.md)
+llm-gate feedback handle --event <file> --audit-dir <dir> --out <dir> [--permission <role>]
+                 [--head-sha <sha>] | mark ...                         (llm-feedback.yml)
 llm-gate metrics [--audit-dir .audit-log] [--prs <json>] [--eval-reports <dir>] [--since-days 30]
 ```
 
@@ -33,9 +41,15 @@ the checkout that holds the config. CI runs the gate from the base branch's curr
 
 From the repository root: `just llm <check> [engine]` (key from `pass`), `just llm-compare <check>`,
 `just llm-list`. Environment: `ANTHROPIC_API_KEY`, `LLM_MODEL` / `LLM_MODEL_CHEAP` (models in
-`checks.yaml`), `LLM_GATE_BASE` (default base), `LLM_GATE_OVERRIDE=1` with `LLM_GATE_OVERRIDE_REASON` (report
+`checks.yaml`), `LLM_GATE_BASE` (default base), `LLM_GATE_RISK` (the triage level `--risk` takes,
+which decides whether a check is needed, blocks, and with which engine and model),
+`LLM_GATE_OVERRIDE=1` with `LLM_GATE_OVERRIDE_REASON` and `LLM_GATE_OVERRIDE_BY` (report
 without failing; an override without a reason is not honoured), `LLM_GATE_PR` and
 `LLM_GATE_PR_EVENT_AT` (audit context in CI).
+
+`audit collect` and `audit override` also take `--writers <json>`, the logins the caller resolved to
+a write, maintain or admin role: an override is honoured only for someone on that list, whichever
+way the label got there (F007).
 
 ## Engines
 
@@ -72,6 +86,10 @@ title) are shown in the sticky comment, so people can refer to a finding.
 | Module | |
 |---|---|
 | `config.py` | `checks.yaml` with `${VAR:-default}` expansion, validated with pydantic |
+| `models.py` | the `Review`/`Finding` schema the engines return, and finding ids |
+| `prompts.py` | the prompt file plus the diff, fenced as data |
+| `triage.py` | the risk level: path and size rules, the model's raise, `/llm-risk`, the checks plan ([ADR 0008](../../docs/adr/0008-risk-triage.md)) |
+| `aidetect.py` | AI markers in trailers, the PR body and the branch name, which raise triage by one level |
 | `diff.py` | `git diff --merge-base <base> HEAD`, lock and generated files excluded, `paths:` matching |
 | `engines/` | `api_engine.py`, `agent_engine.py`, the `Engine` protocol |
 | `policy.py` | verdict and exit code from findings, mode, `fail_on`, override and `on_error` |
@@ -82,6 +100,7 @@ title) are shown in the sticky comment, so people can refer to a finding.
 | `evals.py` | eval cases, scoring, baseline and thresholds, fp-regression cases from the audit log (`evals/`) |
 | `feedback.py` | `/llm-*` PR comment commands: parsing, validation, records and actions ([ADR 0007](../../docs/adr/0007-feedback-commands.md)) |
 | `metrics.py` | gate health report over the audit log ([docs/metrics.md](../../docs/metrics.md)) |
+| `attestations.py` | the `vuln-scan` and `llm-review` release predicates, and the release notes ([ADR 0009](../../docs/adr/0009-build-once-attest-promote.md)) |
 | `redact.py` | secret patterns and length limits that the record schema applies to every free-text field |
 
 Tests use fake engines and stubbed SDKs (`uv run pytest`); `uv run pytest -m live` calls the real
