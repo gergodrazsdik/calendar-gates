@@ -36,6 +36,10 @@ approve, the v1 configuration reported no findings on an obvious bug; with nothi
   its prompts. It just doesn't review itself. Interactive use is unchanged: `/llm-code-review` in
   Claude Code still runs the same prompt file.
 
+- **Amended 2026-10-18**: the principle covers the **attributes** too. `git diff` reads
+  `.gitattributes` from the working tree, so the PR-head checkout decided what the reviewers could
+  see until the diff was built with `git --attr-source=<base>` (F001). Exclusions live in
+  `diff.EXCLUDES` on the base branch, not in a file the PR writes.
 - **Amended 2026-10-16**: "the base commit" is the base branch's head when the run starts
   (pinned once by the plan job and passed to every check; that job is `triage` since Phase 17,
   [ADR 0008](0008-risk-triage.md)), not the PR's `base.sha`. GitHub doesn't

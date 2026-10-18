@@ -1,4 +1,5 @@
 * text=auto eol=lf
 
-# Vendored test data: no line diffs (keeps it out of llm-gate reviews and their size cap)
-tools/llm-gate/tests/fixtures/*.json -diff
+# Nothing here keeps a file out of an LLM review: attributes come from the base commit
+# (`git --attr-source`, ADR 0004) and the review diff is built with `--text`, so an exclusion goes
+# in diff.EXCLUDES instead. A `-diff` line here would only change what `git diff` shows a person.

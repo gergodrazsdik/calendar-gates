@@ -90,6 +90,9 @@ jobs:
             git -C gate archive FETCH_HEAD | tar -x -C "$RUNNER_TEMP/audit-log"
           fi
 
+      # The triage cache stays, unlike the review one (F002): a forged entry here can only raise
+      # the model's risk (the rules' floor dominates, triage.py), and the collector recomputes the
+      # floor and checks final_risk against it anyway.
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .llm-gate/cache
@@ -267,15 +270,12 @@ jobs:
             echo "**llm-override not honoured:** $why" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      # Results are cached by check, engine, model, prompt and diff; re-runs of an unchanged PR
-      # (a label change, a re-run) cost nothing. Restore and save are separate steps because the
-      # combined action only saves when the job succeeds, and failed checks are the ones re-run.
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: steps.key.outputs.run == 'true'
-        with:
-          path: .llm-gate/cache
-          key: llm-gate-${{ matrix.check }}-pr${{ github.event.pull_request.number }}-${{ github.sha }}
-          restore-keys: llm-gate-${{ matrix.check }}-pr${{ github.event.pull_request.number }}-
+      # No result cache here, on purpose (F002, ADR 0002). Actions caches are shared by every
+      # workflow run of the same ref, `pull_request` runs the PR's own workflow files, and the key
+      # is sha256 of inputs the PR author knows: check, engine, model, the base's prompt and their
+      # own diff. A sibling workflow the PR adds could therefore save a findings-free result and
+      # llm-review would restore it as a verified pass. An HMAC wouldn't help, because that
+      # workflow can read the same repository secrets. So a re-run of an unchanged PR pays again.
 
       - name: Review
         id: review
@@ -306,12 +306,6 @@ jobs:
             echo "verdict=${verdict:-error}"
             echo "overridden=${overridden:-false}"
           } >> "$GITHUB_OUTPUT"
-
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: steps.review.outcome == 'success'
-        with:
-          path: .llm-gate/cache
-          key: llm-gate-${{ matrix.check }}-pr${{ github.event.pull_request.number }}-${{ github.sha }}
 
       # Posting is done here by the workflow (with the base commit's script), not by the model.
       # A failed comment (for example a read-only token) must not decide the check.

@@ -87,6 +87,12 @@ all of the policy.
   an edit to the description between the run and the collection can show up as a mismatch on the
   AI flag. Runs from workflows older than triage have no triage record. Their records are accepted
   with no risk, and a record that claims a risk without a triage record is flagged.
+- **A size that can't be counted is high risk** (2026-10-18). `git diff --numstat` prints `-` for
+  a file it won't diff, which used to count as 0 changed lines: a binary file, or a text file with
+  a NUL byte in it, slipped past the size rule entirely. Such a file now raises the floor to high
+  and is named in the reasons, on both sides — the collector reads the compare API's 0/0-with-no-
+  patch the same way, so an honest PR with a binary file isn't flagged as tampering. `.gitattributes`
+  is rated high with the rest of the gate configuration.
 - **A partial re-run reuses the triage record** (2026-10-18). GitHub's "Re-run failed jobs"
   doesn't re-run a successful `triage` job, so the new attempt has no triage artifact and every
   re-run verdict carrying a risk was recorded as a tamper event, leaving the PR unreviewed and

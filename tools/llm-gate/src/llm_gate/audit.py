@@ -706,6 +706,11 @@ def _record_problems(record: AuditRecord, expected: Expected, check: str | None)
             problems.append(f"verdict {record.verdict}{override} with exit code {record.exit_code}")
         # Blocking checks fail closed (ADR 0002), so a passing error needs an honoured override.
         # A blocking check configured `on_error: pass` would have to be allowed for here.
+        # A blocking verdict is never restored from a cache: llm-review doesn't keep one, because
+        # a PR's own workflow can write it (F002, ADR 0002). Defence in depth, so turning the cache
+        # back on can't quietly make a forged entry into evidence again.
+        if record.blocking and record.cache_hit:
+            problems.append("a blocking check reports a cache hit; blocking reviews are not cached")
         passing_error = record.verdict == "error" and record.exit_code == 0
         if record.blocking and passing_error and not record.override_honoured:
             problems.append("a blocking check reports error with exit code 0 and no override")

@@ -31,13 +31,13 @@ A review of the whole repository at `43ec3c2` (2026-10-17), after PLAN-v2 was wr
 | accepted | 0 | 0 | 0 | 2 | 1 | 3 |
 | rejected | 0 | 0 | 0 | 0 | 11 | 11 |
 
-**Fixed so far: 46 of 119** (1 partial, 71 open, 1 unverifiable). By severity:
+**Fixed so far: 50 of 119** (2 partial, 66 open, 1 unverifiable). By severity:
 
 | Status | critical | high | medium | low | info | total |
 |---|---|---|---|---|---|---|
-| ✅ fixed | 0 | 0 | 6 | 21 | 19 | 46 |
-| 🟡 partial | 0 | 0 | 0 | 1 | 0 | 1 |
-| open | 0 | 2 | 10 | 52 | 7 | 71 |
+| ✅ fixed | 0 | 2 | 8 | 21 | 19 | 50 |
+| 🟡 partial | 0 | 0 | 1 | 1 | 0 | 2 |
+| open | 0 | 0 | 7 | 52 | 7 | 66 |
 | ⚪ unverifiable | 0 | 0 | 1 | 0 | 0 | 1 |
 
 Each fix names the PR that made it. The status column is maintained by hand as fixes land; the verdicts and severities below are the review's own and are not revised.
@@ -118,7 +118,9 @@ exactly the bypass it describes, so it was not built. What is confirmed without 
 `http-tests` and `k8s-smoke` hold `checks: write` while running PR code. Moving test reporting to
 a job that runs no PR code removes the question.
 
-**Since the review (2026-10-18).** Five things changed under this document:
+**Since the review (2026-10-18).** Six things changed under this document:
+- **#68** closed both highs: the `.gitattributes` hole (F001) and the forged review cache (F002),
+  plus the narrow `workflow_modified` flag they both relied on (F042).
 - **#67** bound a release tag to a commit on `main` (F043), outside the workflow the tag supplies.
 - **#65** fixed the four findings that misfire in normal use: a partial re-run recorded as
   tampering (F006), commands dropped mid-review (F044), the triage job dying on schema-invalid
@@ -151,21 +153,21 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 
 | ID | Status | Sev | Was | Area | Title | Fix | Votes |
 |---|---|---|---|---|---|---|---|
-| [F001](#f001) | open | high | high | A | A PR's own .gitattributes can hide its changes from every LLM reviewer and from triage's size rule | small | S:C/high M:C/high I:C/medium |
-| [F002](#f002) | open | high | high | A | Review results restored from the Actions cache are trusted unverified, and other workflows of the same PR can write that cache | medium | S:C/high M:C/high I:C/medium |
+| [F001](#f001) | ✅ fixed | high | high | A | A PR's own .gitattributes can hide its changes from every LLM reviewer and from triage's size rule | small | S:C/high M:C/high I:C/medium |
+| [F002](#f002) | ✅ fixed | high | high | A | Review results restored from the Actions cache are trusted unverified, and other workflows of the same PR can write that cache | medium | S:C/high M:C/high I:C/medium |
 | [F003](#f003) | open | medium | high | A | The agent reviewer's file reads are not fenced to the reviewed checkout, and its output is published unredacted | small | S:P/medium M:C/medium I:C/low |
-| [F004](#f004) | open | medium | high | A | The collector's triage recomputation (_triage_expected) has no test at all | small | S:C/medium M:C/medium I:C/low |
 | [F008](#f008) | open | medium | medium | A | llm-eval checks only flips and fp-regressions when the run's engine/model has no baseline entry, so changing a check's model skips the regression gate | small | S:C/medium M:C/medium I:C/medium |
 | [F010](#f010) | open | medium | medium | A | Name-based EXCLUDES drop compiled C# from the review, and a PR made only of excluded files passes as 'not applicable' | small | S:C/medium M:C/medium I:C/low |
-| [F012](#f012) | open | medium | medium | A | Cache keys ignore llm-gate's request code and engine settings, so llm-eval scores engine changes from main's cached reviews | small | S:C/medium M:C/medium I:C/medium |
 | [F020](#f020) | open | medium | medium | A | A /llm-risk decision isn't tied to a head: lowering the risk once removes blocking review from every later push to the PR | small | S:C/medium M:C/low I:C/medium |
-| [F042](#f042) | open | medium | medium | B | `workflow_modified` only looks at llm-review.yml, so other PR changes that steer the review still count as verified | small | S:C/medium M:C/medium I:C/medium |
 | [F047](#f047) | open | medium | medium | B | No policy inspects OCI image volumes, so a pod in calendar-gates can run code from any registry next to an attested container | trivial | S:C/medium M:C/medium I:C/low |
 | [F052](#f052) | open | medium | medium | B | uv itself is unpinned: every setup-uv step installs the newest uv release, in the signing job and the write-token jobs too | small | S:C/low M:C/medium I:C/medium |
 | [F081](#f081) | open | medium | medium | C | A malformed or empty ?year= on /api/friday13 gets a 400 without `errors` in Production and a 500 in Development, not the 400 ValidationProblem | small | S:C/medium M:C/medium I:C/medium |
+| [F012](#f012) | 🟡 partial | medium | medium | A | Cache keys ignore llm-gate's request code and engine settings, so llm-eval scores engine changes from main's cached reviews | small | S:C/medium M:C/medium I:C/medium |
+| [F004](#f004) | ✅ fixed | medium | high | A | The collector's triage recomputation (_triage_expected) has no test at all | small | S:C/medium M:C/medium I:C/low |
 | [F005](#f005) | ✅ fixed | medium | medium | A | Triage and the collector accept any risk_override record on audit-log, so a hand-pushed record can lower the risk with a forged author and an unbeatable timestamp | medium | S:C/medium M:C/medium I:C/medium |
 | [F006](#f006) | ✅ fixed | medium | medium | A | Re-running only the failed llm jobs turns their records into tamper_suspected, because the new attempt has no triage artifact | small | S:C/medium M:C/medium I:C/medium |
 | [F011](#f011) | ✅ fixed | medium | medium | A | Schema-invalid or truncated model output escapes structured_call as pydantic.ValidationError, crashing triage instead of leaving the floor | small | S:C/medium M:C/medium I:C/medium |
+| [F042](#f042) | ✅ fixed | medium | medium | B | `workflow_modified` only looks at llm-review.yml, so other PR changes that steer the review still count as verified | small | S:C/medium M:C/medium I:C/medium |
 | [F043](#f043) | ✅ fixed | medium | medium | B | A v* tag on any commit, merged or not, mints release attestations, because the 'on main' check runs inside that commit's own release.yml | medium | S:C/medium M:C/medium I:C/medium |
 | [F044](#f044) | ✅ fixed | medium | medium | B | /llm-risk and /llm-override posted while llm-review is running get a +1 reaction but may never take effect | small | S:C/medium M:C/medium I:C/medium |
 | [F084](#f084) | ✅ fixed | medium | medium | C | "A failed smoke leaves a draft; re-running the workflow refreshes it" no longer holds under build-once releases | trivial | S:C/medium M:C/medium I:C/medium |
@@ -279,7 +281,7 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 
 **A PR's own .gitattributes can hide its changes from every LLM reviewer and from triage's size rule**
 
-- **Status:** open — the `.gitattributes` hole; #62 did not touch it
+- **Status:** ✅ fixed — #68: the review diff reads attributes from the base (`--attr-source`) with `--text`, and an uncountable size raises the floor to high
 - **Severity:** high (reviewers: high) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/diff.py:55` · **area:** llm-gate and review prompts
 - **Reported by:** `cr-gate-01` (high, high confidence), `sec-01` (high, high confidence)
@@ -312,7 +314,7 @@ merge_base_diff runs `git diff --no-color --no-ext-diff --merge-base <base> HEAD
 
 **Review results restored from the Actions cache are trusted unverified, and other workflows of the same PR can write that cache**
 
-- **Status:** open — the cache forgery; #62 did not touch it
+- **Status:** ✅ fixed — #68: llm-review keeps no review cache, and the collector refuses a blocking record claiming a cache hit
 - **Severity:** high (reviewers: high) · **outcome:** confirmed · **fix cost:** medium
 - **Where:** `tools/llm-gate/src/llm_gate/cache.py:27` · **area:** llm-gate and review prompts
 - **Reported by:** `cr-gate-02` (high, medium confidence), `sec-02` (high, high confidence), `wr-03` (medium, medium confidence)
@@ -384,29 +386,6 @@ The Review step exports ANTHROPIC_API_KEY, and the Agent SDK passes os.environ o
 
 </details>
 
-### F004
-
-**The collector's triage recomputation (_triage_expected) has no test at all**
-
-- **Status:** open
-- **Severity:** medium (reviewers: high) · **outcome:** confirmed · **fix cost:** small
-- **Where:** `tools/llm-gate/src/llm_gate/cli.py:594` · **area:** llm-gate and review prompts
-- **Reported by:** `tr-01` (high, high confidence)
-
-_triage_expected builds the TriageExpected that audit-collect.yml checks every run's triage against (ADR 0008 decision 6): the floor from the compare API files, the AI flag from commits/body/branch, manual_required (the latest /llm-risk written before run_started_at) versus manual_allowed (that one plus the latest), and the per-level plans from the default branch's checks.yaml. Branch coverage shows cli.py 599-625 never executed, and no test passes --triage-inputs. The collector tests in test_triage.py hand-build expected(), so they never exercise this builder. On a scratch copy, two mutations survived all 306 tests: (a) manual_required taken from the latest override instead of the one before the run started; (b) the function always returning None. With (b), _triage_problems returns [] and _risk_problems falls back to the artifact's own checks_plan, so the floor, AI flag and plans are no longer recomputed. ADR 0005 says the collector's validation has its own tests; this part has none. It is defence in depth behind workflow_modified, but it runs on every collection.
-
-*Failure scenario:* A refactor makes _triage_expected return None, or swaps required/latest. All tests pass. In production either no run's triage is checked any more, or every run that started before a later /llm-risk is written as tamper_suspected. Those are permanent false alarms, and the release attestation then lists those PRs as unverified.
-
-*Suggested fix:* CLI tests of `audit collect --triage-inputs` with a temporary checks.yaml and an audit-log dir holding risk_override records from before and after run_started_at. Add a case with compare_files null, and assert the outcome (written or tamper_suspected) each time. Or unit-test _triage_expected directly with an argparse.Namespace.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, medium, small): No test passes --triage-inputs or calls _triage_expected (grep of tests). I ran both mutants against the full suite through an import-hook plugin, without touching the repo: _triage_expected always returning None survived (306 passed), and manual_required taken from the latest override survived (306 passed); a control mutant in the same module was killed, so the harness applies cli mutations. Calibrated to medium: it's a test gap, but mutant (b) would silently turn off the collector's triage recomputation (ADR 0008 decision 6).
-- **maintainer** (CONFIRMED, medium, small): No test passes --triage-inputs or calls _triage_expected; the collector tests hand-build TriageExpected. In a scratch clone both mutations survived all 306 tests: _triage_expected always returning None, and manual_required computed without `before=started`. ADR 0005 says the collector's validation has its own tests, and this builder decides every run's triage check. It is a test gap, not wrong behaviour today, hence medium rather than high.
-- **impact** (CONFIRMED, low, small): Branch coverage of the suite (pytest-cov) shows cli.py 599-625 never executed, no test passes --triage-inputs, and test_triage.py hand-builds TriageExpected, so both described mutations survive. The impact is smaller than reported: the recomputation adds value only when a run's triage artifact can lie, which needs a modified workflow (already flagged workflow_modified) or an exotic route, and its likely regressions are either silent loss of a mostly redundant check (return None) or loud false tamper events. A real test gap on the collector, but low.
-
-</details>
-
 ### F008
 
 **llm-eval checks only flips and fp-regressions when the run's engine/model has no baseline entry, so changing a check's model skips the regression gate**
@@ -463,29 +442,6 @@ EXCLUDES removes **/*.g.cs, **/*.generated.cs, **/*.Designer.cs, **/*.lock and *
 
 </details>
 
-### F012
-
-**Cache keys ignore llm-gate's request code and engine settings, so llm-eval scores engine changes from main's cached reviews**
-
-- **Status:** open
-- **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
-- **Where:** `tools/llm-gate/src/llm_gate/cache.py:15` · **area:** llm-gate and review prompts
-- **Reported by:** `cr-gate-07` (medium, high confidence)
-
-cache_key covers [CACHE_VERSION, check, engine name, model, prompt body, diff]. Code and config outside the key also shape the request the model gets: prompts.render, diff_block and DIFF_REFERENCE, agent_prompt, READ_ONLY_TOOLS and the other ClaudeAgentOptions, the Review schema's field descriptions (sent as the output schema), MAX_TOKENS, and checks.yaml's max_turns and budget_usd. llm-eval restores main's warm cache (llm-eval.yml restore-keys llm-eval-main-), and run_eval salts keys by case and repeat only. A PR that changes any of these but no prompt therefore gets 100% cache hits and exactly the baseline's scores. ADR 0006 says a PR 'pays only for the checks whose prompt or code it changes', but a code change doesn't change the key; only a manual CACHE_VERSION bump does. The same keys also let llm-review keep reusing a PR's earlier reviews after a merged change to request code.
-
-*Failure scenario:* A PR sets code-review's `max_turns: 2` in checks.yaml (or changes READ_ONLY_TOOLS to [], or breaks diff_block's escaping). llm-eval reports every case as cached with recall 1.00 and verdict accuracy 1.00, and passes. After the merge, agent reviews hit error_max_turns and fail closed on every PR (or lose file access).
-
-*Suggested fix:* Add a fingerprint of the request-building code and engine settings to the key: a hash of engines/*.py, prompts.py and the Review JSON schema, plus the check's max_turns, budget and engine options. Alternatively, disable cache restore in llm-eval for PRs that change those files.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, medium, small): cache_key covers only [CACHE_VERSION, check+salt, engine name, model, prompt body, diff text]. Request-building code, the Review schema, MAX_TOKENS, tools, and checks.yaml's max_turns and budget_usd are outside it. run_eval keys by case and repeat only. llm-eval.yml restores llm-eval-main-, so a PR that changes only code or config gets cache hits and the baseline's scores. The only guard is a manual CACHE_VERSION bump (cache.py comment), and ADR 0006's 'pays only for the checks whose prompt or code it changes' overstates the key.
-- **maintainer** (CONFIRMED, medium, small): cache_key covers only [CACHE_VERSION, check+salt, engine name, model, prompt, diff]; max_turns, budget_usd, the tool list, the Review schema, diff_block and MAX_TOKENS are outside it, and llm-eval restores main's warm cache (restore-key llm-eval-main-). A PR that changes only such code or config gets cache hits on every case and exactly the baseline's scores. ADR 0006 says a PR pays for 'the checks whose prompt or code it changes'; the code half only holds after a manual CACHE_VERSION bump, which is documented only in a code comment.
-- **impact** (CONFIRMED, medium, small): cache_key is [CACHE_VERSION, check (+ eval salt), engine name, model, prompt, diff]: engine code, the Review schema sent as the output format, MAX_TOKENS, max_turns/budget_usd and the SDK version are not in it, llm-eval restores main's warm cache (restore-keys llm-eval-main-), and run_eval salts only by case and repeat. So a PR that changes engine code or checks.yaml engine settings, or bumps claude-agent-sdk in uv.lock, gets all cache hits and exactly the baseline's scores; ADR 0006's 'pays only for the checks whose prompt or code it changes' is not what happens. This is the boring kind that will bite on the next SDK upgrade, and a merged change that makes every agent review error would fail every PR closed (errors aren't overridable). Medium.
-
-</details>
-
 ### F020
 
 **A /llm-risk decision isn't tied to a head: lowering the risk once removes blocking review from every later push to the PR**
@@ -507,40 +463,6 @@ feedback.handle builds the risk_override from a context with head_sha=None (cli.
 - **skeptic** (CONFIRMED, medium, small): cmd_feedback builds the context with head_sha=None, and the live PR 47 risk_override on audit-log has head_sha null. latest_risk_override returns the PR's latest record whatever the head, and final_risk lets a manual risk win outright, so a /llm-risk low persists for every later push. At low, levels.low.blocking is empty. ADR 0008 and WRITEUP section 4 accept deliberate lowering, but not its carry-over to code pushed later, so this is not ACCEPTED.
 - **maintainer** (CONFIRMED, low, small): cmd_feedback builds the context with head_sha=None, latest_risk_override ignores the head, and final_risk lets a manual risk win outright, so a /llm-risk low persists for every later push. ADR 0008/WRITEUP accept a deliberate, visible lowering but don't discuss carry-over to new heads. It matches the PR-scoped semantics of llm-override (the label also persists across pushes) and stays visible on every run (risk:low label, triage summary), so low.
 - **impact** (CONFIRMED, medium, small): feedback.handle builds the risk_override from a context with head_sha=None, latest_risk_override takes the PR's latest record regardless of head, and final_risk lets a manual risk win outright, so `/llm-risk low` persists for every later push, and at low nothing blocks. The trigger is a write-role collaborator using the command as designed early in a PR, after which an agent's later src/ push gets advisory-only review without anyone deciding that for the new code; the record is truthful (source manual), so it is a gate lapse, not a forgery. ADR 0008 accepts lowering on purpose, not carrying it over to later heads, so not ACCEPTED. Medium.
-
-</details>
-
-### F042
-
-**`workflow_modified` only looks at llm-review.yml, so other PR changes that steer the review still count as verified**
-
-- **Status:** open
-- **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
-- **Where:** `.github/workflows/audit-collect.yml:114` · **area:** workflows, release, deploy, scripts
-- **Reported by:** `sec-05` (medium, high confidence), `wr-06` (medium, medium confidence)
-- **Reviewer's accepted_in:** ADR 0004 (remaining hole: a PR edits the workflow); the narrower mitigation isn't discussed
-
-**`sec-05`: `workflow_modified` only looks at llm-review.yml, so other PR changes that steer the review still count as verified**
-
-The collector flags a run as unverified only when the PR's changed-file list contains `github.event.workflow_run.path`, i.e. `.github/workflows/llm-review.yml` (lines 113-116), or when the compare API truncated at 300 files. Everything else the review depends on and the PR controls stays "verified": a newly added workflow in the same PR (which runs on the same `pull_request` event and shares the Actions cache scope, see sec-02), `.gitattributes` (sec-01), `.github/actions/**`, and `.github/workflows/llm-eval.yml`. ADR 0005 and WRITEUP §4 present `workflow_modified` as the mitigation for "a PR edits the review workflow", and ADR 0009 builds the release attestation's `unverified` list from it, so the narrow test propagates into the release evidence: a PR that steered its own review in any of these ways is attested as reviewed.
-
-*Failure scenario:* A PR adds `.github/workflows/warm.yml` (or a `.gitattributes` line) rather than editing `llm-review.yml`. `changed.txt` doesn't contain `.github/workflows/llm-review.yml`, so no `--workflow-modified` flag is passed, the records keep their free text and count as verified, and `llm-gate attest llm-review` lists the PR under `prs` with clean verdicts and nothing under `unverified`.
-
-*Suggested fix:* Flag the run when the PR changes any `.github/**` path (triage already rates those high) or at least any `.github/workflows/*.yml`, `.github/actions/**` and `.gitattributes`; the compare file list is already in `$WORK/changed.txt`.
-
-**`wr-06`: workflow_modified covers only llm-review.yml: another workflow can report the required check names unflagged, and a merged head whose blocking check failed isn't flagged**
-
-The collector flags a run only when the compare API's file list contains the triggering workflow's own path. Required contexts are matched by name and app (GitHub Actions, 15368), not by workflow. A PR can add .github/workflows/x.yml with a job named `llm / code-review` (or `llm-eval`, or `gates`) that sleeps past the real job and exits 0. That job satisfies the ruleset, because the latest check run with a name decides its status, while llm-review.yml stays untouched: the real run's records go in as verified, with workflow_modified false. attestations.llm_review shows a failed blocking verdict only as a cell in the table. NOT_REVIEWED is {skipped_no_key, error} (attestations.py:25 and 185), so "merged although llm / code-review failed" lands in neither the unreviewed nor the unverified list. Editing llm-eval.yml (say, to always report "not applicable") or ci.yml isn't flagged anywhere either. This is the hole ADR 0004 accepts, but the mitigation it names is narrower than the hole.
-
-*Failure scenario:* A PR adds .github/workflows/z.yml with a job `name: llm / code-review` that runs `sleep 900; exit 0`. The real llm / code-review fails on a high finding, the fake one finishes later, the required check turns green and the PR merges. audit-log has a verified `fail`, and the release notes show "fail" in the table with empty unverified and unreviewed lists.
-
-*Suggested fix:* Set workflow_modified when the PR changes anything under .github/workflows/ or .github/actions/. In attestations.llm_review, list as unverified any PR whose merged head's latest blocking verdict is fail or error without an honoured override ("merged with a failing blocking check").
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, medium, small): audit-collect.yml:113-114 flags a run only when changed.txt holds github.event.workflow_run.path (llm-review.yml) or the 300-file marker. Other PR-controlled inputs that steer the review stay verified: a root .gitattributes `-diff` line turns files into 'Binary files differ' for diff.py:55 (`git diff --no-ext-diff`, no --text), and the repo's own .gitattributes already uses `-diff` precisely 'to keep it out of llm-gate reviews'; and a new workflow on the same PR ref can save an actions/cache entry under llm-review's computable key or restore-keys prefix (llm-gate-<check>-pr<N>-) holding a fabricated EngineResult, which cache.py accepts as a hit. Neither sets workflow_modified, so attestations.llm_review lists such PRs as clean; ADR 0004/0005 name workflow_modified as the mitigation without this limit, so not ACCEPTED. Partly wrong details: sec-05's `.github/actions/**` vector doesn't apply (llm-review.yml uses no local action), and wr-06's premise that 'the latest same-named check run decides' is undocumented (GitHub's docs only say duplicate job names give ambiguous results and can block merging), though its NOT_REVIEWED observation (attestations.py:25, 185) is correct.
-- **maintainer** (CONFIRMED, medium, small): audit-collect.yml:113-117 sets --workflow-modified only when changed.txt contains the triggering workflow's own path (llm-review.yml) or is truncated. ADR 0004/0005/0009 name exactly 'a PR that changed the review workflow itself' as the flagged case, so the cause (PR-controlled workflow files on pull_request) is accepted, but not the consequence that other PR-controlled workflow code goes unflagged: a PR-added workflow shares the PR's cache scope and can save a llm-gate-<check>-prN-* entry that llm-review.yml:273-278 restores (cache.py's key is computable from the base prompt, the PR's diff and the model), and the run is then recorded as verified and attested with clean verdicts. Flagging any .github/workflows/** change is a one-line grep change, consistent with triage already rating .github/** high. wr-06's check-name shadowing depends on GitHub's undocumented handling of duplicate names (the docs only call it ambiguous), but its second point holds: attestations.py:25/185 list only skipped_no_key and error, so a merged head whose latest blocking verdict is fail appears only as a table cell. sec-05 overreaches slightly: llm-review.yml uses no .github/actions, and .gitattributes affects the diff, not the workflow.
-- **impact** (CONFIRMED, medium, small): audit-collect.yml:113-116 sets --workflow-modified only when changed.txt contains the triggering workflow's own path (llm-review.yml) or the 300-file truncation marker; a PR that adds a sibling workflow (same pull_request event, same PR cache scope as llm-review's actions/cache keys), edits .github/actions/** or adds .gitattributes is recorded as verified, and attestations.llm_review then lists nothing under unverified. ADR 0004/WRITEUP name only 'a PR edits llm-review.yml', so this narrower-than-claimed mitigation is not the accepted consequence. Trigger needs write access (here the owner or an agent acting with their push rights) and triage still rates any .github/** change high, so medium, not high. wr-06's extra claim that a same-named job in another workflow satisfies the required context is unproven: GitHub's protected-branch docs only say duplicate job names 'can cause ambiguous status check results' and may block merging, not that the latest run wins. Its attestation point holds: NOT_REVIEWED is {skipped_no_key, error}, so a merged head whose latest blocking verdict is fail appears only as a table cell.
 
 </details>
 
@@ -620,6 +542,52 @@ setup-uv's `version` input "Defaults to the version in pyproject.toml or `latest
 - **skeptic** (CONFIRMED, medium, small): Reproduced on a Release build of 43ec3c2. In Production, ?year=abc, ?year=, ?year=2026.0, ?year=99999999999 and ?year=2026&year=2027 return 400 problem+json with only title/status and no errors, while ?year=1500 returns the ValidationProblem with errors.year. In Development the first three return 500, and the log shows BadHttpRequestException 'Failed to bind parameter "Nullable<int> year" from "abc"' caught by UseExceptionHandler (Program.cs:13). The integration host runs as Development: TUnit.AspNetCore pulls in Mvc.Testing 10.0.12, whose WebApplicationFactory defaults to Development. No test or .http request sends a malformed year, so nothing pins either behaviour. I found no guard elsewhere, and the repo's own code-review rubric rates a 500 for invalid input medium.
 - **maintainer** (CONFIRMED, medium, small): I built 43ec3c2's API (scratch copy, dotnet publish) and probed it. In Production, `/api/friday13?year=abc`, `?year=`, `?year=99999999999` and `?year=2026&year=2027` return 400 problem+json with only title 'Bad Request' and no `errors`, while `?year=1500` returns the ValidationProblem with `errors.year`. In Development the same malformed inputs return 500, and the log shows `BadHttpRequestException: Failed to bind parameter "Nullable<int> year"` caught by ExceptionHandlerMiddleware. `[Range] int?` follows PLAN.md 2.2's 'AddValidation where it fits', but the result breaks the project's own contract (llm-api-contract.md: 400 ValidationProblem for bad input; llm-code-review.md rates a 500 for invalid input as medium). No test or .http request sends a malformed year.
 - **impact** (CONFIRMED, medium, small): Built 43ec3c2 and ran it in both environments: `?year=abc`, `?year=`, `?year=%20`, `2026.0`, `99999999999` and a repeated `year` return a 400 ProblemDetails with only title 'Bad Request' (no `errors`) in Production and a 500 in Development (logged as BadHttpRequestException 'Failed to bind parameter Nullable<int> year'), while `?year=1500` gets the ValidationProblem in both. A scratch TUnit project on the same TestWebApplicationFactory confirmed the test host runs as Development and returns 500 for `?year=abc` and `?year=`, and `just run`/`just http` use the Development profile, so contributors see 500s locally while CI's http-tests (Production container) see 400s. It bites an HTML form sending an empty optional `?year=` (400 instead of 'this year') and whoever writes the missing test (a different status per environment); medium on the repo's own rubric ('a 500 only for ... invalid input', 'inconsistent error shape'), at its low end because generated clients follow the documented int32 schema with pattern and min/max. One slip in api-01: a `.http` assertion on `errors.year` for `?year=abc` would fail in http-tests too, since Production returns no `errors`.
+
+</details>
+
+### F012
+
+**Cache keys ignore llm-gate's request code and engine settings, so llm-eval scores engine changes from main's cached reviews**
+
+- **Status:** 🟡 partial — #68: moot for llm-review, which no longer caches reviews; llm-eval's own cache still ignores engine settings
+- **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
+- **Where:** `tools/llm-gate/src/llm_gate/cache.py:15` · **area:** llm-gate and review prompts
+- **Reported by:** `cr-gate-07` (medium, high confidence)
+
+cache_key covers [CACHE_VERSION, check, engine name, model, prompt body, diff]. Code and config outside the key also shape the request the model gets: prompts.render, diff_block and DIFF_REFERENCE, agent_prompt, READ_ONLY_TOOLS and the other ClaudeAgentOptions, the Review schema's field descriptions (sent as the output schema), MAX_TOKENS, and checks.yaml's max_turns and budget_usd. llm-eval restores main's warm cache (llm-eval.yml restore-keys llm-eval-main-), and run_eval salts keys by case and repeat only. A PR that changes any of these but no prompt therefore gets 100% cache hits and exactly the baseline's scores. ADR 0006 says a PR 'pays only for the checks whose prompt or code it changes', but a code change doesn't change the key; only a manual CACHE_VERSION bump does. The same keys also let llm-review keep reusing a PR's earlier reviews after a merged change to request code.
+
+*Failure scenario:* A PR sets code-review's `max_turns: 2` in checks.yaml (or changes READ_ONLY_TOOLS to [], or breaks diff_block's escaping). llm-eval reports every case as cached with recall 1.00 and verdict accuracy 1.00, and passes. After the merge, agent reviews hit error_max_turns and fail closed on every PR (or lose file access).
+
+*Suggested fix:* Add a fingerprint of the request-building code and engine settings to the key: a hash of engines/*.py, prompts.py and the Review JSON schema, plus the check's max_turns, budget and engine options. Alternatively, disable cache restore in llm-eval for PRs that change those files.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, medium, small): cache_key covers only [CACHE_VERSION, check+salt, engine name, model, prompt body, diff text]. Request-building code, the Review schema, MAX_TOKENS, tools, and checks.yaml's max_turns and budget_usd are outside it. run_eval keys by case and repeat only. llm-eval.yml restores llm-eval-main-, so a PR that changes only code or config gets cache hits and the baseline's scores. The only guard is a manual CACHE_VERSION bump (cache.py comment), and ADR 0006's 'pays only for the checks whose prompt or code it changes' overstates the key.
+- **maintainer** (CONFIRMED, medium, small): cache_key covers only [CACHE_VERSION, check+salt, engine name, model, prompt, diff]; max_turns, budget_usd, the tool list, the Review schema, diff_block and MAX_TOKENS are outside it, and llm-eval restores main's warm cache (restore-key llm-eval-main-). A PR that changes only such code or config gets cache hits on every case and exactly the baseline's scores. ADR 0006 says a PR pays for 'the checks whose prompt or code it changes'; the code half only holds after a manual CACHE_VERSION bump, which is documented only in a code comment.
+- **impact** (CONFIRMED, medium, small): cache_key is [CACHE_VERSION, check (+ eval salt), engine name, model, prompt, diff]: engine code, the Review schema sent as the output format, MAX_TOKENS, max_turns/budget_usd and the SDK version are not in it, llm-eval restores main's warm cache (restore-keys llm-eval-main-), and run_eval salts only by case and repeat. So a PR that changes engine code or checks.yaml engine settings, or bumps claude-agent-sdk in uv.lock, gets all cache hits and exactly the baseline's scores; ADR 0006's 'pays only for the checks whose prompt or code it changes' is not what happens. This is the boring kind that will bite on the next SDK upgrade, and a merged change that makes every agent review error would fail every PR closed (errors aren't overridable). Medium.
+
+</details>
+
+### F004
+
+**The collector's triage recomputation (_triage_expected) has no test at all**
+
+- **Status:** ✅ fixed — #68: six tests drive the real collect CLI, with the plans read from checks.yaml so they can't drift
+- **Severity:** medium (reviewers: high) · **outcome:** confirmed · **fix cost:** small
+- **Where:** `tools/llm-gate/src/llm_gate/cli.py:594` · **area:** llm-gate and review prompts
+- **Reported by:** `tr-01` (high, high confidence)
+
+_triage_expected builds the TriageExpected that audit-collect.yml checks every run's triage against (ADR 0008 decision 6): the floor from the compare API files, the AI flag from commits/body/branch, manual_required (the latest /llm-risk written before run_started_at) versus manual_allowed (that one plus the latest), and the per-level plans from the default branch's checks.yaml. Branch coverage shows cli.py 599-625 never executed, and no test passes --triage-inputs. The collector tests in test_triage.py hand-build expected(), so they never exercise this builder. On a scratch copy, two mutations survived all 306 tests: (a) manual_required taken from the latest override instead of the one before the run started; (b) the function always returning None. With (b), _triage_problems returns [] and _risk_problems falls back to the artifact's own checks_plan, so the floor, AI flag and plans are no longer recomputed. ADR 0005 says the collector's validation has its own tests; this part has none. It is defence in depth behind workflow_modified, but it runs on every collection.
+
+*Failure scenario:* A refactor makes _triage_expected return None, or swaps required/latest. All tests pass. In production either no run's triage is checked any more, or every run that started before a later /llm-risk is written as tamper_suspected. Those are permanent false alarms, and the release attestation then lists those PRs as unverified.
+
+*Suggested fix:* CLI tests of `audit collect --triage-inputs` with a temporary checks.yaml and an audit-log dir holding risk_override records from before and after run_started_at. Add a case with compare_files null, and assert the outcome (written or tamper_suspected) each time. Or unit-test _triage_expected directly with an argparse.Namespace.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, medium, small): No test passes --triage-inputs or calls _triage_expected (grep of tests). I ran both mutants against the full suite through an import-hook plugin, without touching the repo: _triage_expected always returning None survived (306 passed), and manual_required taken from the latest override survived (306 passed); a control mutant in the same module was killed, so the harness applies cli mutations. Calibrated to medium: it's a test gap, but mutant (b) would silently turn off the collector's triage recomputation (ADR 0008 decision 6).
+- **maintainer** (CONFIRMED, medium, small): No test passes --triage-inputs or calls _triage_expected; the collector tests hand-build TriageExpected. In a scratch clone both mutations survived all 306 tests: _triage_expected always returning None, and manual_required computed without `before=started`. ADR 0005 says the collector's validation has its own tests, and this builder decides every run's triage check. It is a test gap, not wrong behaviour today, hence medium rather than high.
+- **impact** (CONFIRMED, low, small): Branch coverage of the suite (pytest-cov) shows cli.py 599-625 never executed, no test passes --triage-inputs, and test_triage.py hand-builds TriageExpected, so both described mutations survive. The impact is smaller than reported: the recomputation adds value only when a run's triage artifact can lie, which needs a modified workflow (already flagged workflow_modified) or an exotic route, and its likely regressions are either silent loss of a mostly redundant check (return None) or loud false tamper events. A real test gap on the collector, but low.
 
 </details>
 
@@ -721,6 +689,40 @@ structured_call catches only anthropic exceptions, but beta.messages.parse valid
 
 </details>
 
+### F042
+
+**`workflow_modified` only looks at llm-review.yml, so other PR changes that steer the review still count as verified**
+
+- **Status:** ✅ fixed — #68: workflow_modified covers .github/workflows/**, .github/actions/** and .gitattributes
+- **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
+- **Where:** `.github/workflows/audit-collect.yml:114` · **area:** workflows, release, deploy, scripts
+- **Reported by:** `sec-05` (medium, high confidence), `wr-06` (medium, medium confidence)
+- **Reviewer's accepted_in:** ADR 0004 (remaining hole: a PR edits the workflow); the narrower mitigation isn't discussed
+
+**`sec-05`: `workflow_modified` only looks at llm-review.yml, so other PR changes that steer the review still count as verified**
+
+The collector flags a run as unverified only when the PR's changed-file list contains `github.event.workflow_run.path`, i.e. `.github/workflows/llm-review.yml` (lines 113-116), or when the compare API truncated at 300 files. Everything else the review depends on and the PR controls stays "verified": a newly added workflow in the same PR (which runs on the same `pull_request` event and shares the Actions cache scope, see sec-02), `.gitattributes` (sec-01), `.github/actions/**`, and `.github/workflows/llm-eval.yml`. ADR 0005 and WRITEUP §4 present `workflow_modified` as the mitigation for "a PR edits the review workflow", and ADR 0009 builds the release attestation's `unverified` list from it, so the narrow test propagates into the release evidence: a PR that steered its own review in any of these ways is attested as reviewed.
+
+*Failure scenario:* A PR adds `.github/workflows/warm.yml` (or a `.gitattributes` line) rather than editing `llm-review.yml`. `changed.txt` doesn't contain `.github/workflows/llm-review.yml`, so no `--workflow-modified` flag is passed, the records keep their free text and count as verified, and `llm-gate attest llm-review` lists the PR under `prs` with clean verdicts and nothing under `unverified`.
+
+*Suggested fix:* Flag the run when the PR changes any `.github/**` path (triage already rates those high) or at least any `.github/workflows/*.yml`, `.github/actions/**` and `.gitattributes`; the compare file list is already in `$WORK/changed.txt`.
+
+**`wr-06`: workflow_modified covers only llm-review.yml: another workflow can report the required check names unflagged, and a merged head whose blocking check failed isn't flagged**
+
+The collector flags a run only when the compare API's file list contains the triggering workflow's own path. Required contexts are matched by name and app (GitHub Actions, 15368), not by workflow. A PR can add .github/workflows/x.yml with a job named `llm / code-review` (or `llm-eval`, or `gates`) that sleeps past the real job and exits 0. That job satisfies the ruleset, because the latest check run with a name decides its status, while llm-review.yml stays untouched: the real run's records go in as verified, with workflow_modified false. attestations.llm_review shows a failed blocking verdict only as a cell in the table. NOT_REVIEWED is {skipped_no_key, error} (attestations.py:25 and 185), so "merged although llm / code-review failed" lands in neither the unreviewed nor the unverified list. Editing llm-eval.yml (say, to always report "not applicable") or ci.yml isn't flagged anywhere either. This is the hole ADR 0004 accepts, but the mitigation it names is narrower than the hole.
+
+*Failure scenario:* A PR adds .github/workflows/z.yml with a job `name: llm / code-review` that runs `sleep 900; exit 0`. The real llm / code-review fails on a high finding, the fake one finishes later, the required check turns green and the PR merges. audit-log has a verified `fail`, and the release notes show "fail" in the table with empty unverified and unreviewed lists.
+
+*Suggested fix:* Set workflow_modified when the PR changes anything under .github/workflows/ or .github/actions/. In attestations.llm_review, list as unverified any PR whose merged head's latest blocking verdict is fail or error without an honoured override ("merged with a failing blocking check").
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, medium, small): audit-collect.yml:113-114 flags a run only when changed.txt holds github.event.workflow_run.path (llm-review.yml) or the 300-file marker. Other PR-controlled inputs that steer the review stay verified: a root .gitattributes `-diff` line turns files into 'Binary files differ' for diff.py:55 (`git diff --no-ext-diff`, no --text), and the repo's own .gitattributes already uses `-diff` precisely 'to keep it out of llm-gate reviews'; and a new workflow on the same PR ref can save an actions/cache entry under llm-review's computable key or restore-keys prefix (llm-gate-<check>-pr<N>-) holding a fabricated EngineResult, which cache.py accepts as a hit. Neither sets workflow_modified, so attestations.llm_review lists such PRs as clean; ADR 0004/0005 name workflow_modified as the mitigation without this limit, so not ACCEPTED. Partly wrong details: sec-05's `.github/actions/**` vector doesn't apply (llm-review.yml uses no local action), and wr-06's premise that 'the latest same-named check run decides' is undocumented (GitHub's docs only say duplicate job names give ambiguous results and can block merging), though its NOT_REVIEWED observation (attestations.py:25, 185) is correct.
+- **maintainer** (CONFIRMED, medium, small): audit-collect.yml:113-117 sets --workflow-modified only when changed.txt contains the triggering workflow's own path (llm-review.yml) or is truncated. ADR 0004/0005/0009 name exactly 'a PR that changed the review workflow itself' as the flagged case, so the cause (PR-controlled workflow files on pull_request) is accepted, but not the consequence that other PR-controlled workflow code goes unflagged: a PR-added workflow shares the PR's cache scope and can save a llm-gate-<check>-prN-* entry that llm-review.yml:273-278 restores (cache.py's key is computable from the base prompt, the PR's diff and the model), and the run is then recorded as verified and attested with clean verdicts. Flagging any .github/workflows/** change is a one-line grep change, consistent with triage already rating .github/** high. wr-06's check-name shadowing depends on GitHub's undocumented handling of duplicate names (the docs only call it ambiguous), but its second point holds: attestations.py:25/185 list only skipped_no_key and error, so a merged head whose latest blocking verdict is fail appears only as a table cell. sec-05 overreaches slightly: llm-review.yml uses no .github/actions, and .gitattributes affects the diff, not the workflow.
+- **impact** (CONFIRMED, medium, small): audit-collect.yml:113-116 sets --workflow-modified only when changed.txt contains the triggering workflow's own path (llm-review.yml) or the 300-file truncation marker; a PR that adds a sibling workflow (same pull_request event, same PR cache scope as llm-review's actions/cache keys), edits .github/actions/** or adds .gitattributes is recorded as verified, and attestations.llm_review then lists nothing under unverified. ADR 0004/WRITEUP name only 'a PR edits llm-review.yml', so this narrower-than-claimed mitigation is not the accepted consequence. Trigger needs write access (here the owner or an agent acting with their push rights) and triage still rates any .github/** change high, so medium, not high. wr-06's extra claim that a same-named job in another workflow satisfies the required context is unproven: GitHub's protected-branch docs only say duplicate job names 'can cause ambiguous status check results' and may block merging, not that the latest run wins. Its attestation point holds: NOT_REVIEWED is {skipped_no_key, error}, so a merged head whose latest blocking verdict is fail appears only as a table cell.
+
+</details>
+
 ### F043
 
 **A v* tag on any commit, merged or not, mints release attestations, because the 'on main' check runs inside that commit's own release.yml**
@@ -758,7 +760,7 @@ release-tags blocks deletion, update and non-fast-forward of v* tags, but not th
 
 **/llm-risk and /llm-override posted while llm-review is running get a +1 reaction but may never take effect**
 
-- **Status:** ✅ fixed — #65: the feedback workflow waits for a run in flight, then re-runs it
+- **Status:** ✅ fixed — #65: the feedback workflow waits for a run in flight, then re-runs it; proven on #68 ("re-ran llm-review run 39127461371 after 30s")
 - **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `.github/workflows/llm-feedback.yml:158` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `api-16` (low, medium confidence), `wr-02` (medium, high confidence)

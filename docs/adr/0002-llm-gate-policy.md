@@ -50,6 +50,18 @@ truncated output, and the gate has to say what happens then.
   `--engine both` and `llm-compare` exist to compare them.
 - Results are cached by check, engine, model, prompt and diff, so re-running a PR without changes
   costs nothing.
+- **Amended 2026-10-18: blocking reviews are not cached, and the diff is read with the base's
+  attributes.** Actions caches are shared by every workflow run of the same ref, `pull_request`
+  runs the PR's own workflow files, and the cache key is a sha256 of inputs the PR author knows
+  (check, engine, model, the base's prompt, their own diff), so a sibling workflow the PR adds
+  could save a findings-free result that `llm-review` would restore as a verified pass. An HMAC
+  over the entry doesn't help: that workflow can read the same repository secrets. `llm-review`
+  therefore keeps no review cache at all, and a re-run of an unchanged PR pays again (about $0.12
+  for a high-risk PR). The collector refuses a blocking record that claims a cache hit. The triage
+  cache stays: a forged entry there can only *raise* the model's risk, and the collector recomputes
+  the floor anyway. Separately, the review diff is built with `git --attr-source=<base> … --text`,
+  so the PR's own `.gitattributes` can no longer turn its files into "Binary files … differ"; a
+  vendored binary is excluded by `diff.EXCLUDES`, which is code on the base branch.
 
 ## Consequences
 

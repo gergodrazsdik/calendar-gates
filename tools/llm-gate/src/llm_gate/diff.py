@@ -17,6 +17,10 @@ EXCLUDES = (
     # temporary export by llm-eval and never run. Reviewing them reports the planted problems as
     # findings and spends the size cap; their case.yaml is still reviewed.
     "tools/llm-gate/evals/cases/*/diff.patch",
+    # Vendored test data. This used to be a `-diff` line in .gitattributes, but attributes are a
+    # file the PR writes, and `--text` overrides them anyway: an exclusion belongs here, in code
+    # that comes from the base branch (ADR 0004).
+    "tools/llm-gate/tests/fixtures/*.json",
 )
 
 
@@ -89,9 +93,24 @@ def merge_base_diff(root: Path, base: str) -> Diff:
     single blob on `diff --git` headers would miss git's quoted form (non-ASCII paths) and silently
     attach that file's changes to the previous file's chunk. `core.quotepath=false` keeps paths
     literal, and `-z` separates names with NULs so even a newline in a path is unambiguous.
+
+    `--attr-source=<base>` and `--text` decide what the reviewer can see, and neither is optional:
+    without the first, git reads the **PR's** `.gitattributes`, where one `src/** -diff` line turns
+    every file into "Binary files ... differ" for both blocking reviews; without the second, a NUL
+    byte anywhere in a file does the same through git's binary heuristic. Attributes from the base
+    commit are the same rule ADR 0004 applies to the rest of the gate. Genuine binaries are kept
+    out by `EXCLUDES` instead, which is code on the base branch rather than a file the PR writes.
     """
     excludes = [f":(exclude,glob){pattern}" for pattern in EXCLUDES]
-    common = ["-c", "core.quotepath=false", "diff", "--no-color", "--no-ext-diff"]
+    common = [
+        "-c",
+        "core.quotepath=false",
+        f"--attr-source={base}",
+        "diff",
+        "--no-color",
+        "--no-ext-diff",
+        "--text",
+    ]
     names = git(
         root, *common, "--name-only", "-z", "--merge-base", base, "HEAD", "--", ".", *excludes
     )
