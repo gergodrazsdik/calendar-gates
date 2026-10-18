@@ -1,0 +1,45 @@
+diff --git a/src/CalendarGates.Api/Endpoints/Friday13Endpoints.cs b/src/CalendarGates.Api/Endpoints/Friday13Endpoints.cs
+index 73aa96c..ce9b46f 100644
+--- a/src/CalendarGates.Api/Endpoints/Friday13Endpoints.cs
++++ b/src/CalendarGates.Api/Endpoints/Friday13Endpoints.cs
+@@ -16,7 +16,7 @@ public static class Friday13Endpoints
+         group
+             .MapGet("", InYear)
+             .WithName("GetFriday13s")
+-            .WithSummary("Fridays the 13th in a year (default: this year)")
++            .WithSummary("Fridays the 13th in a year, optionally in one month")
+             .ProducesValidationProblem();
+         group
+             .MapGet("/next", Next)
+@@ -30,6 +30,7 @@ public static class Friday13Endpoints
+     // Production and a 500 in Development (F081). Parsed here, every bad year is one ValidationProblem.
+     private static Results<Ok<Friday13YearResponse>, ValidationProblem> InYear(
+         string? year,
++        int? month,
+         TimeProvider time
+     )
+     {
+@@ -47,6 +48,11 @@ public static class Friday13Endpoints
+             ? time.Today().Year
+             : int.Parse(year, CultureInfo.InvariantCulture);
+         var dates = Friday13Calculator.InYear(y);
++        if (month is { } m)
++        {
++            dates = [.. dates.Where(d => d.Month == m)];
++        }
++
+         return TypedResults.Ok(new Friday13YearResponse(y, dates.Count, dates));
+     }
+ 
+diff --git a/tests/CalendarGates.IntegrationTests/Friday13Tests.cs b/tests/CalendarGates.IntegrationTests/Friday13Tests.cs
+index f2dded2..867c616 100644
+--- a/tests/CalendarGates.IntegrationTests/Friday13Tests.cs
++++ b/tests/CalendarGates.IntegrationTests/Friday13Tests.cs
+@@ -18,6 +18,7 @@ public class Friday13Tests : ApiTestBase
+     {
+         var json = await GetJsonAsync("/api/friday13?year=2025");
+ 
++        await Assert.That(json.GetProperty("year").GetInt32()).IsEqualTo(2025);
+         await Assert.That(json.GetProperty("count").GetInt32()).IsEqualTo(1);
+         await Assert.That(json.GetProperty("dates")[0].GetString()).IsEqualTo("2025-06-13");
+     }

@@ -52,6 +52,13 @@ missed bugs or annoyed authors later.
   threshold less sensitive to one case.
 - The cases are only as good as their coverage: a reviewer can score well here and miss a new
   kind of bug. Confirmed false positives (Phase 16) and new drill bugs should become cases.
+- **Amended 2026-10-18 (F037): every check has at least one scored case.** `llm-eval` takes its
+  check list from the cases, so a check no case names was never evaluated: `docs-drift` had no case
+  at all, and `test-review` had only an fp-regression case, whose baseline recall was `null`. Both
+  prompts could have been cut down to "report nothing" and the gate would have passed. They now
+  have a bug case each (`dd-001-renamed-recipe-stale-doc`, `te-001-untested-month-filter`) with
+  recall in the baseline; cutting either prompt down to "report nothing" takes recall to 0.00 and
+  fails the gate, which is how both cases were checked.
 - `eval_run` records go into the run's `.llm-gate/audit.jsonl` and the report artifact. They don't
   reach the `audit-log` branch yet: the collector only collects `llm-review` runs.
 - `llm-eval` is a required check since 2026-10-16 (`main.json`, checked by

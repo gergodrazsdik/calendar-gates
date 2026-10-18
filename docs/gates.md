@@ -141,7 +141,8 @@ is required too (see below).
   (default-branch code, never the PR's) and validates the artifacts against the run, its jobs, the
   PR's label events and the compare API. It writes them to the `audit-log` branch
   (`events/YYYY/MM/DD/`). Anything forged or unverifiable becomes a `tamper_suspected` event. Runs
-  whose PR changed `llm-review.yml` are kept as unverified, with their free text withheld. The
+  whose PR changed any workflow, the composite action or `.gitattributes` are kept as unverified,
+  with their free text withheld. The
   `audit-log` ruleset blocks deletion and force pushes. Locally: `just audit-pull`, then `jq` over
   `.audit-log/events/`. Raw results (model output) stay a 90-day workflow artifact.
 

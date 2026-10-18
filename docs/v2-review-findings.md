@@ -31,13 +31,13 @@ A review of the whole repository at `43ec3c2` (2026-10-17), after PLAN-v2 was wr
 | accepted | 0 | 0 | 0 | 2 | 1 | 3 |
 | rejected | 0 | 0 | 0 | 0 | 11 | 11 |
 
-**Fixed so far: 71 of 119** (3 partial, 44 open, 1 unverifiable). By severity:
+**Fixed so far: 72 of 119** (3 partial, 43 open, 1 unverifiable). By severity:
 
 | Status | critical | high | medium | low | info | total |
 |---|---|---|---|---|---|---|
-| ✅ fixed | 0 | 2 | 14 | 36 | 19 | 71 |
+| ✅ fixed | 0 | 2 | 14 | 37 | 19 | 72 |
 | 🟡 partial | 0 | 0 | 1 | 2 | 0 | 3 |
-| open | 0 | 0 | 1 | 36 | 7 | 44 |
+| open | 0 | 0 | 1 | 35 | 7 | 43 |
 | ⚪ unverifiable | 0 | 0 | 1 | 0 | 0 | 1 |
 
 Each fix names the PR that made it. The status column is maintained by hand as fixes land; the verdicts and severities below are the review's own and are not revised.
@@ -118,7 +118,9 @@ exactly the bypass it describes, so it was not built. What is confirmed without 
 `http-tests` and `k8s-smoke` hold `checks: write` while running PR code. Moving test reporting to
 a job that runs no PR code removes the question.
 
-**Since the review (2026-10-18).** Twelve things changed under this document:
+**Since the review (2026-10-18).** Thirteen things changed under this document:
+- **#76** gave `docs-drift` and `test-review` a scored case each, so neither prompt can be cut
+  down to "report nothing" and still pass `llm-eval` (F037).
 - **#75** made the override record follow the outcome instead of the label (F025) and put the
   admission rule that decides on critical vulnerabilities under an offline test (F069).
 - **#74** covered the guards a silent mutation could break: the risk-level transformations, the
@@ -204,7 +206,6 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F027](#f027) | open | low | low | A | The llm-review attestation doesn't list a PR whose merged head is missing a record for a blocking check | small | S:C/low M:C/low I:C/low |
 | [F029](#f029) | open | low | low | A | Model-written review text reaches the PR comment and job summary without redaction or markup neutralisation | small | S:C/low M:C/low I:C/low |
 | [F032](#f032) | open | low | low | A | The collector's paths for keyless PRs (skipped_no_key) and for a missing triage expectation are untested | small | S:C/low M:C/low I:C/low |
-| [F037](#f037) | open | low | low | A | docs-drift has no eval case, and test-review has only an fp-regression case | medium | S:C/low M:C/low I:C/low |
 | [F039](#f039) | open | low | low | A | Audit file paths use the date of collection, so re-running audit-collect or llm-feedback on another day writes duplicates | small | S:C/low M:C/low I:C/low |
 | [F045](#f045) | open | low | medium | B | The allow rules for just, uv run, dotnet and gh run auto-approve arbitrary and irreversible commands, which makes the deny list ineffective | small | S:C/low M:C/low I:C/low |
 | [F046](#f046) | open | low | medium | B | Ephemeral containers are tested nowhere: removing them from the images policy leaves every test green | trivial | S:C/low M:C/medium I:C/low |
@@ -267,6 +268,7 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F109](#f109) | ✅ fixed | low | low | C | The quick start's requirements don't cover `just setup` / `just ci`, which now need an exact kyverno CLI | trivial | S:C/low M:C/low I:C/low |
 | [F025](#f025) | ✅ fixed | low | low | A | One /llm-override writes an override record per check job, including advisory, passing and not-applicable checks, and the release attestation repeats them all | trivial | S:C/low M:C/low I:C/low |
 | [F069](#f069) | ✅ fixed | low | low | B | No test exercises the admission rule 'no critical vulnerabilities' | medium | S:A/info M:C/low I:C/low |
+| [F037](#f037) | ✅ fixed | low | low | A | docs-drift has no eval case, and test-review has only an fp-regression case | medium | S:C/low M:C/low I:C/low |
 | [F028](#f028) | open | info | low | A | eval add-from-fp looks up a 16-bit finding id across every PR and takes the last match | trivial | S:C/info M:C/low I:C/info |
 | [F040](#f040) | open | info | info | A | gate_run records for checks that triage didn't need carry the configured blocking flag, not the effective one | trivial | S:C/info M:C/info I:C/info |
 | [F080](#f080) | open | info | info | B | Tool versions pinned inside run: steps and with: inputs aren't covered by Dependabot | medium | S:C/info M:C/info I:C/info |
@@ -1166,7 +1168,7 @@ _risk_problems exempts skipped_no_key gate runs (lines 760-761). Those are the r
 
 **docs-drift has no eval case, and test-review has only an fp-regression case**
 
-- **Status:** open
+- **Status:** ✅ fixed — #76: a bug case each, with recall in the baseline; a prompt cut down to "report nothing" now takes recall to 0.00 and fails the gate
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** medium
 - **Where:** `tools/llm-gate/checks.yaml:326` · **area:** llm-gate and review prompts
 - **Reported by:** `tr-27` (low, high confidence)
