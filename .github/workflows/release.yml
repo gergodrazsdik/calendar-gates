@@ -376,7 +376,18 @@ jobs:
             -f deploy/kyverno/values.yaml --wait --timeout 5m
       - name: Policies (both namespaces), ready
         run: |
-          kubectl apply -k deploy/policies
+          # `--wait` returns when the Kyverno deployment is Ready, which is not when its admission
+          # webhook is serving: the policy-validation webhook refused connections on both of
+          # v0.3.4's attempts ("dial tcp …:443: connect: connection refused") while v0.3.3 happened
+          # to win the race. Wait for the service to have an endpoint, then retry the apply, since
+          # the webhook can still be a moment behind its endpoints.
+          kubectl -n kyverno wait --for=jsonpath='{.subsets[*].addresses[0].ip}' \
+            endpoints/kyverno-svc --timeout=2m
+          for attempt in $(seq 30); do
+            kubectl apply -k deploy/policies && break
+            [ "$attempt" = 30 ] && { echo "::error::the policies never applied"; exit 1; }
+            sleep 4
+          done
           for _ in $(seq 60); do
             pending=$(kubectl get validatingpolicies,imagevalidatingpolicies -o json \
               | jq '[.items[] | select(.status.conditionStatus.ready != true)] | length')
