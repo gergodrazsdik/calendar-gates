@@ -54,6 +54,14 @@ output can't simply be trusted either.
   `/llm-override <reason>` comment by whoever added the label last, written since the label was
   last removed, before or after adding it (issue events API); `llm-gate run` ignores an override without a reason and records one with it
   as an `override` event.
+- **Amended 2026-10-18 (F025): an `override` record means the override changed an
+  outcome.** The label is PR-wide and every llm job reads it, so a record per job made one
+  override read as six in the release notes and the attestation, including advisory, passing and
+  not-applicable checks. `llm-gate run` now writes the record only for the three outcomes an
+  override actually changes: findings reported without failing (`OVERRIDDEN`), an unreviewable
+  diff accepted (`override_honoured` on an `error`), and a blocking check reviewing a diff with
+  files omitted. The collector's pairing is unchanged, because every record it demands an override
+  for is still one of those three.
 
 - **Local AI session log** (14.6, local only): a project hook appends each tool call of a Claude
   Code session to `~/.local/state/calendar-gates/claude-audit/<session-id>.jsonl`. A commit made

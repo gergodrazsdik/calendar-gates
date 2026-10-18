@@ -387,7 +387,17 @@ def cmd_run(
             )
             for record in records.values()
         ]
-        if override is not None and not_needed is None:
+
+        # Only when the override actually changed this check's outcome (F025). Every llm job reads
+        # the label, so this used to write one record per check: PRs #33 and #43 each carry six,
+        # including advisory, passing and not-applicable checks, and the release attestation and
+        # the release notes repeat all of them as if six things had been overridden. The three
+        # outcomes an override changes: findings reported without failing, a diff too large to
+        # review accepted, and a blocking check reviewing a diff with files missing (ADR 0002).
+        def mattered(record: RunRecord) -> bool:
+            return record.override_honoured or bool(record.omitted and check.blocking)
+
+        if override is not None and not_needed is None and any(map(mattered, records.values())):
             entries.append(
                 audit.Override(
                     **context.model_dump(),

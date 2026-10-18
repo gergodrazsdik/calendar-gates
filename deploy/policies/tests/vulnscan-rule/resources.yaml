@@ -1,0 +1,49 @@
+# Mock vuln-scan predicates for the rule test. The shape is `llm-gate attest vuln-scan`'s
+# predicate: one `results` entry per platform of the image (see tools/llm-gate/tests/test_attestations.py).
+apiVersion: test.calendar-gates.local/v1
+kind: VulnScanStatement
+metadata:
+  name: clean-both-platforms
+  namespace: calendar-gates
+predicate:
+  results:
+    - platform: linux/amd64
+      counts: {critical: 0, high: 0, medium: 4, low: 11, negligible: 2, unknown: 0}
+    - platform: linux/arm64
+      counts: {critical: 0, high: 0, medium: 4, low: 11, negligible: 2, unknown: 0}
+---
+# High findings are CI's threshold, not admission's: a release that got past the grype gate with
+# highs is still admitted (two layers, two thresholds, see base/release.yaml).
+apiVersion: test.calendar-gates.local/v1
+kind: VulnScanStatement
+metadata:
+  name: highs-but-no-criticals
+  namespace: calendar-gates
+predicate:
+  results:
+    - platform: linux/amd64
+      counts: {critical: 0, high: 3, medium: 4, low: 11, negligible: 2, unknown: 0}
+---
+apiVersion: test.calendar-gates.local/v1
+kind: VulnScanStatement
+metadata:
+  name: one-critical
+  namespace: calendar-gates
+predicate:
+  results:
+    - platform: linux/amd64
+      counts: {critical: 1, high: 0, medium: 0, low: 0, negligible: 0, unknown: 0}
+---
+# The rule is over every platform, not the first one: the image is one manifest list, so a
+# critical that only affects arm64 still runs somewhere.
+apiVersion: test.calendar-gates.local/v1
+kind: VulnScanStatement
+metadata:
+  name: critical-on-one-platform-only
+  namespace: calendar-gates
+predicate:
+  results:
+    - platform: linux/amd64
+      counts: {critical: 0, high: 0, medium: 0, low: 0, negligible: 0, unknown: 0}
+    - platform: linux/arm64
+      counts: {critical: 2, high: 0, medium: 0, low: 0, negligible: 0, unknown: 0}

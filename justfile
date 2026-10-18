@@ -280,6 +280,7 @@ lint-policies:
     got=$(kyverno version 2> /dev/null | awk '/^Version:/ {print $2}')
     [ "$got" = "$want" ] || { echo "kyverno CLI $want needed, found ${got:-none}" >&2; exit 1; }
     kubectl --context {{ kube_context }} kustomize deploy/policies > /dev/null
+    uv run --locked --script scripts/check-vulnscan-rule.py
     kyverno test deploy/policies/tests --remove-color
 
 # Tag main as vX.Y.Z (signed) and push the tag; release.yml then waits for your approval

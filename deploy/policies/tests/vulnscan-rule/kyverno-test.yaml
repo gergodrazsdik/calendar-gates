@@ -1,0 +1,23 @@
+# What the "no criticals" clause of base/release.yaml admits and refuses (F069). See policy.yaml
+# for why the clause is tested through a stand-in resource.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: calendar-gates-vulnscan-rule
+policies:
+  - policy.yaml
+resources:
+  - resources.yaml
+results:
+  - policy: calendar-gates-vulnscan-rule
+    kind: VulnScanStatement
+    resources:
+      - clean-both-platforms
+      - highs-but-no-criticals
+    result: pass
+  - policy: calendar-gates-vulnscan-rule
+    kind: VulnScanStatement
+    resources:
+      - one-critical
+      - critical-on-one-platform-only
+    result: fail

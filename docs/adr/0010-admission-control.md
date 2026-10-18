@@ -81,6 +81,14 @@ and policies on the runner, then checks:
 `smoke`, which publishes the release, waits for it. `kyverno test` covers the one policy that needs
 no registry (`just lint-policies`, ci.yml).
 
+**The decision rules are tested offline too** (2026-10-18, F069). The image policies' inputs need a
+registry, but what they *decide* with those inputs is ordinary CEL, and the "no critical findings"
+clause had no test at all: a copy that admitted criticals would have passed every gate.
+`deploy/policies/tests/vulnscan-rule/` evaluates that clause over mock predicates (clean, highs
+without criticals, one critical, a critical on one platform of a multi-platform image), and
+`scripts/check-vulnscan-rule.py` keeps the copy identical to the clause in `release.yaml`, so
+changing the rule without changing the cases fails the lint gate instead of shipping untested.
+
 ## Consequences
 
 - **Two layers, two thresholds.** CI fails a release on **high** vulnerabilities, and admission on

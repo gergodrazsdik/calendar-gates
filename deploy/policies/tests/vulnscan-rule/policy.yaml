@@ -1,0 +1,28 @@
+# Test-only policy (not part of `deploy/policies`): it carries the one CEL clause from
+# base/release.yaml that decides whether a vulnerability-scan attestation is acceptable, so the
+# clause can be exercised offline (F069). The real policy reads the clause's input through
+# extractPayload(), which needs a registry and a signed attestation, and is proven end to end by
+# release.yml's admission-smoke; what no test covered was the rule itself: a copy that admitted
+# criticals would have passed every gate.
+#
+# scripts/check-vulnscan-rule.py keeps the clause below identical to the one in
+# base/release.yaml, so editing the rule there without updating these cases fails `just lint`.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: calendar-gates-vulnscan-rule
+spec:
+  validationActions: [Deny]
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [test.calendar-gates.local]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        # A stand-in for the in-toto statement extractPayload() returns: the mock resource's
+        # `predicate` is shaped like `llm-gate attest vuln-scan`'s output.
+        resources: [vulnscanstatements]
+  validations:
+    - expression: object.predicate.results.all(r, r.counts.critical == 0)
+      message: >-
+        the image has no vulnerability-scan attestation from release.yml, or it lists critical
+        findings
