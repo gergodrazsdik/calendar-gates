@@ -2,8 +2,9 @@
 # v1.19.1. Every image is pinned to a digest whose SLSA provenance was verified on 2026-10-17
 # (cosign verify-attestation --type slsaprovenance02: slsa-github-generator, built from
 # kyverno/kyverno at 40ec788d48, the v1.19.1 tag). The chart has no digest field, so the digest
-# rides on the tag: repo:v1.19.1@sha256:..., where the digest wins. Update all of them together,
-# with the chart version in the justfile, after verifying the new release the same way.
+# rides on the tag: repo:v1.19.1@sha256:..., where the digest wins. Update all of them together
+# with the chart version and digest in deploy/kyverno/chart.sha256 (the recipes read the version
+# from that file's name), after verifying the new release the same way.
 admissionController:
   rbac:
     clusterRole:

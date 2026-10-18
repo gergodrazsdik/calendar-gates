@@ -6,9 +6,12 @@ set -euo pipefail
 url=${1:?usage: wait-for-health.sh <url> [timeout-seconds]}
 timeout=${2:-60}
 
-for ((i = 0; i < timeout; i++)); do
-    if curl -fsS -o /dev/null "$url" 2>/dev/null; then
-        echo "healthy after ${i}s: $url"
+# `--max-time` and a wall-clock deadline: without them each hanging request stretched the
+# timeout, so "30" meant 30 attempts rather than 30 seconds.
+deadline=$((SECONDS + timeout))
+while ((SECONDS < deadline)); do
+    if curl -fsS --max-time 5 -o /dev/null "$url" 2>/dev/null; then
+        echo "healthy after ${SECONDS}s: $url"
         exit 0
     fi
     sleep 1

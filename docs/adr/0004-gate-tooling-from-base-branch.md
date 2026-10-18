@@ -37,7 +37,8 @@ approve, the v1 configuration reported no findings on an obvious bug; with nothi
   Claude Code still runs the same prompt file.
 
 - **Amended 2026-10-16**: "the base commit" is the base branch's head when the run starts
-  (pinned once by `llm-plan` and passed to every check), not the PR's `base.sha`. GitHub doesn't
+  (pinned once by the plan job and passed to every check; that job is `triage` since Phase 17,
+  [ADR 0008](0008-risk-triage.md)), not the PR's `base.sha`. GitHub doesn't
   move `base.sha` when the base branch moves on, so a PR opened before a gate fix kept running the
   old gate: drill PR #31 still reviewed with the tooling from before #32. The audit record's
   `gate_sha` says which commit it was.

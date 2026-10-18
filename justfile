@@ -69,8 +69,10 @@ sbom:
 [group('format')]
 lint:
     actionlint
-    # SSL_CERT_DIR here lists two dirs (the .NET dev cert); zizmor's TLS stack only reads one
-    GH_TOKEN="$(gh auth token)" env -u SSL_CERT_DIR uvx zizmor@1.30.1 .github/
+    # SSL_CERT_DIR here lists two dirs (the .NET dev cert); zizmor's TLS stack only reads one.
+    # No GH_TOKEN: the offline audits are the ones this gate runs, and a full-scope OAuth token has
+    # no business in a tool fetched from PyPI on every run (--offline matches ci.yml).
+    env -u SSL_CERT_DIR uvx zizmor@1.30.1 --offline .github/
     hadolint Dockerfile
     uvx yamllint@1.38.0 --strict .
     shellcheck scripts/*.sh .claude/hooks/*.sh
@@ -91,7 +93,9 @@ audit-pull:
     rm -rf .audit-log
     mkdir .audit-log
     git archive refs/remotes/origin/audit-log | tar -x -C .audit-log
-    find .audit-log/events -name '*.jsonl' 2> /dev/null | wc -l | xargs printf '%s record file(s) in .audit-log/events\n'
+    # `|| true`: a fresh audit-log branch has no events/ yet, which is not an error here.
+    { find .audit-log/events -name '*.jsonl' 2> /dev/null || true; } | wc -l \
+        | xargs printf '%s record file(s) in .audit-log/events\n'
 
 # Score the review prompts on tools/llm-gate/evals/cases and compare with the baseline; extra args go to `llm-gate eval run` (e.g. --check code-review --engine both). Costs API credits.
 [group('llm')]
@@ -132,7 +136,7 @@ llm check engine="":
     # The key comes from pass for this one command, never from a file.
     ANTHROPIC_API_KEY="$(pass show api/anthropic-calendar-gates | head -n 1)"
     export ANTHROPIC_API_KEY
-    uv run --project tools/llm-gate llm-gate run --check {{ check }} {{ if engine != "" { "--engine " + engine } else { "" } }}
+    uv run --project tools/llm-gate --locked llm-gate run --check {{ check }} {{ if engine != "" { "--engine " + engine } else { "" } }}
 
 # Run a check with both engines and print the comparison table. Costs API credits (twice).
 [group('llm')]
@@ -158,9 +162,11 @@ k8s-up:
 
 # Delete the project cluster (never kind-local) and everything in it
 [group('k8s')]
-[confirm('Delete the kind cluster calendar-gates and everything in it?')]
+[confirm('Delete the kind cluster and everything in it?')]
 k8s-cluster-down:
-    kind delete cluster --name calendar-gates
+    # Never kind-local: that cluster is the machine's, managed by `kind-local` (AGENTS.md).
+    [ "{{ cluster }}" != local ] || { echo "kind-local is not this project's to delete" >&2; exit 1; }
+    kind delete cluster --name {{ cluster }}
 
 # Install Kyverno (chart pinned by version and sha256, images by digest) and apply deploy/policies
 [group('k8s')]
@@ -178,6 +184,10 @@ k8s-policy-up:
     helm upgrade --install kyverno "$dir/$file" --kube-context {{ kube_context }} -n kyverno --create-namespace \
         -f deploy/kyverno/values.yaml --wait --timeout 5m
     kubectl --context {{ kube_context }} apply -k deploy/policies
+    # Kyverno reports readiness per policy; without this wait a deploy right after this recipe can
+    # be admitted before the webhook is live.
+    kubectl --context {{ kube_context }} wait --for=condition=Ready --timeout=2m \
+        validatingpolicies,imagevalidatingpolicies --all
     kubectl --context {{ kube_context }} get validatingpolicies,imagevalidatingpolicies
 
 # Policy results (Audit findings, passes) for a namespace
@@ -219,6 +229,9 @@ k8s-http ns=k8s_ns:
     kubectl --context {{ kube_context }} -n {{ ns }} port-forward svc/calendar-gates 18080:80 >/dev/null &
     forward=$!
     trap 'kill $forward' EXIT
+    # Without this, a forward that lost the port tests whatever else is listening on 18080.
+    sleep 1
+    kill -0 "$forward" 2> /dev/null || { echo "port-forward failed (is 18080 in use?)" >&2; exit 1; }
     scripts/wait-for-health.sh http://localhost:18080/health 30
     just http forward
 
@@ -285,7 +298,8 @@ release version:
         echo "v$version already exists" >&2; exit 1; }
     just ci
     git tag -s "v$version" -m "v$version"
-    git push origin "v$version"
+    # Drop the local tag if the push fails, so a retry isn't blocked by "v$version already exists".
+    git push origin "v$version" || { git tag -d "v$version"; exit 1; }
     echo "Pushed v$version: approve the release environment in the release workflow run."
 
 # Verify a release's attestations (provenance, SBOM, vuln scan, LLM review; ADR 0009), each signed by release.yml for that tag
@@ -384,7 +398,7 @@ gh-setup:
       "secret_scanning_push_protection": {"status": "enabled"}}}
     JSON
 
-    pass show api/anthropic-calendar-gates | gh secret set ANTHROPIC_API_KEY -R "$repo"
+    pass show api/anthropic-calendar-gates | head -n 1 | gh secret set ANTHROPIC_API_KEY -R "$repo"
     gh variable set LLM_MODEL -R "$repo" --body claude-sonnet-5-5
     gh variable set LLM_MODEL_CHEAP -R "$repo" --body claude-haiku-5-5
 

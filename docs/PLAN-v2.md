@@ -25,7 +25,7 @@ deviation is recorded in the ADR named here.
 | 15.4: `eval_run` records into the audit log | in the run's artifact only | ADR 0006 |
 | 16.1: outsiders recorded as `feedback_rejected` | filtered out before the job starts | ADR 0007 |
 | 16.2: DuckDB | plain Python: DuckDB has no wheel for Python 3.15 | `metrics.py` docstring, WRITEUP §5 |
-| 17: a separate `ai-detect` job; triage rules as listed | inside the `triage` job, which replaces `llm-plan`; also `scripts/**` high, agent instruction files medium, renames rated by both paths | ADR 0008 |
+| 17: a separate `ai-detect` job; triage rules as listed | inside the `triage` job, which replaces `llm-plan`; also `scripts/**` high, agent instruction files medium, renames rated by both paths (`triage.py`'s `changed_paths`, eval case `tr-010`; drill 19's `sr-21b4`) | ADR 0008 |
 | 17: `engine: agent, model: strong` at high risk | the agent engine, each check's own model (Sonnet): Opus measured no better | ADR 0008 (amended), WRITEUP §3 |
 | 18.1: candidate tagged `sha-<short>`; `attest-sbom` | `candidate-vX.Y.Z` (`sha-<short>` is the edge image's); `actions/attest` for all four | ADR 0009 |
 | 18.2: `scripts/vuln-predicate.py`, one set of counts | `llm-gate attest vuln-scan`, counts per platform | ADR 0009 |

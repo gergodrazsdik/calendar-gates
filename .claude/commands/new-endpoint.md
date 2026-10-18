@@ -20,6 +20,9 @@ Follow the conventions in AGENTS.md. Create or update, in this order:
    (fixed `FakeTimeProvider`), assert status code, JSON shape and ProblemDetails on bad input.
 5. **HTTP request** in `http/calendar.http` with a `> {% client.test(...) %}` handler asserting
    status, content type and invariants (exact values only for fixed inputs).
+6. **The two route lists** that pin the OpenAPI document, or both fail: `OpenApiListsEveryRoute`
+   in `tests/CalendarGates.IntegrationTests/MetaTests.cs`, and the `expected` array of the
+   "openapi: lists every route" test at the end of `http/calendar.http` (sorted).
 
 Then run `just test` (and `just http` if the API is running) and report what you added. If the
 name or route is ambiguous, ask before writing code.

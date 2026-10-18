@@ -27,13 +27,15 @@ output can't simply be trusted either.
   and again when the collector parses an artifact: the log is public and can't be rewritten. The SDK's `StructuredOutput` call (the raw
   review) isn't logged.
 - **Untrusted side**: `llm-gate run` appends its records to `.llm-gate/audit.jsonl`, the `llm` job
-  uploads it as `audit-<run_id>-<attempt>-<check>` with its read-only token. Checks that don't run record
+  uploads it as `audit-<run_id>-<attempt>-<check>`. That job's token is read-only on contents; it
+  holds `pull-requests: write` so it can post the sticky review comment, which is why nothing it
+  writes is trusted without the collector's checks. Checks that don't run record
   that too (`llm-gate audit skip`).
 - **Trusted side**: `audit-collect.yml` runs on `workflow_run` (code from the default branch),
   never checks out the PR, downloads the artifacts and runs `llm-gate audit collect`. That parses
   strictly, enforces size and count limits (128 KB per artifact, 256 KB and 20 artifacts per
-  run), accepts only `gate_run` and `override` records for
-  checks in the default branch's `checks.yaml`, and compares every record with what the event says
+  run), accepts only `gate_run` and `override` records for checks in the default branch's `checks.yaml`
+  (plus the `triage` artifact's single `triage` record, [ADR 0008](0008-risk-triage.md)), and compares every record with what the event says
   (run id, attempt, head SHA, PR, repository) and with its job: the job must exist and have
   finished with the conclusion the record's exit code implies, and verdict and exit code must
   agree. It sets
