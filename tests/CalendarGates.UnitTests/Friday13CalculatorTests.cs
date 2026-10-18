@@ -1,4 +1,5 @@
 using CalendarGates.Api.Domain;
+using TUnit.Assertions.Enums;
 using static CalendarGates.UnitTests.TestDates;
 
 namespace CalendarGates.UnitTests;
@@ -14,7 +15,9 @@ public class Friday13CalculatorTests
     {
         var dates = Friday13Calculator.InYear(year);
 
-        await Assert.That(dates).IsEquivalentTo(expected.Select(D));
+        // Matching, not the default Any: the list is chronological and that is part of the answer
+        // (F110 — the test passed for any permutation).
+        await Assert.That(dates).IsEquivalentTo(expected.Select(D), CollectionOrdering.Matching);
     }
 
     [Test]

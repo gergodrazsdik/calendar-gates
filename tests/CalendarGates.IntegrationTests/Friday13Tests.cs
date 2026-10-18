@@ -1,3 +1,6 @@
+using System.Net;
+using TUnit.Assertions.Enums;
+
 namespace CalendarGates.IntegrationTests;
 
 public class Friday13Tests : ApiTestBase
@@ -10,7 +13,26 @@ public class Friday13Tests : ApiTestBase
         await Assert.That(json.GetProperty("year").GetInt32()).IsEqualTo(2026);
         await Assert.That(json.GetProperty("count").GetInt32()).IsEqualTo(3);
         var dates = json.GetProperty("dates").EnumerateArray().Select(d => d.GetString()!);
-        await Assert.That(dates).IsEquivalentTo(["2026-02-13", "2026-03-13", "2026-11-13"]);
+        await Assert
+            .That(dates)
+            .IsEquivalentTo(
+                ["2026-02-13", "2026-03-13", "2026-11-13"],
+                CollectionOrdering.Matching // the order is the answer, not an accident (F110)
+            );
+    }
+
+    /// <summary>
+    /// 9999-08-13 is the last Friday the 13th that fits in a DateOnly, so the day after it there is
+    /// no next one and the endpoint answers 404. Nothing covered that branch (F111).
+    /// </summary>
+    [Test]
+    public async Task NextIsNotFoundPastTheLastFridayThe13th()
+    {
+        Time.SetUtcNow(new DateTimeOffset(9999, 8, 14, 0, 0, 0, TimeSpan.Zero));
+
+        var problem = await GetJsonAsync("/api/friday13/next", HttpStatusCode.NotFound);
+
+        await Assert.That(problem.GetProperty("status").GetInt32()).IsEqualTo(404);
     }
 
     [Test]

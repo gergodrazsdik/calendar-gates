@@ -21,7 +21,9 @@ public static class Friday13Endpoints
         group
             .MapGet("/next", Next)
             .WithName("GetNextFriday13")
-            .WithSummary("Next Friday the 13th on or after today (UTC)");
+            .WithSummary("Next Friday the 13th on or after today (UTC)")
+            // There is none after 9999-08-13, and the handler's return type doesn't say so (F111).
+            .Produces(StatusCodes.Status404NotFound);
         return app;
     }
 
