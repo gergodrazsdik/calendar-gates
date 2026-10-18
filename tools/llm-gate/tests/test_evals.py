@@ -175,6 +175,17 @@ def test_matching(line: int, severity: Severity, hit: bool) -> None:
     assert not evals.matches(finding(Severity.HIGH, file="src/b.cs", line=10), expectation)
 
 
+def test_a_file_level_expectation_matches_a_finding_with_no_line() -> None:
+    """Some right answers have no line: "nothing tests this" is about a file. The models report it
+    both ways between repeats, and a case that needs a line scores 0 on the repeats without one."""
+    expectation = evals.Expectation(file="src/a.cs", lines=None, min_severity=Severity.MEDIUM)
+
+    assert evals.matches(finding(Severity.MEDIUM, line=None), expectation)
+    assert evals.matches(finding(Severity.HIGH, line=999), expectation)
+    assert not evals.matches(finding(Severity.LOW, line=None), expectation)  # severity still counts
+    assert not evals.matches(finding(Severity.HIGH, file="src/b.cs", line=None), expectation)
+
+
 def attempt(verdict: str, found: list[bool], below: int = 0, cost: float = 0.01) -> evals.Attempt:
     return evals.Attempt(
         repeat=1,
