@@ -342,9 +342,18 @@ def test_an_incomplete_run_is_not_a_baseline(eval_repo: Repo) -> None:
     assert main(["eval", "baseline"]) == 2
 
 
-def test_without_a_baseline_only_absolute_limits_apply(eval_repo: Repo) -> None:
+def test_without_a_baseline_the_comparison_fails_instead_of_passing_vacuously(
+    eval_repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """F008: a check whose engine or model has no baseline entry used to skip recall, false blocks
+    and verdict accuracy, which made the gate vacuous for exactly the change worth checking."""
     add_case(eval_repo, "bug-1", expect=BUG)
-    assert run(eval_repo, reviewer(), "--repeats", "1", "--compare") == 0
+
+    assert run(eval_repo, reviewer(), "--repeats", "1", "--compare") == 1
+
+    out = capsys.readouterr().out
+    assert "baseline" in out
+    assert "an entry for" in out  # the row says what is missing
 
 
 # --- fp-regression cases from the audit log ---
@@ -480,3 +489,32 @@ def test_forbid_by_title_regex_ignores_the_category() -> None:
     assert not evals.forbidden_hit(reworded.model_copy(update={"file": "b.yml"}), rule)
     with pytest.raises(ValueError):
         evals.Forbidden(file="a.yml", title="(unclosed")
+
+
+def test_a_baseline_for_another_engine_does_not_count(
+    eval_repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The entry has to be for this check's engine and model: a baseline recorded for the api
+    engine says nothing about the same prompt on the agent engine."""
+    add_case(eval_repo, "bug-1", expect=BUG)
+    baseline = eval_repo.root / "tools" / "llm-gate" / "evals" / "baseline.json"
+    baseline.parent.mkdir(parents=True, exist_ok=True)
+    baseline.write_text(
+        json.dumps(
+            {
+                "code-review": {
+                    "agent/claude-test-model": {
+                        "prompt_sha256": "0" * 64,
+                        "cases": 1,
+                        "repeats": 1,
+                        "metrics": {"recall": 1.0, "flip_rate": 0.0, "cost_usd": 0.01},
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert run(eval_repo, reviewer(), "--repeats", "1", "--compare") == 1
+
+    assert "an entry for api/claude-test-model" in capsys.readouterr().out

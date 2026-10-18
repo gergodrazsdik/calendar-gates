@@ -50,6 +50,14 @@ truncated output, and the gate has to say what happens then.
   `--engine both` and `llm-compare` exist to compare them.
 - Results are cached by check, engine, model, prompt and diff, so re-running a PR without changes
   costs nothing.
+- **Amended 2026-10-18: only unreviewable files are excluded.** `diff.EXCLUDES` dropped
+  `*.g.cs`, `*.generated.cs`, `*.Designer.cs` and `*.min.js` by name, and the SDK compiles those
+  into the app: a PR made only of them passed both blocking checks as "not applicable" and counted
+  as reviewed (F010). What stays excluded is a resolved dependency graph (lock files) and this
+  repository's own test data, neither of which a reviewer can judge. Generated code goes through
+  the review, and its bulk is handled by the per-file size cap, which reports what it left out.
+  A diff of nothing but excluded files now says which files those were, instead of reading like an
+  empty diff.
 - **Amended 2026-10-18: blocking reviews are not cached, and the diff is read with the base's
   attributes.** Actions caches are shared by every workflow run of the same ref, `pull_request`
   runs the PR's own workflow files, and the cache key is a sha256 of inputs the PR author knows

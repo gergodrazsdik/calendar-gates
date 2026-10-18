@@ -31,13 +31,13 @@ A review of the whole repository at `43ec3c2` (2026-10-17), after PLAN-v2 was wr
 | accepted | 0 | 0 | 0 | 2 | 1 | 3 |
 | rejected | 0 | 0 | 0 | 0 | 11 | 11 |
 
-**Fixed so far: 53 of 119** (3 partial, 62 open, 1 unverifiable). By severity:
+**Fixed so far: 55 of 119** (3 partial, 60 open, 1 unverifiable). By severity:
 
 | Status | critical | high | medium | low | info | total |
 |---|---|---|---|---|---|---|
-| ✅ fixed | 0 | 2 | 10 | 22 | 19 | 53 |
+| ✅ fixed | 0 | 2 | 12 | 22 | 19 | 55 |
 | 🟡 partial | 0 | 0 | 1 | 2 | 0 | 3 |
-| open | 0 | 0 | 5 | 50 | 7 | 62 |
+| open | 0 | 0 | 3 | 50 | 7 | 60 |
 | ⚪ unverifiable | 0 | 0 | 1 | 0 | 0 | 1 |
 
 Each fix names the PR that made it. The status column is maintained by hand as fixes land; the verdicts and severities below are the review's own and are not revised.
@@ -118,7 +118,13 @@ exactly the bypass it describes, so it was not built. What is confirmed without 
 `http-tests` and `k8s-smoke` hold `checks: write` while running PR code. Moving test reporting to
 a job that runs no PR code removes the question.
 
-**Since the review (2026-10-18).** Eight things changed under this document:
+**Since the review (2026-10-18).** Nine things changed under this document:
+- **#71** made the approval attestation required, proven on the project cluster: v0.3.2 admitted,
+  v0.3.1 denied by name, an image volume denied. That test also found that the F058 readiness wait
+  from #63 never matched Kyverno's actual condition, which #71 fixes.
+- **#72** closed the two remaining "recorded as reviewed, but nothing was" findings: generated C#
+  is no longer invisible to the reviewers (F010), and a check whose engine or model has no
+  baseline entry fails `llm-eval` instead of skipping its own comparison (F008).
 - **v0.3.2 shipped** and exercised four things for the first time: the LLM-review Deny policy in
   `admission-smoke`, the `release-approved` attestation, the tag-creation rule (the push logged
   "Bypassed rule violations ... creations being restricted"), and `verify-release`'s ancestry and
@@ -165,14 +171,14 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F001](#f001) | ✅ fixed | high | high | A | A PR's own .gitattributes can hide its changes from every LLM reviewer and from triage's size rule | small | S:C/high M:C/high I:C/medium |
 | [F002](#f002) | ✅ fixed | high | high | A | Review results restored from the Actions cache are trusted unverified, and other workflows of the same PR can write that cache | medium | S:C/high M:C/high I:C/medium |
 | [F003](#f003) | open | medium | high | A | The agent reviewer's file reads are not fenced to the reviewed checkout, and its output is published unredacted | small | S:P/medium M:C/medium I:C/low |
-| [F008](#f008) | open | medium | medium | A | llm-eval checks only flips and fp-regressions when the run's engine/model has no baseline entry, so changing a check's model skips the regression gate | small | S:C/medium M:C/medium I:C/medium |
-| [F010](#f010) | open | medium | medium | A | Name-based EXCLUDES drop compiled C# from the review, and a PR made only of excluded files passes as 'not applicable' | small | S:C/medium M:C/medium I:C/low |
 | [F052](#f052) | open | medium | medium | B | uv itself is unpinned: every setup-uv step installs the newest uv release, in the signing job and the write-token jobs too | small | S:C/low M:C/medium I:C/medium |
 | [F081](#f081) | open | medium | medium | C | A malformed or empty ?year= on /api/friday13 gets a 400 without `errors` in Production and a 500 in Development, not the 400 ValidationProblem | small | S:C/medium M:C/medium I:C/medium |
 | [F012](#f012) | 🟡 partial | medium | medium | A | Cache keys ignore llm-gate's request code and engine settings, so llm-eval scores engine changes from main's cached reviews | small | S:C/medium M:C/medium I:C/medium |
 | [F004](#f004) | ✅ fixed | medium | high | A | The collector's triage recomputation (_triage_expected) has no test at all | small | S:C/medium M:C/medium I:C/low |
 | [F005](#f005) | ✅ fixed | medium | medium | A | Triage and the collector accept any risk_override record on audit-log, so a hand-pushed record can lower the risk with a forged author and an unbeatable timestamp | medium | S:C/medium M:C/medium I:C/medium |
 | [F006](#f006) | ✅ fixed | medium | medium | A | Re-running only the failed llm jobs turns their records into tamper_suspected, because the new attempt has no triage artifact | small | S:C/medium M:C/medium I:C/medium |
+| [F008](#f008) | ✅ fixed | medium | medium | A | llm-eval checks only flips and fp-regressions when the run's engine/model has no baseline entry, so changing a check's model skips the regression gate | small | S:C/medium M:C/medium I:C/medium |
+| [F010](#f010) | ✅ fixed | medium | medium | A | Name-based EXCLUDES drop compiled C# from the review, and a PR made only of excluded files passes as 'not applicable' | small | S:C/medium M:C/medium I:C/low |
 | [F011](#f011) | ✅ fixed | medium | medium | A | Schema-invalid or truncated model output escapes structured_call as pydantic.ValidationError, crashing triage instead of leaving the floor | small | S:C/medium M:C/medium I:C/medium |
 | [F020](#f020) | ✅ fixed | medium | medium | A | A /llm-risk decision isn't tied to a head: lowering the risk once removes blocking review from every later push to the PR | small | S:C/medium M:C/low I:C/medium |
 | [F042](#f042) | ✅ fixed | medium | medium | B | `workflow_modified` only looks at llm-review.yml, so other PR changes that steer the review still count as verified | small | S:C/medium M:C/medium I:C/medium |
@@ -395,62 +401,6 @@ The Review step exports ANTHROPIC_API_KEY, and the Agent SDK passes os.environ o
 
 </details>
 
-### F008
-
-**llm-eval checks only flips and fp-regressions when the run's engine/model has no baseline entry, so changing a check's model skips the regression gate**
-
-- **Status:** open
-- **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
-- **Where:** `tools/llm-gate/src/llm_gate/evals.py:624` · **area:** llm-gate and review prompts
-- **Reported by:** `cr-gate-06` (medium, high confidence), `tr-09` (medium, high confidence)
-
-**`cr-gate-06`: llm-eval checks only flips and fp-regressions when the run's engine/model has no baseline entry, so changing a check's model skips the regression gate**
-
-compare() looks up baseline[check][f'{engine}/{model}']. When there is no entry, old = {}: every delta row (recall, false_block_rate, verdict_accuracy) has baseline None and is ok=True, and the cost row is ok because before_cost is falsy. Only flip_rate and fp_regressions can fail. The run's model is the check's configured model after ${LLM_MODEL...} expansion. So a PR that changes a check's model or engine in checks.yaml leaves its runs without a baseline, and so does a change to the repository variables LLM_MODEL or LLM_MODEL_CHEAP, which llm-eval.yml passes in. baseline.json currently has only api and agent with claude-sonnet-5-5, plus triage on api/claude-haiku-5-5.
-
-*Failure scenario:* A PR moves security-review to `model: ${LLM_MODEL_CHEAP:-claude-haiku-5-5}` to save cost and also trims its prompt (drill 14's 'only report critical issues'). llm-eval runs security-review as api/claude-haiku-5-5 and recall falls to 0.17, but the comparison table shows '-' for every baseline value and every row ok, so the required llm-eval check passes.
-
-*Suggested fix:* When a check that blocks at any risk level has no baseline for the run's engine and model, fail and ask for `just eval-baseline` in the PR, or compare against the check's previously configured entry.
-
-**`tr-09`: llm-eval passes any run whose engine/model has no baseline entry, even with recall 0**
-
-compare() looks up the baseline entry for the check and the engine/model. Without one, every delta row (recall, false blocks, verdict accuracy) is ok, and only flip rate and fp_regressions can fail; cost is ok too without a baseline. test_without_a_baseline_only_absolute_limits_apply pins this behaviour. Checked with the real module against the committed baseline.json: a code-review run with recall 0 and verdict accuracy 0 fails under agent/claude-sonnet-5-5 and passes under agent/claude-sonnet-5-6. Such a key appears whenever a PR changes a model in checks.yaml, or when the LLM_MODEL/LLM_MODEL_CHEAP repository variables change, since llm-eval.yml passes them in. docs-drift and test-review have no baseline at all.
-
-*Failure scenario:* A PR changes defaults.model to a weaker model, or someone changes the repository variable. llm-eval runs every case under the new key, finds nothing, and passes because nothing is compared.
-
-*Suggested fix:* With --compare, fail (or require an explicit acknowledgement) when a check that has cases lacks a baseline entry for the evaluated engine/model. Or add absolute floors for recall and verdict accuracy in thresholds.yaml that apply without a baseline.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, medium, small): compare() looks up baseline[check][engine/model]. Without an entry, delta_row marks recall, false_block_rate and verdict_accuracy (or risk_accuracy) ok, and cost is ok because before_cost is falsy, so only flip_rate and fp_regressions can fail. test_without_a_baseline_only_absolute_limits_apply pins this. baseline.json holds only sonnet entries for the review checks and api/claude-haiku-5-5 for triage, so a checks.yaml model or engine change, or the LLM_MODEL / LLM_MODEL_CHEAP variables llm-eval.yml passes in, evaluates under a key with no baseline and passes with any recall. No ADR covers the missing-entry case.
-- **maintainer** (CONFIRMED, medium, small): compare() looks up baseline[check][engine/model]; without an entry every delta row is ok and the cost row is ok (falsy baseline), so only flip_rate and fp_regressions can fail. The no-entry behaviour is deliberate (docstring, test_without_a_baseline_only_absolute_limits_apply) for bootstrapping, but ADR 0006 doesn't record the consequence that a PR changing a check's model or engine in checks.yaml (or a change to LLM_MODEL/LLM_MODEL_CHEAP) is scored against nothing. baseline.json has no entry at all for test-review and docs-drift.
-- **impact** (CONFIRMED, medium, small): compare() looks up baseline[check][engine/model]; without an entry every delta row is ok, cost is ok (before_cost falsy), and only flip_rate and fp_regressions can fail, as its docstring and test_without_a_baseline_only_absolute_limits_apply pin. llm-eval runs the PR's checks.yaml with the repository's LLM_MODEL variables, so a PR that changes a check's model or engine (a plausible cost-cutting edit, possibly with a prompt trim like drill 14) gets a vacuous comparison and passes the required check; the table shows '-' baselines, which only a careful reader notices. No ADR records this fail-open; ADR 0006 says the gate fails on regression against the baseline. Medium.
-
-</details>
-
-### F010
-
-**Name-based EXCLUDES drop compiled C# from the review, and a PR made only of excluded files passes as 'not applicable'**
-
-- **Status:** open
-- **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
-- **Where:** `tools/llm-gate/src/llm_gate/diff.py:9` · **area:** llm-gate and review prompts
-- **Reported by:** `cr-gate-03` (medium, high confidence)
-
-EXCLUDES removes **/*.g.cs, **/*.generated.cs, **/*.Designer.cs, **/*.lock and **/packages.lock.json from both the diff text and diff.files. The API project is SDK-style with default compile items and no Compile Remove (src/CalendarGates.Api/CalendarGates.Api.csproj), so any *.g.cs file is compiled and shipped. The repository has no generated files with those names (git ls-files). If a PR's only changes are excluded files, diff.files is empty and run_check returns not_applicable ('no changes against <base>', runner.py:65), which decide() passes for blocking checks. Downstream, every consumer accepts that as a review: the collector's _risk_problems treats not_applicable as 'ran', attestations count it as reviewed (NOT_REVIEWED = skipped_no_key, error), and metrics coverage counts it as decided. A rename of Foo.cs to Foo.g.cs shows only as a deletion. Triage still rates the path by its rule (src/** medium) but leaves the file out of its size count.
-
-*Failure scenario:* A PR adds src/CalendarGates.Api/Endpoints/HolidaysEndpoints.g.cs with a new endpoint that logs request headers. code-review and security-review report 'not applicable: no changes against origin/main' with exit 0, and the required checks go green. The attestation shows not_applicable for both and lists no gap. The same applies to a change confined to uv.lock or packages.lock.json.
-
-*Suggested fix:* Don't exclude compiled sources by name; exclude only files carrying an <auto-generated> header, checked from the base side. When triage saw changed files but the review diff is empty, run blocking checks on the file list or fail closed instead of returning not_applicable.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, medium, small): EXCLUDES drops *.g.cs, *.generated.cs, *.Designer.cs and the lock files from both the diff text and diff.files. The API csproj is SDK-style with no Compile Remove, so a src/**/*.g.cs file is compiled; git ls-files shows no such files today. An empty diff.files gives not_applicable (runner.py:64-65), which decide() passes for blocking checks. The collector treats it as having run, and the attestation's NOT_REVIEWED set doesn't include it. Triage's numstat doesn't apply the excludes, so the floor still rates the path. The realistic routes are deliberate (naming source *.g.cs) or rare (lock-only changes), hence medium.
-- **maintainer** (CONFIRMED, medium, small): EXCLUDES drops **/*.g.cs, *.generated.cs, *.Designer.cs and lock files from diff text and diff.files; the SDK-style csproj compiles *.g.cs; with only excluded files run_check returns not_applicable ('no changes against base'), decide passes blocking checks, and attestations count not_applicable as reviewed. The exclusion of real generated code and lock-file noise is deliberate, but name-based exclusion lets the PR choose what the gate doesn't see, against ADR 0004's 'a PR can't weaken the gate that reviews it'. Needs a deliberate rename (same threat class as F001, narrower), hence medium.
-- **impact** (CONFIRMED, low, trivial): EXCLUDES drops **/*.g.cs, *.generated.cs and *.Designer.cs from both the text and --name-only, the SDK-style csproj compiles them, and a PR whose only files are excluded gets not_applicable, which the collector treats as having run and the attestation as reviewed. The trigger is a collaborator deliberately naming a file X.g.cs (the repo has no generated files, so no accident path), and it can only add new code: moving existing logic leaves a visible deletion that a reviewer, and the agent's Grep, can follow. Low; drop the C# globs, or fail closed when triage saw changed files but the review diff is empty.
-
-</details>
-
 ### F052
 
 **uv itself is unpinned: every setup-uv step installs the newest uv release, in the signing job and the write-token jobs too**
@@ -625,6 +575,62 @@ GitHub's "Re-run failed jobs" and "Re-run this job" start attempt N+1 only for t
 - **skeptic** (CONFIRMED, medium, small): Reproduced with audit.collect: a valid attempt-2 code-review artifact (risk high, verdict pass, job success) without a triage artifact in the same attempt is written as tamper_suspected ['risk is set, but the run has no triage record'], with or without a triage job in the jobs map. The collector downloads only audit-<run>-<attempt>-*, and 'Re-run failed jobs' doesn't re-run the successful upstream triage job, so the attempt never has one. attestations.llm_review then counts the tamper event for that PR and head (unverified), and the latest gate_run is attempt 1's error (unreviewed). ADR 0008 accepts flagging a risk without triage only for pre-triage workflows, not this case.
 - **maintainer** (CONFIRMED, medium, small): Reproduced: audit.collect with one valid audit-100-2-code-review artifact (attempt 2, risk high, pass, job success) writes tamper_suspected 'risk is set, but the run has no triage record'. A partial re-run doesn't re-run the successful triage job (its outputs are reused), and audit-collect downloads only audit-<run>-<attempt>-*. ADR 0005 named artifacts per attempt precisely for 're-run of failed jobs', and llm-review.yml's cache comment expects failed checks to be re-run; ADR 0008's 'a record that claims a risk without a triage record is flagged' was written for pre-triage workflows and didn't consider this. A fix must take both the triage artifact and the triage job's conclusion from the earlier attempt.
 - **impact** (CONFIRMED, medium, small): Reproduced: audit.collect for attempt 2 with only audit-100-2-code-review (risk medium, pass, job success) writes tamper_suspected ['risk is set, but the run has no triage record'], whether or not the jobs list has triage, because the collector downloads only audit-<run>-<attempt>-* and run_triage stays 'absent'. attestations.llm_review then takes the latest gate_run per check (attempt 1's error) and counts the tamper event, so the PR is listed as both unreviewed and unverified although its head passed. The trigger is the default 'Re-run failed jobs' button after a blocking check fails closed on an API error, the natural remedy, so this will happen; llm-feedback's full re-run is unaffected. Wrong permanent records and integrity-metric noise, not a bypass: medium.
+
+</details>
+
+### F008
+
+**llm-eval checks only flips and fp-regressions when the run's engine/model has no baseline entry, so changing a check's model skips the regression gate**
+
+- **Status:** ✅ fixed — #72: a missing baseline entry fails the comparison instead of skipping it
+- **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
+- **Where:** `tools/llm-gate/src/llm_gate/evals.py:624` · **area:** llm-gate and review prompts
+- **Reported by:** `cr-gate-06` (medium, high confidence), `tr-09` (medium, high confidence)
+
+**`cr-gate-06`: llm-eval checks only flips and fp-regressions when the run's engine/model has no baseline entry, so changing a check's model skips the regression gate**
+
+compare() looks up baseline[check][f'{engine}/{model}']. When there is no entry, old = {}: every delta row (recall, false_block_rate, verdict_accuracy) has baseline None and is ok=True, and the cost row is ok because before_cost is falsy. Only flip_rate and fp_regressions can fail. The run's model is the check's configured model after ${LLM_MODEL...} expansion. So a PR that changes a check's model or engine in checks.yaml leaves its runs without a baseline, and so does a change to the repository variables LLM_MODEL or LLM_MODEL_CHEAP, which llm-eval.yml passes in. baseline.json currently has only api and agent with claude-sonnet-5-5, plus triage on api/claude-haiku-5-5.
+
+*Failure scenario:* A PR moves security-review to `model: ${LLM_MODEL_CHEAP:-claude-haiku-5-5}` to save cost and also trims its prompt (drill 14's 'only report critical issues'). llm-eval runs security-review as api/claude-haiku-5-5 and recall falls to 0.17, but the comparison table shows '-' for every baseline value and every row ok, so the required llm-eval check passes.
+
+*Suggested fix:* When a check that blocks at any risk level has no baseline for the run's engine and model, fail and ask for `just eval-baseline` in the PR, or compare against the check's previously configured entry.
+
+**`tr-09`: llm-eval passes any run whose engine/model has no baseline entry, even with recall 0**
+
+compare() looks up the baseline entry for the check and the engine/model. Without one, every delta row (recall, false blocks, verdict accuracy) is ok, and only flip rate and fp_regressions can fail; cost is ok too without a baseline. test_without_a_baseline_only_absolute_limits_apply pins this behaviour. Checked with the real module against the committed baseline.json: a code-review run with recall 0 and verdict accuracy 0 fails under agent/claude-sonnet-5-5 and passes under agent/claude-sonnet-5-6. Such a key appears whenever a PR changes a model in checks.yaml, or when the LLM_MODEL/LLM_MODEL_CHEAP repository variables change, since llm-eval.yml passes them in. docs-drift and test-review have no baseline at all.
+
+*Failure scenario:* A PR changes defaults.model to a weaker model, or someone changes the repository variable. llm-eval runs every case under the new key, finds nothing, and passes because nothing is compared.
+
+*Suggested fix:* With --compare, fail (or require an explicit acknowledgement) when a check that has cases lacks a baseline entry for the evaluated engine/model. Or add absolute floors for recall and verdict accuracy in thresholds.yaml that apply without a baseline.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, medium, small): compare() looks up baseline[check][engine/model]. Without an entry, delta_row marks recall, false_block_rate and verdict_accuracy (or risk_accuracy) ok, and cost is ok because before_cost is falsy, so only flip_rate and fp_regressions can fail. test_without_a_baseline_only_absolute_limits_apply pins this. baseline.json holds only sonnet entries for the review checks and api/claude-haiku-5-5 for triage, so a checks.yaml model or engine change, or the LLM_MODEL / LLM_MODEL_CHEAP variables llm-eval.yml passes in, evaluates under a key with no baseline and passes with any recall. No ADR covers the missing-entry case.
+- **maintainer** (CONFIRMED, medium, small): compare() looks up baseline[check][engine/model]; without an entry every delta row is ok and the cost row is ok (falsy baseline), so only flip_rate and fp_regressions can fail. The no-entry behaviour is deliberate (docstring, test_without_a_baseline_only_absolute_limits_apply) for bootstrapping, but ADR 0006 doesn't record the consequence that a PR changing a check's model or engine in checks.yaml (or a change to LLM_MODEL/LLM_MODEL_CHEAP) is scored against nothing. baseline.json has no entry at all for test-review and docs-drift.
+- **impact** (CONFIRMED, medium, small): compare() looks up baseline[check][engine/model]; without an entry every delta row is ok, cost is ok (before_cost falsy), and only flip_rate and fp_regressions can fail, as its docstring and test_without_a_baseline_only_absolute_limits_apply pin. llm-eval runs the PR's checks.yaml with the repository's LLM_MODEL variables, so a PR that changes a check's model or engine (a plausible cost-cutting edit, possibly with a prompt trim like drill 14) gets a vacuous comparison and passes the required check; the table shows '-' baselines, which only a careful reader notices. No ADR records this fail-open; ADR 0006 says the gate fails on regression against the baseline. Medium.
+
+</details>
+
+### F010
+
+**Name-based EXCLUDES drop compiled C# from the review, and a PR made only of excluded files passes as 'not applicable'**
+
+- **Status:** ✅ fixed — #72: generated C# is reviewed; only lock files and this repo's test data are excluded
+- **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
+- **Where:** `tools/llm-gate/src/llm_gate/diff.py:9` · **area:** llm-gate and review prompts
+- **Reported by:** `cr-gate-03` (medium, high confidence)
+
+EXCLUDES removes **/*.g.cs, **/*.generated.cs, **/*.Designer.cs, **/*.lock and **/packages.lock.json from both the diff text and diff.files. The API project is SDK-style with default compile items and no Compile Remove (src/CalendarGates.Api/CalendarGates.Api.csproj), so any *.g.cs file is compiled and shipped. The repository has no generated files with those names (git ls-files). If a PR's only changes are excluded files, diff.files is empty and run_check returns not_applicable ('no changes against <base>', runner.py:65), which decide() passes for blocking checks. Downstream, every consumer accepts that as a review: the collector's _risk_problems treats not_applicable as 'ran', attestations count it as reviewed (NOT_REVIEWED = skipped_no_key, error), and metrics coverage counts it as decided. A rename of Foo.cs to Foo.g.cs shows only as a deletion. Triage still rates the path by its rule (src/** medium) but leaves the file out of its size count.
+
+*Failure scenario:* A PR adds src/CalendarGates.Api/Endpoints/HolidaysEndpoints.g.cs with a new endpoint that logs request headers. code-review and security-review report 'not applicable: no changes against origin/main' with exit 0, and the required checks go green. The attestation shows not_applicable for both and lists no gap. The same applies to a change confined to uv.lock or packages.lock.json.
+
+*Suggested fix:* Don't exclude compiled sources by name; exclude only files carrying an <auto-generated> header, checked from the base side. When triage saw changed files but the review diff is empty, run blocking checks on the file list or fail closed instead of returning not_applicable.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, medium, small): EXCLUDES drops *.g.cs, *.generated.cs, *.Designer.cs and the lock files from both the diff text and diff.files. The API csproj is SDK-style with no Compile Remove, so a src/**/*.g.cs file is compiled; git ls-files shows no such files today. An empty diff.files gives not_applicable (runner.py:64-65), which decide() passes for blocking checks. The collector treats it as having run, and the attestation's NOT_REVIEWED set doesn't include it. Triage's numstat doesn't apply the excludes, so the floor still rates the path. The realistic routes are deliberate (naming source *.g.cs) or rare (lock-only changes), hence medium.
+- **maintainer** (CONFIRMED, medium, small): EXCLUDES drops **/*.g.cs, *.generated.cs, *.Designer.cs and lock files from diff text and diff.files; the SDK-style csproj compiles *.g.cs; with only excluded files run_check returns not_applicable ('no changes against base'), decide passes blocking checks, and attestations count not_applicable as reviewed. The exclusion of real generated code and lock-file noise is deliberate, but name-based exclusion lets the PR choose what the gate doesn't see, against ADR 0004's 'a PR can't weaken the gate that reviews it'. Needs a deliberate rename (same threat class as F001, narrower), hence medium.
+- **impact** (CONFIRMED, low, trivial): EXCLUDES drops **/*.g.cs, *.generated.cs and *.Designer.cs from both the text and --name-only, the SDK-style csproj compiles them, and a PR whose only files are excluded gets not_applicable, which the collector treats as having run and the attestation as reviewed. The trigger is a collaborator deliberately naming a file X.g.cs (the repo has no generated files, so no accident path), and it can only add new code: moving existing logic leaves a visible deletion that a reviewer, and the agent's Grep, can follow. Low; drop the C# globs, or fail closed when triage saw changed files but the review diff is empty.
 
 </details>
 
@@ -2202,7 +2208,7 @@ The exemption for git-generated messages also applies with --title, which ci.yml
 
 **k8s-policy-up returns before the policies are ready, so a deploy right after it can be admitted unchecked**
 
-- **Status:** ✅ fixed — #63: `k8s-policy-up` waits for the policies to be Ready
+- **Status:** ✅ fixed — #71: the readiness wait uses the condition Kyverno reports (the first fix never matched)
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `justfile:180` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `cr-ops-10` (low, medium confidence)

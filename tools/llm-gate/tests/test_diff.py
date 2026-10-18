@@ -17,18 +17,30 @@ def test_diff_contains_branch_changes_only(repo: Repo) -> None:
     assert diff.size_bytes == len(diff.text.encode())
 
 
-def test_generated_and_lock_files_are_excluded(repo: Repo) -> None:
+def test_lock_files_and_this_repos_test_data_are_excluded(repo: Repo) -> None:
     repo.write("src/Api/Real.cs", "class Real {}\n")
     repo.write("src/Api/packages.lock.json", "{}\n")
     repo.write("tools/x/uv.lock", "lock\n")
-    repo.write("src/Api/Form.Designer.cs", "class Form {}\n")
-    repo.write("src/Api/obj/Thing.g.cs", "class Thing {}\n")
     repo.write("tools/llm-gate/evals/cases/cr-9/diff.patch", "+planted bug\n")
+    repo.write("tools/llm-gate/tests/fixtures/schema.json", "{}\n")
     repo.commit("change")
 
     diff = merge_base_diff(repo.root, "main")
 
     assert diff.files == ("src/Api/Real.cs",)
+
+
+def test_generated_csharp_is_reviewed_because_it_is_compiled(repo: Repo) -> None:
+    """F010: `*.g.cs` and friends were excluded by name, so a PR made only of them passed both
+    blocking checks as "not applicable" and counted as reviewed, though the SDK compiles them."""
+    repo.write("src/Api/Form.Designer.cs", "class Form { int Backdoor = 1; }\n")
+    repo.write("src/Api/obj/Thing.g.cs", "class Thing {}\n")
+    repo.commit("only generated files")
+
+    diff = merge_base_diff(repo.root, "main")
+
+    assert sorted(diff.files) == ["src/Api/Form.Designer.cs", "src/Api/obj/Thing.g.cs"]
+    assert "int Backdoor = 1;" in diff.text
 
 
 def test_changes_on_main_after_branching_are_not_part_of_the_diff(repo: Repo) -> None:

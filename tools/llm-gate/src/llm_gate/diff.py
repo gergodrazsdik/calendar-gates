@@ -5,14 +5,20 @@ from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 
-# Noise for a reviewer and expensive in tokens. Glob pathspecs, so `**/` matches any directory.
+# Never reviewed, whatever their size, because there is nothing in them a reviewer can judge: a
+# resolved dependency graph, or this repository's own test data. Glob pathspecs, so `**/` matches
+# any directory.
+#
+# Generated C# (`*.g.cs`, `*.generated.cs`, `*.Designer.cs`) and minified JS used to be here, and
+# that was a hole: the SDK compiles those files into the app, so a PR made only of them passed
+# both blocking checks as "not applicable" and counted as reviewed (F010). They go through the
+# review now, and the size machinery handles the bulk: a file over `max_file_kb` that carries a
+# generator's marker is left out and reported, and a blocking check needs an override to review a
+# diff with anything missing (ADR 0002). One mechanism, visible in the record, instead of a
+# name-based blind spot.
 EXCLUDES = (
     "**/*.lock",  # uv.lock and friends
     "**/packages.lock.json",
-    "**/*.Designer.cs",
-    "**/*.g.cs",
-    "**/*.generated.cs",
-    "**/*.min.js",
     # Eval fixtures (evals/README.md): diffs with planted bugs and injections, applied only in a
     # temporary export by llm-eval and never run. Reviewing them reports the planted problems as
     # findings and spends the size cap; their case.yaml is still reviewed.
@@ -63,6 +69,8 @@ class Diff:
     # One entry per changed file, as git produced it: `(path, that file's diff)`. The text is
     # assembled from these, so trimming never has to parse the diff back apart.
     chunks: tuple[tuple[str, str], ...] = ()
+    # Changed files `EXCLUDES` kept out, so "nothing to review" can say which case it is.
+    excluded: tuple[str, ...] = ()
     # Files whose own diff was over `max_file_kb` and was left out of `text` (`trim_large_files`).
     # They stay in `files`, so a check's `paths:` filter and triage's size rule still see them.
     omitted: tuple[OmittedFile, ...] = ()
@@ -115,6 +123,8 @@ def merge_base_diff(root: Path, base: str) -> Diff:
         root, *common, "--name-only", "-z", "--merge-base", base, "HEAD", "--", ".", *excludes
     )
     files = tuple(name for name in names.split("\0") if name)
+    every = git(root, *common, "--name-only", "-z", "--merge-base", base, "HEAD")
+    excluded = tuple(name for name in every.split("\0") if name and name not in set(files))
     chunks = tuple(
         (
             path,
@@ -122,7 +132,13 @@ def merge_base_diff(root: Path, base: str) -> Diff:
         )
         for path in files
     )
-    return Diff(base=base, text="".join(c for _, c in chunks), files=files, chunks=chunks)
+    return Diff(
+        base=base,
+        text="".join(c for _, c in chunks),
+        files=files,
+        chunks=chunks,
+        excluded=excluded,
+    )
 
 
 def is_generated(root: Path, path: str) -> bool:
