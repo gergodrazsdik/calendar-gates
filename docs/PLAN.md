@@ -722,13 +722,21 @@ attestation, the smoke test passed after your approval, and `kind-local` runs th
 
 Each drill: `/gate-drill <n>` creates a branch and PR, you watch the gate catch it, then close the PR.
 
+Two things changed after this table was written, and `/gate-drill` follows the current rules rather
+than the wording here (F104). **Bypassing the local hooks is banned** (AGENTS.md): a drill that has
+to get past one commits through the GitHub API instead (`scripts/commit-via-api.py`), which proves
+the same point — hooks are not enforcement — without teaching the habit. And **an override needs a
+reason**: the `llm-override` label alone does nothing. It is honoured only with an unedited
+`/llm-override <reason>` comment by someone with write access, which is recorded on the audit log
+and listed in the release attestation ([ADR 0005](adr/0005-audit-trail.md), F007).
+
 | # | Drill | Expected |
 |---|---|---|
-| 1 | Commit badly formatted C# with `git commit --no-verify` | `format` fails; proves hooks aren't enforcement |
+| 1 | Commit badly formatted C# without running the hooks (through the API, as `/gate-drill` does) | `format` fails; proves hooks aren't enforcement |
 | 2 | Break the Easter calculation for year 2000 | `build-test` fails with a test annotation on the line |
 | 3 | Rename a JSON property (`isoYear` → `year`) without touching tests | `http-tests` fails (contract); `api-contract` advisory comments |
 | 4 | Add `Newtonsoft.Json` 12.0.1 to the API project | `grype` fails on GHSA-5crp-9r3c-p9vr (high), alert in code scanning. Then add an `ignore` with reason + expiry → passes; revert |
-| 5 | Off-by-one in `workdays` and log request headers including `Authorization` | `llm / code-review` and `llm / security-review` fail; add `llm-override` label → passes with warning |
+| 5 | Off-by-one in `workdays` and log request headers including `Authorization` | `llm / code-review` and `llm / security-review` fail; comment `/llm-override <reason>` (the label on its own is not enough) → the findings are still reported, the checks pass, and the override is on the audit log |
 | 6 | Put `${{ github.event.pull_request.title }}` straight into a `run:` step | `lint` fails (zizmor template injection); `workflow-review` comments |
 | 7 | Push directly to `main`; force-push; delete tag `v0.1.0` | all rejected by rulesets |
 | 8 | Temporarily make `grype` conditional (`if: false`) | the skipped required check counts as passing; switch the ruleset to require only `gates` and repeat → blocked. Decide which model you prefer |

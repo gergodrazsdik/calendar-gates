@@ -6,8 +6,10 @@ argument-hint: "[diff file; default: this branch vs origin/main]"
 Check a change to calendar-gates for changes to its public HTTP contract. calendar-gates is a small
 ASP.NET Core minimal API about dates. The contract is the routes under `/api`, their parameters,
 the JSON property names and types (camelCase, dates as `yyyy-MM-dd`), the status codes (400
-ValidationProblem for bad input), and the OpenAPI document at `/openapi/v1.json`. The `.http`
-requests in `http/calendar.http` are the contract tests.
+ValidationProblem for bad input), and the OpenAPI document at `/openapi/v1.json`. It also includes
+**`/health`**, which is outside `/api` but is what the container's readiness probe and the Helm
+chart call, and whose body is plain text rather than JSON. The `.http` requests in
+`http/calendar.http` are the contract tests.
 
 The change to review is $ARGUMENTS. If no diff was given, review the output of
 `git diff --merge-base origin/main HEAD`. If you can read files in the repository, compare with the
