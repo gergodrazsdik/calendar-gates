@@ -196,3 +196,41 @@ def test_a_deleted_generated_file_stays_in_the_diff(repo: Repo) -> None:
     trimmed = trim_large_files(merge_base_diff(repo.root, "main"), max_file_kb=4, root=repo.root)
 
     assert trimmed.omitted == ()
+
+
+def test_the_prs_own_gitattributes_cannot_hide_its_changes(repo: Repo) -> None:
+    """F001: one `-diff` line used to turn every file into "Binary files ... differ" for both
+    blocking reviews, with 0 changed lines for the size rule. Attributes come from the base now."""
+    repo.write(".gitattributes", "* text=auto eol=lf\nsrc/** -diff\n.gitattributes -diff\n")
+    repo.write("src/Api/Endpoints/Week.cs", "class Week { int Backdoor = 1; }\n")
+    repo.commit("hide the change")
+
+    diff = merge_base_diff(repo.root, "main")
+
+    assert "Binary files" not in diff.text
+    assert "+class Week { int Backdoor = 1; }" in diff.text
+    assert "src/** -diff" in diff.text  # the attributes file itself is reviewed too
+
+
+def test_a_nul_byte_cannot_hide_a_change_either(repo: Repo) -> None:
+    """Git's binary heuristic needs no attributes at all; `--text` answers it."""
+    (repo.root / "src/Api/Endpoints/Week.cs").write_bytes(
+        b"class Week { int Backdoor = 1; }\n\x00\n"
+    )
+    repo.commit("hide the change with a NUL byte")
+
+    diff = merge_base_diff(repo.root, "main")
+
+    assert "Binary files" not in diff.text
+    assert "+class Week { int Backdoor = 1; }" in diff.text
+
+
+def test_vendored_fixtures_are_excluded_by_code_not_by_attributes(repo: Repo) -> None:
+    repo.write("tools/llm-gate/tests/fixtures/schema.json", '{"big": true}\n')
+    repo.write("src/Api/Endpoints/Week.cs", "class Week { int X = 2; }\n")
+    repo.commit("a fixture and a real change")
+
+    diff = merge_base_diff(repo.root, "main")
+
+    assert diff.files == ("src/Api/Endpoints/Week.cs",)
+    assert "schema.json" not in diff.text

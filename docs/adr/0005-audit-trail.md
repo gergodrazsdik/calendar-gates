@@ -86,6 +86,13 @@ output can't simply be trusted either.
   unedited, was written by the login in the record, and asks for the same level, the way
   `find_override` checks an override's reason. A record that fails is reported and can't explain
   the run's risk, so the run is flagged instead of accepted.
+- **Amended 2026-10-18: `workflow_modified` covers what can steer a review**, not just the
+  triggering workflow's own path: any `.github/workflows/**` or `.github/actions/**` change (a
+  sibling workflow runs on the same event and shares the PR's cache scope) and `.gitattributes`
+  (it decides what `git diff` shows). Such runs are recorded as unverified and their free text is
+  withheld, so every PR that touches CI appears in the release attestation's `unverified` list.
+  That is noisier and truer. The collector also refuses a blocking record claiming a cache hit,
+  because `llm-review` keeps no review cache (ADR 0002).
 - Artifact and file names include the attempt, which the plan's `<run_id>-<check>` didn't: a
   re-run of failed jobs keeps the first attempt's artifacts in the run, and its records would
   otherwise overwrite (or be mistaken for) the new attempt's.

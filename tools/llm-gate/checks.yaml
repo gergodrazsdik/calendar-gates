@@ -55,7 +55,8 @@ triage:
   max_diff_kb: 50 # what the model sees; the rules see every file
   default_risk: medium # justfile, lefthook.yml, global.json, .config/ ...
   rules:
-    - paths: [".github/**", "tools/llm-gate/**", ".claude/commands/llm-*", "scripts/**"]
+    - paths:
+        [".github/**", "tools/llm-gate/**", ".claude/commands/llm-*", "scripts/**", ".gitattributes"]
       risk: high
       reason: changes CI or the gates
     - {paths: ["Dockerfile", "deploy/**"], risk: high, reason: runtime or deployment}

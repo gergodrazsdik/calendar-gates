@@ -86,10 +86,11 @@ def test_ai_assistance_raises_by_one_level_and_says_so(tc: TriageConfig) -> None
     assert high.risk == "high"  # nothing above high
 
 
-def test_numstat_keeps_both_paths_of_a_rename_and_counts_binaries_as_zero() -> None:
+def test_numstat_keeps_both_paths_of_a_rename_and_leaves_binaries_uncounted() -> None:
     out = "3\t1\tsrc/a.cs\0-\t-\tlogo.png\0" + "0\t0\t\0old/name.md\0docs/name.md\0"
     assert triage.parse_numstat(out) == [
-        *changes(("src/a.cs", 4), ("logo.png", 0)),
+        FileChange("src/a.cs", 4),
+        FileChange("logo.png", None),  # git printed `-`: unknown, not zero (F001)
         FileChange("docs/name.md", 0, "old/name.md"),
     ]
 
@@ -965,3 +966,64 @@ def test_an_artifact_may_not_claim_a_reused_attempt(tmp_path: Path) -> None:
     assert "sets fields only the collector may set" in " ".join(
         problems(result, "audit-100-1-triage")
     )
+
+
+def test_a_size_that_cannot_be_counted_raises_the_floor_to_high(tc: TriageConfig) -> None:
+    """F001's other half: git prints `-` for a file it won't diff (binary, or a NUL byte in it),
+    which used to count as 0 lines and left the size rule asleep."""
+    unreadable = triage.floor([FileChange("src/Api/Blob.cs", None)], ai_assisted=False, config=tc)
+
+    assert unreadable.risk == "high"
+    assert "can't be counted" in unreadable.reasons[-1]
+    assert "src/Api/Blob.cs" in unreadable.reasons[-1]
+
+    # A path the size rule never counted (a lock file, a vendored fixture) is not a hiding place,
+    # so an uncountable one there doesn't raise anything: this stays at its rule's own risk.
+    excluded = triage.floor(
+        [FileChange("src/Api/packages.lock.json", None)], ai_assisted=False, config=tc
+    )
+    assert excluded.risk == "medium"  # the dependencies rule, not the size rule
+
+
+def test_the_collector_reads_an_uncountable_file_the_same_way() -> None:
+    """The compare API reports a binary file as 0/0 with no patch. If that counted as 0 here while
+    triage counted it as unknown, the collector would flag an honest PR as tampering."""
+    binary = [{"filename": "src/Api/logo.png", "additions": 0, "deletions": 0, "status": "added"}]
+    assert triage.changes_from_compare(binary) == [FileChange("src/Api/logo.png", None)]
+
+    text = [{"filename": "src/a.cs", "additions": 3, "deletions": 1, "patch": "@@"}]
+    assert triage.changes_from_compare(text) == [FileChange("src/a.cs", 4)]
+
+    # A rename with no content change has the same counts without being unreadable.
+    renamed = [
+        {"filename": "docs/x.md", "previous_filename": "docs/y.md", "status": "renamed"},
+    ]
+    assert triage.changes_from_compare(renamed) == [FileChange("docs/x.md", 0, "docs/y.md")]
+
+
+def test_a_cached_blocking_verdict_is_a_collector_problem(tmp_path: Path) -> None:
+    """F002: llm-review keeps no review cache, because a PR's own workflow can write one. If one
+    ever comes back, the collector refuses it rather than recording it as a verified pass."""
+    artifact(tmp_path, "audit-100-1-code-review", audit.dumps(gate_run(cache_hit=True)))
+
+    result = collect_run(tmp_path, triage_expected=None)
+
+    assert "blocking reviews are not cached" in " ".join(
+        problems(result, "audit-100-1-code-review")
+    )
+
+
+def test_an_advisory_cached_verdict_is_fine(tmp_path: Path) -> None:
+    advisory = gate_run(
+        check="docs-drift",
+        prompt_file=".claude/commands/llm-docs-drift.md",
+        blocking=False,
+        verdict="pass",
+        exit_code=0,
+        cache_hit=True,
+    )
+    artifact(tmp_path, "audit-100-1-docs-drift", audit.dumps(advisory))
+
+    result = collect_run(tmp_path, triage_expected=None, jobs={"llm / docs-drift": "success"})
+
+    assert problems(result, "audit-100-1-docs-drift") == []

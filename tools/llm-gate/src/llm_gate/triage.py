@@ -54,7 +54,7 @@ def raise_by(risk: Risk, levels: int) -> Risk:
 @dataclass(frozen=True)
 class FileChange:
     path: str
-    lines: int  # added + deleted (0 for binary files)
+    lines: int | None  # added + deleted; None when git or the API can't count them (binary)
     old_path: str | None = None  # a rename's source: rated too, so a move can't launder a path
 
 
@@ -90,7 +90,10 @@ def parse_numstat(out: str) -> list[FileChange]:
         if not path:  # a rename: the old and the new path follow as fields of their own
             old, path = fields[index], fields[index + 1]
             index += 2
-        lines = 0 if added == "-" else int(added) + int(deleted)
+        # `-` means git didn't count the lines: a binary file, or a text file with a NUL byte in
+        # it. `--text` doesn't help here (numstat still prints `-`), so it stays unknown rather
+        # than becoming 0, which would let a PR hide its size from the rules (F001).
+        lines = None if added == "-" else int(added) + int(deleted)
         changes.append(FileChange(path, lines, old))
     return changes
 
@@ -114,15 +117,31 @@ def changes_from_patch(patch: str) -> list[FileChange]:
 
 
 def changes_from_compare(files: Sequence[Mapping[str, Any]]) -> list[FileChange]:
-    """`gh api repos/R/compare/BASE...HEAD --jq .files` → FileChange (the collector's side)."""
-    return [
-        FileChange(
-            str(f["filename"]),
-            int(f.get("additions") or 0) + int(f.get("deletions") or 0),
-            str(f["previous_filename"]) if f.get("previous_filename") else None,
+    """`gh api repos/R/compare/BASE...HEAD --jq .files` → FileChange (the collector's side).
+
+    The API reports a binary file as 0 additions, 0 deletions and no `patch`, the same shape git
+    gives as `-` in numstat. It has to read as unknown here too, or the collector would recompute
+    a lower floor than the run's and flag an honest PR as tampering (F001). A rename or a
+    mode-only change has the same counts without being unreadable, and carries
+    `previous_filename` or a status that says so.
+    """
+    changes = []
+    for f in files:
+        added = int(f.get("additions") or 0)
+        deleted = int(f.get("deletions") or 0)
+        moved = bool(f.get("previous_filename")) or str(f.get("status") or "") in (
+            "renamed",
+            "unchanged",
         )
-        for f in files
-    ]
+        readable = f.get("patch") is not None or added or deleted or moved
+        changes.append(
+            FileChange(
+                str(f["filename"]),
+                added + deleted if readable else None,
+                str(f["previous_filename"]) if f.get("previous_filename") else None,
+            )
+        )
+    return changes
 
 
 @dataclass(frozen=True)
@@ -155,15 +174,25 @@ def floor(changes: Sequence[FileChange], *, ai_assisted: bool, config: TriageCon
         f"{risk_}: {reason} ({count} file{'s' if count != 1 else ''})"
         for (risk_, reason), count in sorted(by_reason.items(), key=lambda kv: -rank(kv[0][0]))
     ]
-    lines = sum(c.lines for c in changes if counts_for_size(c.path))
+    sized = [c for c in changes if counts_for_size(c.path)]
+    lines = sum(c.lines or 0 for c in sized)
+    unreadable = sorted(c.path for c in sized if c.lines is None)
     if lines > config.high_over_lines:
         size: Risk = "high"
     elif lines > config.medium_over_lines:
         size = "medium"
     else:
         size = "low"
+    if unreadable:
+        # A file whose size can't be read is reviewed carefully rather than cheaply: that is either
+        # a binary landing where code lives, or an attempt to hide the change from the size rule.
+        size = "high"
     if rank(size) > rank(risk):
-        reasons.append(f"{size}: {lines} changed lines")
+        if unreadable:
+            names = ", ".join(unreadable[:3]) + (" ..." if len(unreadable) > 3 else "")
+            reasons.append(f"high: changed lines can't be counted ({names})")
+        else:
+            reasons.append(f"{size}: {lines} changed lines")
         risk = size
     if ai_assisted and config.ai_assisted_raise:
         raised = raise_by(risk, config.ai_assisted_raise)

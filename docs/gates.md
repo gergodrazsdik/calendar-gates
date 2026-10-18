@@ -34,6 +34,9 @@ is required too (see below).
 
 - **format**: CSharpier owns layout, `dotnet format` only checks rules ([ADR 0001](adr/0001-csharpier-owns-formatting.md)).
   `dotnet format whitespace` is never run.
+- **llm / <check>**: blocking reviews are not cached ([ADR 0002](adr/0002-llm-gate-policy.md)), so
+  a re-run of an unchanged PR pays for them again, about $0.12 at high risk. A cache a PR can write
+  is not evidence. The triage model's answer is still cached.
 - **llm-eval**: with no API key (a fork PR, or a Dependabot PR before the secret is granted) the
   job passes with a notice and runs nothing: `LLM_GATE_MISSING_KEY` applies to `llm / <check>`,
   not to `llm-eval`. A Dependabot bump of `tools/llm-gate`'s dependencies therefore merges without

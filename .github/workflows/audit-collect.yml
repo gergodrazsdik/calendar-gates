@@ -118,8 +118,18 @@ jobs:
           if git fetch --quiet --no-tags --depth 1 origin audit-log; then
             git archive FETCH_HEAD | tar -x -C "$WORK/audit-log"
           fi
+          # Anything the PR changed that can steer its own review, not just llm-review.yml (F042):
+          # a sibling workflow runs on the same pull_request event and shares the PR's Actions
+          # cache scope, a composite action runs inside these jobs, and .gitattributes decides what
+          # `git diff` shows (F001). All of them are high risk in triage already; a run that
+          # carries one is recorded as unverified, which is what ADR 0004's model implies.
           workflow="${WORKFLOW_PATH%%@*}" # the path, without an @ref suffix if there is one
-          if grep -qx -e "$workflow" -e truncated "$WORK/changed.txt"; then
+          steering=$(grep -E -e '^\.github/(workflows/|actions/)' -e '^\.gitattributes$' \
+            -e '^truncated$' "$WORK/changed.txt" | paste -sd, - || true)
+          if [ -n "$steering" ]; then
+            echo "flag=--workflow-modified" >> "$GITHUB_OUTPUT"
+            echo "::warning title=audit-collect::The PR changed $steering: its reviews are recorded as unverified."
+          elif grep -qx "$workflow" "$WORK/changed.txt"; then
             echo "flag=--workflow-modified" >> "$GITHUB_OUTPUT"
             echo "::warning title=audit-collect::The PR changed $workflow: its reviews are recorded as unverified."
           fi
