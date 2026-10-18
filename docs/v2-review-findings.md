@@ -31,13 +31,13 @@ A review of the whole repository at `43ec3c2` (2026-10-17), after PLAN-v2 was wr
 | accepted | 0 | 0 | 0 | 2 | 1 | 3 |
 | rejected | 0 | 0 | 0 | 0 | 11 | 11 |
 
-**Fixed so far: 57 of 119** (3 partial, 58 open, 1 unverifiable). By severity:
+**Fixed so far: 69 of 119** (3 partial, 46 open, 1 unverifiable). By severity:
 
 | Status | critical | high | medium | low | info | total |
 |---|---|---|---|---|---|---|
-| ✅ fixed | 0 | 2 | 14 | 22 | 19 | 57 |
+| ✅ fixed | 0 | 2 | 14 | 34 | 19 | 69 |
 | 🟡 partial | 0 | 0 | 1 | 2 | 0 | 3 |
-| open | 0 | 0 | 1 | 50 | 7 | 58 |
+| open | 0 | 0 | 1 | 38 | 7 | 46 |
 | ⚪ unverifiable | 0 | 0 | 1 | 0 | 0 | 1 |
 
 Each fix names the PR that made it. The status column is maintained by hand as fixes land; the verdicts and severities below are the review's own and are not revised.
@@ -190,13 +190,7 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F084](#f084) | ✅ fixed | medium | medium | C | "A failed smoke leaves a draft; re-running the workflow refreshes it" no longer holds under build-once releases | trivial | S:C/medium M:C/medium I:C/medium |
 | [F007](#f007) | open | low | medium | A | An override by label skips the write-role check that `/llm-override` enforces | trivial | S:C/low M:C/low I:C/low |
 | [F009](#f009) | open | low | medium | A | llm-eval scores security-review only on the API engine, but high-risk PRs (most of them) review it on the agent engine | small | S:C/low M:C/medium I:C/low |
-| [F013](#f013) | open | low | medium | A | `llm-gate run --risk` for a check the level runs (demoted to advisory, engine switched) is never exercised | small | S:C/low M:C/low I:C/low |
-| [F014](#f014) | open | low | medium | A | Only `feedback` is tested as a record type a PR's artifact may not carry; `risk_override` is not | trivial | S:C/low M:C/low I:C/low |
-| [F015](#f015) | open | low | medium | A | The 'exactly one triage record' rule is untested; the test named for it passes through a different check | trivial | S:C/low M:C/low I:C/low |
-| [F016](#f016) | open | low | medium | A | The 128 KB per-artifact limit is untested, and the 256 KB per-line limit can never trigger | trivial | S:C/low M:C/low I:C/low |
-| [F017](#f017) | open | low | medium | A | The committed-eval-cases test is skipped in CI (shallow checkout), and one missing base skips every case | trivial | S:C/low M:C/low I:C/low |
 | [F018](#f018) | open | low | medium | A | The triage eval lets any one triage case fail in every repeat, tr-008 included; 4 of its 10 cases can't fail at all | small | S:C/low M:C/low I:C/low |
-| [F019](#f019) | open | low | medium | A | fp-tr-835a can still pass for the wrong reason: its forbid rule needs a literal `$IMAGE` in the title | trivial | S:C/low M:C/low I:C/low |
 | [F021](#f021) | open | low | low | A | Triage rates gate configuration outside .github/ and tools/llm-gate/ at the default medium | trivial | S:C/low M:C/low I:C/low |
 | [F022](#f022) | open | low | low | A | The collector rechecks a run's triage against the default branch's checks.yaml at collection time, not the config the run used | small | S:C/low M:C/low I:C/low |
 | [F023](#f023) | open | low | low | A | api-contract's paths filter misses files that change the HTTP contract outside Endpoints/, Domain/, Program.cs and http/ | trivial | S:C/low M:C/low I:C/low |
@@ -205,14 +199,8 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F026](#f026) | open | low | low | A | /llm-fp and /llm-ack on a finding from the current run are rejected as unknown_finding until audit-collect has written that run | small | S:C/low M:C/low I:C/low |
 | [F027](#f027) | open | low | low | A | The llm-review attestation doesn't list a PR whose merged head is missing a record for a blocking check | small | S:C/low M:C/low I:C/low |
 | [F029](#f029) | open | low | low | A | Model-written review text reaches the PR comment and job summary without redaction or markup neutralisation | small | S:C/low M:C/low I:C/low |
-| [F030](#f030) | open | low | low | A | floor_violations can never be non-zero: it is computed from final_risk(), which takes the higher risk | trivial | S:C/low M:R/info I:C/low |
-| [F031](#f031) | open | low | low | A | 'Latest wins' tests use fixtures already in time order; the invalid-`to` fixture is rejected for its bad ts | trivial | S:C/low M:C/low I:C/low |
 | [F032](#f032) | open | low | low | A | The collector's paths for keyless PRs (skipped_no_key) and for a missing triage expectation are untested | small | S:C/low M:C/low I:C/low |
-| [F033](#f033) | open | low | low | A | Two of the eight redaction patterns (Slack, JWT) have no test case | trivial | S:C/low M:C/low I:C/low |
-| [F035](#f035) | open | low | low | A | `/llm-ack` recording and a writer's malformed command are never tested through handle() | trivial | S:C/low M:C/low I:C/low |
-| [F036](#f036) | open | low | low | A | The API engine's cost is checked against estimate_cost itself; the price arithmetic has no independent test | trivial | S:C/low M:C/low I:C/low |
 | [F037](#f037) | open | low | low | A | docs-drift has no eval case, and test-review has only an fp-regression case | medium | S:C/low M:C/low I:C/low |
-| [F038](#f038) | open | low | low | A | The prompt-guard test skips llm-triage.md | trivial | S:C/low M:C/info I:C/low |
 | [F039](#f039) | open | low | low | A | Audit file paths use the date of collection, so re-running audit-collect or llm-feedback on another day writes duplicates | small | S:C/low M:C/low I:C/low |
 | [F045](#f045) | open | low | medium | B | The allow rules for just, uv run, dotnet and gh run auto-approve arbitrary and irreversible commands, which makes the deny list ineffective | small | S:C/low M:C/low I:C/low |
 | [F046](#f046) | open | low | medium | B | Ephemeral containers are tested nowhere: removing them from the images policy leaves every test green | trivial | S:C/low M:C/medium I:C/low |
@@ -240,6 +228,18 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F114](#f114) | open | low | low | C | The leap endpoint's year validation is tested only with 99999 | trivial | S:C/low M:C/low I:C/low |
 | [F048](#f048) | 🟡 partial | low | medium | B | Every attestation Kyverno requires exists before the release is approved or smoke-tested, so rejected and failed candidates are admitted | medium | S:C/low M:C/low I:C/low |
 | [F091](#f091) | 🟡 partial | low | low | C | The audit/v1 type lists in ADR 0005 and in the audit-log branch README are out of date | small | S:C/low M:C/low I:C/low |
+| [F013](#f013) | ✅ fixed | low | medium | A | `llm-gate run --risk` for a check the level runs (demoted to advisory, engine switched) is never exercised | small | S:C/low M:C/low I:C/low |
+| [F014](#f014) | ✅ fixed | low | medium | A | Only `feedback` is tested as a record type a PR's artifact may not carry; `risk_override` is not | trivial | S:C/low M:C/low I:C/low |
+| [F015](#f015) | ✅ fixed | low | medium | A | The 'exactly one triage record' rule is untested; the test named for it passes through a different check | trivial | S:C/low M:C/low I:C/low |
+| [F016](#f016) | ✅ fixed | low | medium | A | The 128 KB per-artifact limit is untested, and the 256 KB per-line limit can never trigger | trivial | S:C/low M:C/low I:C/low |
+| [F017](#f017) | ✅ fixed | low | medium | A | The committed-eval-cases test is skipped in CI (shallow checkout), and one missing base skips every case | trivial | S:C/low M:C/low I:C/low |
+| [F019](#f019) | ✅ fixed | low | medium | A | fp-tr-835a can still pass for the wrong reason: its forbid rule needs a literal `$IMAGE` in the title | trivial | S:C/low M:C/low I:C/low |
+| [F030](#f030) | ✅ fixed | low | low | A | floor_violations can never be non-zero: it is computed from final_risk(), which takes the higher risk | trivial | S:C/low M:R/info I:C/low |
+| [F031](#f031) | ✅ fixed | low | low | A | 'Latest wins' tests use fixtures already in time order; the invalid-`to` fixture is rejected for its bad ts | trivial | S:C/low M:C/low I:C/low |
+| [F033](#f033) | ✅ fixed | low | low | A | Two of the eight redaction patterns (Slack, JWT) have no test case | trivial | S:C/low M:C/low I:C/low |
+| [F035](#f035) | ✅ fixed | low | low | A | `/llm-ack` recording and a writer's malformed command are never tested through handle() | trivial | S:C/low M:C/low I:C/low |
+| [F036](#f036) | ✅ fixed | low | low | A | The API engine's cost is checked against estimate_cost itself; the price arithmetic has no independent test | trivial | S:C/low M:C/low I:C/low |
+| [F038](#f038) | ✅ fixed | low | low | A | The prompt-guard test skips llm-triage.md | trivial | S:C/low M:C/info I:C/low |
 | [F055](#f055) | ✅ fixed | low | low | B | pr-title accepts non-Conventional titles that start with 'Merge ', 'fixup! ', 'squash! ' or 'amend! ' | trivial | S:C/low M:C/low I:C/low |
 | [F058](#f058) | ✅ fixed | low | low | B | k8s-policy-up returns before the policies are ready, so a deploy right after it can be admitted unchecked | trivial | S:C/low M:C/low I:C/low |
 | [F059](#f059) | ✅ fixed | low | low | B | k8s-cluster-down ignores cluster=, so with cluster=local it deletes the project cluster | trivial | S:R/info M:C/low I:C/low |
@@ -898,121 +898,6 @@ llm-eval runs `eval run --compare` without --engine, so every check runs on its 
 
 </details>
 
-### F013
-
-**`llm-gate run --risk` for a check the level runs (demoted to advisory, engine switched) is never exercised**
-
-- **Status:** open
-- **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
-- **Where:** `tools/llm-gate/src/llm_gate/cli.py:306` · **area:** llm-gate and review prompts
-- **Reported by:** `tr-02` (medium, high confidence)
-
-_at_risk returns the level's version of a check: advisory at low risk, and the agent engine for blocking checks at high risk (plan_for). Every planned check in CI takes this path, because llm-review.yml sets LLM_GATE_RISK for the llm matrix. cli.py:306 is never executed. The only CLI test with --risk is test_cli_run_at_a_risk_level_where_the_check_is_not_needed, which covers the not-needed branch. The mutation `return check, None` (ignore the plan) survived the whole suite. plan_for is unit-tested (test_the_plan_per_level), but nothing checks that a run uses its result: not the exit code, not the gate_run's blocking, not the engine.
-
-*Failure scenario:* _at_risk regresses to the configured check. At low risk, a docs-only PR with a high finding fails code-review, which should be advisory there. At high risk, security-review keeps the API engine instead of the agent engine ADR 0008 promises. No test fails. The collector later flags only the blocking mismatch, and never the engine.
-
-*Suggested fix:* Two CLI tests. `run --risk low --check code-review` with a high finding: exit 0, record blocking false, risk low. `run --risk high --check security-review` with api and agent FakeEngines: the agent engine gets the request and the record says engine agent.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, small): Only test_cli_run_at_a_risk_level_where_the_check_is_not_needed passes --risk. The mutant `return check, None` at cli.py:306 survived the full suite (306 passed); a control mutant on the covered not-needed branch was killed. Rated low: a regression in the blocking flag would show up as visible failures and collector problems (_risk_problems compares blocking). Only the engine switch would regress silently.
-- **maintainer** (CONFIRMED, low, small): The mutation `return check, None` in _at_risk (ignore the plan) survived all 306 tests; the only --risk CLI test covers the not-needed branch. Every planned CI check takes this path, but a regression of the blocking part would surface quickly as collector tamper events (record.blocking vs the plan), so the practical risk is low; nothing checks the engine.
-- **impact** (CONFIRMED, low, small): Coverage shows cli.py:306 (`return planned, None`) never executed; the only --risk CLI test covers the not-needed branch. Every planned check in production takes this path, so most regressions would be loud (blocking at low fails PRs, and a blocking mismatch is flagged by the collector); the silent one is the engine at high risk, which the collector doesn't check. A test gap: low.
-
-</details>
-
-### F014
-
-**Only `feedback` is tested as a record type a PR's artifact may not carry; `risk_override` is not**
-
-- **Status:** open
-- **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `tools/llm-gate/src/llm_gate/audit.py:255` · **area:** llm-gate and review prompts
-- **Reported by:** `tr-03` (medium, high confidence)
-
-triage.latest_risk_override trusts every risk_override record on audit-log. That is safe only because the collector never accepts one from a PR's run (ARTIFACT_TYPES; ADR 0008, the triage.py docstring). test_trusted_only_types_may_not_come_from_an_artifact (test_audit.py:286) checks only a Feedback record. The mutation adding "risk_override" to ARTIFACT_TYPES survived the suite. _record_problems would then accept a RiskOverride with matching run context, _override_problems ignores the type, and _withhold returns it unchanged even when the workflow was modified.
-
-*Failure scenario:* ARTIFACT_TYPES is widened, for example to collect eval_run records as ADR 0006 hints, and the new set includes risk_override. Tests pass. A PR whose modified workflow writes {"type":"risk_override","to":"low",...} into its artifact gets the record onto audit-log. Its next triage then honours it and lowers the PR's own review level.
-
-*Suggested fix:* Parametrize the test over every trusted-only type (feedback, feedback_rejected, risk_override, eval_run, tamper_suspected) and assert that each becomes a tamper_suspected event.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, trivial): test_trusted_only_types_may_not_come_from_an_artifact uses only a Feedback record, and no test puts a RiskOverride into an artifact. The mutant adding 'risk_override' to ARTIFACT_TYPES survived the full suite. Rated low: it guards against a future widening, and F005 shows risk_override records can reach audit-log by a direct push anyway.
-- **maintainer** (CONFIRMED, low, trivial): test_trusted_only_types_may_not_come_from_an_artifact uses only a Feedback record; adding "risk_override" to ARTIFACT_TYPES survived the suite. ADR 0008 relies on this exact property ('the collector never accepts them from a PR's run'). The set is a three-element literal, so a regression is unlikely, but a parametrized test is cheap insurance.
-- **impact** (CONFIRMED, low, trivial): test_trusted_only_types_may_not_come_from_an_artifact uses only a Feedback record, and ARTIFACT_TYPES is what keeps a PR's artifact from putting a risk_override, which triage trusts, on audit-log. Harm needs a future change that widens ARTIFACT_TYPES to include it; parametrizing the test over the trusted-only types is trivial. Low.
-
-</details>
-
-### F015
-
-**The 'exactly one triage record' rule is untested; the test named for it passes through a different check**
-
-- **Status:** open
-- **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `tools/llm-gate/src/llm_gate/audit.py:723` · **area:** llm-gate and review prompts
-- **Reported by:** `tr-04` (medium, high confidence)
-
-_triage_problems rejects a triage artifact unless it holds exactly one record (lines 723-724, never executed). test_the_triage_artifact_needs_its_job_and_only_a_triage_record (test_triage.py:501) puts a gate_run into the triage artifact. _record_problems already rejects that ('check code-review in the artifact for triage'), so _triage_problems never runs. Nothing else catches two Triage records: _record_problems accepts each one on its own. The mutation `if not triages:` survived.
-
-*Failure scenario:* The triage artifact holds a consistent Triage (final high) and then a Triage (final low). With the length check weakened, the first record is validated and used for the run, and both are written to audit-log. Readers that pick the latest triage by ts (metrics, feedback.current_risk, attestations) then see whichever sorts last.
-
-*Suggested fix:* Add a triage artifact with two valid Triage records, and one with a Triage plus an Override. Assert the 'exactly one triage record' problem for each.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, trivial): The mutant replacing `len(triages) != 1 or len(records) != 1` with `not triages` survived the full suite. In the named test, the gate_run inside the triage artifact is already rejected by _record_problems ('check ... in the artifact for triage'), so _triage_problems never runs. The production code is correct today; this is a test gap.
-- **maintainer** (CONFIRMED, low, trivial): The named test puts a gate_run in the triage artifact, which _record_problems already rejects, so _triage_problems never runs; the mutation `if not triages:` survived. Two valid Triage records would pass _record_problems individually. Test gap only; the code is right today.
-- **impact** (CONFIRMED, low, trivial): Coverage shows audit.py:724 never executed: the test named for the rule puts a gate_run in the triage artifact, which _record_problems rejects first, so _triage_problems never runs. Exploiting a weakened rule needs a modified workflow (flagged anyway) emitting two triage records. Low; one more test case.
-
-</details>
-
-### F016
-
-**The 128 KB per-artifact limit is untested, and the 256 KB per-line limit can never trigger**
-
-- **Status:** open
-- **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `tools/llm-gate/src/llm_gate/audit.py:592` · **area:** llm-gate and review prompts
-- **Reported by:** `tr-05` (medium, high confidence)
-
-ADR 0005 lists a 128 KB limit per artifact. test_size_and_count_limits (test_audit.py:320) writes 21 small lines, so only MAX_RECORDS fires. Its assertion `"over the" in problems[0]` would match either message. audit.py:593 is never executed, and a mutation disabling the MAX_FILE_BYTES check survived. test_a_run_has_a_byte_budget doesn't cover it: one 200 KB artifact stays under the 256 KB run budget. Separately, MAX_LINE_BYTES (256 KB) is larger than MAX_FILE_BYTES (128 KB), and the file check returns first, so the per-line check at 606-608 is unreachable.
-
-*Failure scenario:* A refactor loses the per-file check. A single 200 KB artifact with at most 20 lines, under the run budget, is parsed and its records are written. No test fails.
-
-*Suggested fix:* Test one artifact just over MAX_FILE_BYTES on its own (under MAX_RUN_BYTES) and match the size problem's text. Drop MAX_LINE_BYTES, or set it below MAX_FILE_BYTES and test it.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, trivial): The mutant disabling the MAX_FILE_BYTES check survived the full suite. test_size_and_count_limits triggers only MAX_RECORDS, and its 'over the' assertion matches both messages. MAX_LINE_BYTES (256 KB) exceeds MAX_FILE_BYTES (128 KB), and the file check returns first, so the per-line check is unreachable. The run budget is tested, so the impact of a regression is limited.
-- **maintainer** (CONFIRMED, low, trivial): Disabling the MAX_FILE_BYTES check survived the suite; test_size_and_count_limits trips MAX_RECORDS and asserts only 'over the', which both messages contain. MAX_LINE_BYTES (256 KB) is larger than MAX_FILE_BYTES (128 KB), which is checked first, so the per-line check is dead code. Impact is small: parsed strings are scrubbed and lists capped anyway.
-- **impact** (CONFIRMED, low, trivial): Coverage shows audit.py:593 (MAX_FILE_BYTES) and 607-608 (MAX_LINE_BYTES) never executed; test_size_and_count_limits trips MAX_RECORDS, and its 'over the' assertion would match either message. MAX_LINE_BYTES (256 KB) exceeds MAX_FILE_BYTES (128 KB) and the file check returns first, so the line check is dead code. Losing the file check would still leave MAX_RUN_BYTES and the schema caps bounding what reaches the log. Low.
-
-</details>
-
-### F017
-
-**The committed-eval-cases test is skipped in CI (shallow checkout), and one missing base skips every case**
-
-- **Status:** open
-- **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `tools/llm-gate/tests/test_evals.py:102` · **area:** llm-gate and review prompts
-- **Reported by:** `tr-06` (medium, high confidence)
-
-test_every_committed_case_is_valid_and_applies_to_its_base calls pytest.skip when a case's base commit isn't in the clone. ci.yml's lint job checks out with the default depth of 1 (ci.yml:63-65, no fetch-depth), so the first case skips the test. The latest CI run on main (39064824382) shows '305 passed, 1 skipped, 1 deselected', where a full clone gives 306 passed; test_live is the deselected one, and this is the suite's only runtime skip. The skip sits inside the loop, so locally too one unfetched base skips every later case. In CI only load_cases' schema validation remains. Nothing checks that patches apply, that expect files are in the patch, that patches avoid excluded files, or that case.yaml is in canonical form. llm-eval (fetch-depth 0) covers only the first and third of those, and only when the PR touches the gate and has the API key.
-
-*Failure scenario:* A PR adds a case whose case.yaml isn't in dump_case's canonical form, or whose expect.file is outside the patch, so recall can never reach 1. lint is green.
-
-*Suggested fix:* Set fetch-depth: 0 in the lint job, or fetch the case bases, and fail instead of skipping when CI is set. Collect failures per case instead of skipping the whole test.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, trivial): ci.yml's lint job checks out with the default depth (no fetch-depth) and runs the llm-gate pytest. The test calls pytest.skip inside the case loop when a base commit is missing, so in a depth-1 clone the first case skips the whole test, including patch-applies, expect-in-patch and canonical-form checks. Locally, with a full clone, it ran (306 passed here). Mitigated by `just ci` locally and by llm-eval's full checkout when it applies, hence low.
-- **maintainer** (CONFIRMED, low, trivial): The test calls pytest.skip inside the loop at the first base commit missing from the clone, and ci.yml's lint job checks out with the default depth 1, so in CI only load_cases' schema validation runs. Locally (`just ci`, full clone) it runs: 306 passed here. llm-eval (fetch-depth 0) applies the patches when a PR touches the gate, and a bad expectation would show there as a recall drop, so what CI loses is early detection (expect files, canonical form).
-- **impact** (CONFIRMED, low, trivial): ci.yml's lint checkout has no fetch-depth (depth 1), and the test calls pytest.skip inside the loop at the first case base missing from the clone, so in CI the whole test is skipped (I couldn't open the cited run; the mechanism is clear from the code). The checks still run in `just ci` locally (full clone), and llm-eval (fetch-depth 0) applies every patch whenever a PR touches the gate, so a broken patch fails there; what slips through CI is expect files outside the patch and a non-canonical case.yaml. Low.
-
-</details>
-
 ### F018
 
 **The triage eval lets any one triage case fail in every repeat, tr-008 included; 4 of its 10 cases can't fail at all**
@@ -1033,29 +918,6 @@ risk_accuracy is computed over 10 cases x 3 repeats, with a 1.00 baseline and ma
 - **skeptic** (CONFIRMED, low, small): I computed every triage case's floor with the real checks.yaml. tr-005, tr-007, tr-009 and tr-010 have floor high and pass for any model answer. Only tr-004 and tr-008 need the model to raise to high. With 10 cases x 3 repeats, tr-008 failing in every repeat gives 27/30 = 0.90, a drop of 0.10, under max_risk_accuracy_drop 0.15. A consistent failure has no flips, and floor_violations is always 0 (F030), so compare() passes, and ADR 0008's claim that tr-008 'keeps checking' doesn't hold. Rated low: a model that fails to raise leaves the PR at its floor, where both blocking checks still run.
 - **maintainer** (CONFIRMED, low, small): Computed each triage case's floor: tr-005/007/009/010 have floor high = expect high and cannot fail; only tr-004 and tr-008 need the model to raise. tr-008 failing in all 3 repeats gives 27/30 = 0.90, a 0.10 drop under max_risk_accuracy_drop 0.15, and no flip. So ADR 0008's 'tr-008 keeps checking that the model raises' is overstated. Impact is limited because the floor holds regardless (ADR 0008: talking the model down changes nothing).
 - **impact** (CONFIRMED, low, small): Computed with the real triage.floor: only tr-004 and tr-008 need the model to raise (floor medium, expect high); tr-005/007/009/010 have floor high = expect high and can't fail, and tr-001/002/003/006 can fail only by over-raising. With 10 cases x 3 repeats, tr-008 wrong in every repeat gives 0.90, a 0.10 drop under the 0.15 limit, so the injection case ADR 0008 cites isn't gated on its own. But the triage model can only raise: a model that stops raising leaves the rules floor (medium for src/), which costs the agent engine and workflow-review on such PRs, not a bypass. Low.
-
-</details>
-
-### F019
-
-**fp-tr-835a can still pass for the wrong reason: its forbid rule needs a literal `$IMAGE` in the title**
-
-- **Status:** open
-- **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `tools/llm-gate/evals/cases/fp-tr-835a/case.yaml:10` · **area:** llm-gate and review prompts
-- **Reported by:** `tr-13` (medium, medium confidence)
-
-forbidden_hit compares the file exactly and searches the title with the regex \$IMAGE (case-insensitive). It never looks at the finding's detail. The same false positive worded without the dollar sign ('admission-smoke references IMAGE, which is never set', 'IMAGE env var undefined in admission-smoke') isn't counted. That is how this case passed falsely before, then by category. test-review has no baseline, so fp_regressions is the only thing that gates it. Separately, test_every_committed_case_is_valid_and_applies_to_its_base checks that expect files are in the patch, but not forbid files: a mistyped forbid.file makes an fp-regression case unable to fail.
-
-*Failure scenario:* A later test-review prompt change brings the finding back as 'IMAGE is not defined for the admission-smoke job'. fp_regressions stays 0 and llm-eval is green.
-
-*Suggested fix:* Loosen the rule to the mistake's core, for example \bIMAGE\b.*(never|not|un)\s*(defined|set) or the reverse order, or match the detail as well. In the committed-cases test, assert that every forbid.file is in the patch and that each forbid.title matches the original title quoted in the case description.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, trivial): On audit-log, the original finding's title is 'admission-smoke uses $IMAGE, which the job never defines'. forbidden_hit matches file exactly and searches only the title with `\$IMAGE`, so the same false positive worded without a literal $IMAGE wouldn't count, and the detail is never looked at. The committed-cases test asserts expect files are in the patch but not forbid files. Whether a model rewords it this way is uncertain; test-review is advisory, hence low.
-- **maintainer** (CONFIRMED, low, trivial): forbidden_hit matches the title regex `\$IMAGE` (case-insensitive) and never the detail; #60 chose `\$IMAGE` deliberately as the mistake's core after a category rule had passed falsely. A rewording without the dollar sign escapes it, and the committed-cases test checks expect files against the patch but not forbid files. test-review is advisory and has no baseline, so this case is its only gate.
-- **impact** (CONFIRMED, low, trivial): The case's forbid is {file: .github/workflows/release.yml, title: \$IMAGE}, and forbidden_hit applies the title regex only (never the detail), so a reworded 'IMAGE is not defined' finding isn't counted; the committed-cases test checks expect files against the patch but not forbid files. test-review is advisory, so the cost is an advisory false positive coming back in a PR comment without llm-eval noticing. Low.
 
 </details>
 
@@ -1272,52 +1134,6 @@ A PR goes into `unreviewed` only when its merged head has no gate_run at all, or
 
 </details>
 
-### F030
-
-**floor_violations can never be non-zero: it is computed from final_risk(), which takes the higher risk**
-
-- **Status:** open
-- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `tools/llm-gate/src/llm_gate/evals.py:524` · **area:** llm-gate and review prompts
-- **Reported by:** `tr-14` (low, high confidence)
-
-run_triage_eval scores rank(final) < rank(floor), where final = final_risk(floor, model, None).final is the higher of the two. The 'hard assertion' of PLAN 17.3 and ADR 0008 ('Any result below the floor fails the eval outright') therefore holds by construction. It only re-tests final_risk, which test_the_model_may_raise_but_not_lower_and_a_manual_change_wins already covers. The mutation hard-coding forbidden_hits=0 survived. The number that would measure the triage prompt, the model's own answer below the floor (for example tr-008's injection working), only appears in the free-text `locations`.
-
-*Failure scenario:* The triage model answers 'low' to tr-008's injected comment in every repeat. floor_violations stays 0, and nothing records that the injection worked on the model, because the floor hides it.
-
-*Suggested fix:* Score model answers below the floor as their own metric, for example model_below_floor as the injection signal with a threshold. Keep final >= floor as a unit test.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, trivial): run_triage_eval scores forbidden_hits = rank(final) < rank(floor), with final = final_risk(floor, model, None).final. With no manual risk, final_risk returns the model's risk only when it ranks higher than the rules', otherwise the rules', so final >= floor always and floor_violations is always 0. ADR 0008's 'any result below the floor fails the eval outright' therefore re-tests final_risk, which is unit-tested already. What the injection case should measure, the model's own answer below the floor, appears only in the free-text locations.
-- **maintainer** (REJECTED, info, trivial): True that final = final_risk(floor, model, None) is never below the floor, so floor_violations is 0 unless final_risk regresses; that is what PLAN 17.3 asks for ('never lower than the rule floor as a hard assertion'), an end-to-end invariant check, not a measurement of the prompt. A model answer below the floor is harmless by design (ADR 0008: talking the model down changes nothing), and the real insensitivity of the triage eval is F018. Minor: WRITEUP §3 presents 'no result below the floor' as a measured result.
-- **impact** (CONFIRMED, low, small): run_triage_eval scores final = final_risk(floor, model, None).final, the higher of the two, so forbidden_hits = rank(final) < rank(floor) is 0 by construction and floor_violations can never fail the eval; the model's own below-floor answer appears only in the free-text locations. ADR 0008's 'any result below the floor fails the eval outright' and WRITEUP's 'no result below the rules' floor' are therefore vacuous as measurements. Low: the floor itself is enforced in code and unit-tested; what's lost is the injection signal (see F018).
-
-</details>
-
-### F031
-
-**'Latest wins' tests use fixtures already in time order; the invalid-`to` fixture is rejected for its bad ts**
-
-- **Status:** open
-- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `tools/llm-gate/tests/test_triage.py:193` · **area:** llm-gate and review prompts
-- **Reported by:** `tr-15` (low, high confidence)
-
-In test_the_latest_risk_override_comes_from_the_audit_log, x.jsonl has "to": "free" and "ts": "z". fromisoformat('z') fails first, so the `to not in RISKS` guard is never reached, and a mutation removing it survived. feedback-1 and feedback-2 are in time order, so 'latest by ts' can't be told apart from 'last file wins': the mutation `if True:` survived, and branch 309->297 is never taken. test_the_latest_run_on_the_merged_head_counts (attestations, _run_order) has the same pattern: a mutation dropping the sort survived. So does the latest-triage case in test_triage_and_integrity_counts (metrics). Only the metrics feedback test (#57) uses out-of-order fixtures.
-
-*Failure scenario:* A refactor switches to 'last seen wins'. Record files are named feedback-<comment id>, so when ids cross a digit boundary or files sort differently, an older /llm-risk wins and decides the PR's review level. Tests pass.
-
-*Suggested fix:* Give the invalid-`to` fixture a valid ts. In each 'latest' test (risk overrides, triage, gate runs by run id and attempt), put the later record in the file that sorts first.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, trivial): Ran the mutants on a scratch clone. Dropping the `to not in RISKS` guard survived (the 'free' fixture is already skipped because its ts 'z' doesn't parse). Replacing the ts comparison with `if True:` (last seen wins) survived, because the fixtures are in file and time order. Dropping the sort by _run_order in attestations.llm_review survived. Control mutants in triage.py and attestations.py were killed, so the harness applies to those modules.
-- **maintainer** (CONFIRMED, low, trivial): In test_the_latest_risk_override_comes_from_the_audit_log, x.jsonl has ts 'z', so fromisoformat fails before the `to not in RISKS` guard, and feedback-1/feedback-2 sort in time order. In a scratch clone three mutations survived all 306 tests: dropping the RISKS guard, `if True:` instead of the ts comparison (last file wins), and dropping the sort by _run_order in attestations.llm_review. Low: record names (feedback-<comment id>, <run id>-...) sort in time order today, so the regression would rarely bite.
-- **impact** (CONFIRMED, low, trivial): The invalid fixture has to 'free' and ts 'z', and fromisoformat('z') fails first, so the RISKS guard is never reached; feedback-1 and feedback-2 sort in time order, and coverage shows triage.py 309->297 never taken, so 'latest by ts' can't be told from 'last file wins'. The regression would rarely matter in practice: files are events/YYYY/MM/DD/feedback-<comment id>, which sort chronologically until GitHub comment ids gain a digit. Low.
-
-</details>
-
 ### F032
 
 **The collector's paths for keyless PRs (skipped_no_key) and for a missing triage expectation are untested**
@@ -1338,75 +1154,6 @@ _risk_problems exempts skipped_no_key gate runs (lines 760-761). Those are the r
 - **skeptic** (CONFIRMED, low, small): Removing the skipped_no_key exemption in _risk_problems survived the full suite. Without it, a keyless PR's skip record would be flagged: a check outside the level's plan as 'not needed but skipped_no_key', and code-review at low on the blocking flag, because skip records carry the configured mode. Reachability mutants that raise at audit.py:729 (no triage expectation) and :766 (plan from the artifact's checks_plan) also survived, so no test reaches either fallback.
 - **maintainer** (CONFIRMED, low, trivial): Removing the skipped_no_key exemption in _risk_problems survived the suite; without it every keyless (fork, Dependabot) PR's unplanned checks would be flagged as tamper, since `audit skip` records them as skipped_no_key rather than not_needed. The fallbacks for a missing TriageExpected (no --triage-inputs, or 300+ compare files) are likewise not exercised. Test gap only.
 - **impact** (CONFIRMED, low, small): Coverage shows audit.py 761 (the skipped_no_key exemption), 729 and 766 (the fallbacks without a triage expectation) never executed. The exemption is load-bearing for every keyless (Dependabot) PR: without it each skipped check outside the level's plan would become tamper_suspected, but that regression would be loud on the first Dependabot PR. Low.
-
-</details>
-
-### F033
-
-**Two of the eight redaction patterns (Slack, JWT) have no test case**
-
-- **Status:** open
-- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `tools/llm-gate/src/llm_gate/redact.py:22` · **area:** llm-gate and review prompts
-- **Reported by:** `tr-17` (low, high confidence)
-
-test_secrets_are_redacted covers Anthropic keys, GitHub tokens (ghp_, github_pat_), AWS key ids, private-key headers and key=value secrets, but not the xox* or eyJ... patterns. Mutations breaking each one survived. Redaction is the only guard for free text in the permanent, public audit log (ADR 0005).
-
-*Failure scenario:* A typo creeps into the JWT pattern. A tool-call summary or finding title that contains a bearer JWT is written to audit-log unredacted.
-
-*Suggested fix:* Add an xoxb-... token and a three-part eyJ JWT to the parametrized secrets.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, trivial): A mutant breaking both the Slack (xox*) and JWT (eyJ...) patterns survived the full suite, while a control breaking the Anthropic pattern was killed by test_secrets_are_redacted. So two of the eight patterns that guard the permanent audit log's free text have no case.
-- **maintainer** (CONFIRMED, low, trivial): test_secrets_are_redacted parametrizes Anthropic, ghp_, github_pat_, AKIA, private-key headers and key=value secrets; no test anywhere uses an xox* or eyJ... string. Both patterns read correctly today, so this is a test gap on the audit log's only free-text guard.
-- **impact** (CONFIRMED, low, trivial): The parametrized secrets cover Anthropic, ghp_, github_pat_, AKIA, a private-key header and key=value forms, not the xox* or eyJ JWT patterns; I checked that both patterns redact correctly today. A pure test gap for token types unlikely to show up in this repository's reviews: low.
-
-</details>
-
-### F035
-
-**`/llm-ack` recording and a writer's malformed command are never tested through handle()**
-
-- **Status:** open
-- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `tools/llm-gate/src/llm_gate/feedback.py:180` · **area:** llm-gate and review prompts
-- **Reported by:** `tr-19` (low, high confidence)
-
-The only /llm-ack test names another PR's finding (unknown_finding). The happy path (kind ack, no mark) is untested (partial branch 198->217), and a mutation recording acks as kind 'fp' survived. A command from someone with write access that doesn't parse, such as '/llm-fp cr-1705' without a reason, reaches line 180, which never runs; a mutation returning no record there survived. parse_command is tested on its own, but not this wiring.
-
-*Failure scenario:* Acks get recorded as false positives. The Gate health fp rate rises with every /llm-ack, and no test fails.
-
-*Suggested fix:* handle('/llm-ack cr-1705'): recorded, kind ack, mark None. handle('/llm-fp cr-1705') with write permission: feedback_rejected with bad_arguments, reaction confused, path feedback-<id>.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, trivial): The mutant recording /llm-ack as kind 'fp' survived the full suite, and so did the one returning an empty Actions instead of a feedback_rejected record for a writer's unparseable command (feedback.py:179-180). A control mutant in feedback.py was killed. The handle() tests cover /llm-ack only for an unknown finding, a non-PR and outsiders; bad_arguments is tested only in parse_command.
-- **maintainer** (CONFIRMED, low, trivial): The only /llm-ack test through handle() names another PR's finding (unknown_finding). A mutation that records every feedback as kind 'fp' survived all 306 tests, so an ack mis-recorded as a false positive would go unnoticed and inflate the fp rate. The writer's-malformed-command wiring (feedback.py:180) is only covered via parse_command on its own.
-- **impact** (CONFIRMED, low, trivial): Coverage shows feedback.py:180 (a writer's unparseable command) never executed and 198->217 (the ack path) only partly; the only /llm-ack test hits unknown_finding. A regression recording acks as fp would skew the false-positive rate silently, but it is a hypothetical future change: low.
-
-</details>
-
-### F036
-
-**The API engine's cost is checked against estimate_cost itself; the price arithmetic has no independent test**
-
-- **Status:** open
-- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `tools/llm-gate/tests/test_engines.py:75` · **area:** llm-gate and review prompts
-- **Reported by:** `tr-20` (low, high confidence)
-
-test_api_engine_request_and_result asserts cost_usd == approx(estimate_cost('claude-sonnet-5-5', 1000, 200)), and nothing else tests estimate_cost. Swapped input and output prices, or a wrong divisor, would pass. The estimate feeds the eval budget (spent_usd), the cost threshold and the metrics.
-
-*Failure scenario:* estimate_cost multiplies output tokens by the input price. Eval cost comparisons and the $6 budget are then off by up to 5x, and the tests pass.
-
-*Suggested fix:* Assert the literal (1000*2 + 200*10)/1e6 = 0.004, and None for an unknown model.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, trivial): test_api_engine_request_and_result asserts cost_usd == approx(estimate_cost(...)), the code under test. A mutant swapping input and output prices survived the full suite. The estimate feeds the eval budget, the cost threshold and metrics.
-- **maintainer** (CONFIRMED, low, trivial): test_api_engine_request_and_result compares cost_usd with estimate_cost itself and nothing else tests the arithmetic; swapping input and output prices survived the suite. The figure is marked as an estimate everywhere, but it feeds the eval budget (spent_usd), the cost threshold and the metrics for the API engine.
-- **impact** (CONFIRMED, low, trivial): test_engines.py:75 asserts cost_usd against estimate_cost itself, and nothing else tests the arithmetic or the unknown-model None (api_engine.py:30 uncovered). The formula is a correct one-liner today; a wrong one would distort the eval budget and absolute cost reporting for the API engine, while relative cost comparisons against a baseline computed the same way would still hold. Low.
 
 </details>
 
@@ -1431,29 +1178,6 @@ No case names docs-drift, and llm-eval takes its check list from the cases, so d
 - **skeptic** (CONFIRMED, low, medium): No case names docs-drift, and only fp-tr-835a names test-review. cmd_eval takes its check list from the cases, so a change to llm-docs-drift.md is never evaluated, and baseline.json has no docs-drift or test-review entry, so a test-review prompt that reports nothing passes. ADR 0006 acknowledges limited coverage in general ('a reviewer can score well here and miss a new kind of bug'), not checks with no cases at all, so this isn't ACCEPTED. Both checks are advisory, hence low.
 - **maintainer** (CONFIRMED, low, small): Counted the committed cases: none names docs-drift, and test-review has only fp-tr-835a (forbid-only, no baseline). llm-eval takes its check list from the cases, so a change to llm-docs-drift.md is 'relevant' and then passes with nothing run. ADR 0006's caveat ('only as good as their coverage') is about kinds of bugs, not about two checks having no recall measure at all; both checks are advisory.
 - **impact** (CONFIRMED, low, medium): No case names docs-drift and llm-eval derives its check list from the cases, so docs-drift is never evaluated; test-review has only fp-tr-835a and no baseline entry, so a prompt that reports nothing passes. ADR 0006 only says the cases are as good as their coverage; it doesn't record that whole checks go unevaluated, so I don't count it ACCEPTED. Both checks are advisory, so the cost is a degraded comment: low (fix cost is writing labelled cases and paying for a baseline).
-
-</details>
-
-### F038
-
-**The prompt-guard test skips llm-triage.md**
-
-- **Status:** open
-- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
-- **Where:** `tools/llm-gate/tests/test_prompts_cache.py:24` · **area:** llm-gate and review prompts
-- **Reported by:** `tr-28` (low, high confidence)
-
-test_every_repository_prompt_takes_the_diff_and_guards_against_injection iterates over checks.yaml's checks. The triage prompt isn't a check, so its 'never instructions to you' guard and $ARGUMENTS go unchecked; both are present today.
-
-*Failure scenario:* An edit drops the data-not-instructions sentence from llm-triage.md, and the test still passes.
-
-*Suggested fix:* Also check config.triage.prompt_path, without the '## Severity' assertion, since that prompt's heading is '## Rubric'.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, trivial): test_every_repository_prompt_takes_the_diff_and_guards_against_injection iterates load_config's checks only. llm-triage.md isn't a check, so its $ARGUMENTS and 'never instructions to you' guard (both present today, lines 10 and 17) are unchecked. The impact is limited because the triage model can only raise the risk.
-- **maintainer** (CONFIRMED, info, trivial): test_every_repository_prompt_takes_the_diff_and_guards_against_injection iterates over checks.yaml's checks only, so llm-triage.md isn't covered; today it does contain $ARGUMENTS and 'never instructions to you'. Info: per ADR 0008 an injection can only talk the triage model up (costs money) or down (changes nothing, the floor holds).
-- **impact** (CONFIRMED, low, trivial): test_every_repository_prompt_takes_the_diff_and_guards_against_injection iterates checks.yaml's checks only, and llm-triage.md is not one; today it has both $ARGUMENTS and the 'never instructions to you' sentence. The triage model can only raise the risk, so a lost guard costs at most an over-raise or a missed raise above the floor. Low.
 
 </details>
 
@@ -2180,6 +1904,282 @@ The README on origin/audit-log was written once (a3173c2, 2026-10-16) and never 
 - **skeptic** (CONFIRMED, low, small): All three reports check out. ADR 0005:18-19 omits feedback_rejected (audit.py:210; one such record is on audit-log). ADR 0005:35 says the collector accepts only gate_run and override, but ARTIFACT_TYPES is {gate_run, override, triage} (audit.py:255), and collect() accepts the -triage artifact (audit.py:831). The audit-log branch README (a3173c2, never updated) still files triage, feedback, risk_override and eval_run under 'Later phases', while the branch holds 25 triage, 6 feedback, 1 risk_override and 1 feedback_rejected records. It also lists eval_run, which ADR 0006 keeps off the branch, and names only audit-collect.yml as writer and only the <run_id>-<attempt>-<check> file pattern.
 - **maintainer** (CONFIRMED, low, small): audit.py defines FeedbackRejected, and origin/audit-log holds 6 feedback, 1 feedback_rejected, 1 risk_override and 25 triage records. ADR 0005:18-19 still leaves out feedback_rejected. ADR 0005:35 says the collector accepts only gate_run and override records, but ARTIFACT_TYPES also includes triage (ADR 0008 point 6). The branch README (written once, a3173c2) still lists triage, feedback and risk_override as 'later phases', lists eval_run although ADR 0006 keeps it off the branch, names only audit-collect.yml as a writer, and shows only the <run>-<attempt>-<check> layout. The branch also has -triage files and 9 feedback-*.jsonl files.
 - **impact** (CONFIRMED, low, small): audit.py defines FeedbackRejected (the log holds one), which ADR 0005's type list (lines 175-176) omits, and ADR 0005:192 says the collector accepts only gate_run and override, though ARTIFACT_TYPES (audit.py:255) includes triage. The audit-log branch README still files triage, feedback, risk_override and eval_run under 'Later phases' while the branch holds 25 triage, 6 feedback, 1 risk_override and 1 feedback_rejected records and no eval_run (ADR 0006 keeps those in artifacts), and it names only audit-collect.yml as the writer. Whoever writes queries from that README is misled; audit.py is the real reference, so low.
+
+</details>
+
+### F013
+
+**`llm-gate run --risk` for a check the level runs (demoted to advisory, engine switched) is never exercised**
+
+- **Status:** ✅ fixed — #74: both risk-level transformations are exercised (demotion to advisory, the agent engine at high)
+- **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
+- **Where:** `tools/llm-gate/src/llm_gate/cli.py:306` · **area:** llm-gate and review prompts
+- **Reported by:** `tr-02` (medium, high confidence)
+
+_at_risk returns the level's version of a check: advisory at low risk, and the agent engine for blocking checks at high risk (plan_for). Every planned check in CI takes this path, because llm-review.yml sets LLM_GATE_RISK for the llm matrix. cli.py:306 is never executed. The only CLI test with --risk is test_cli_run_at_a_risk_level_where_the_check_is_not_needed, which covers the not-needed branch. The mutation `return check, None` (ignore the plan) survived the whole suite. plan_for is unit-tested (test_the_plan_per_level), but nothing checks that a run uses its result: not the exit code, not the gate_run's blocking, not the engine.
+
+*Failure scenario:* _at_risk regresses to the configured check. At low risk, a docs-only PR with a high finding fails code-review, which should be advisory there. At high risk, security-review keeps the API engine instead of the agent engine ADR 0008 promises. No test fails. The collector later flags only the blocking mismatch, and never the engine.
+
+*Suggested fix:* Two CLI tests. `run --risk low --check code-review` with a high finding: exit 0, record blocking false, risk low. `run --risk high --check security-review` with api and agent FakeEngines: the agent engine gets the request and the record says engine agent.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, small): Only test_cli_run_at_a_risk_level_where_the_check_is_not_needed passes --risk. The mutant `return check, None` at cli.py:306 survived the full suite (306 passed); a control mutant on the covered not-needed branch was killed. Rated low: a regression in the blocking flag would show up as visible failures and collector problems (_risk_problems compares blocking). Only the engine switch would regress silently.
+- **maintainer** (CONFIRMED, low, small): The mutation `return check, None` in _at_risk (ignore the plan) survived all 306 tests; the only --risk CLI test covers the not-needed branch. Every planned CI check takes this path, but a regression of the blocking part would surface quickly as collector tamper events (record.blocking vs the plan), so the practical risk is low; nothing checks the engine.
+- **impact** (CONFIRMED, low, small): Coverage shows cli.py:306 (`return planned, None`) never executed; the only --risk CLI test covers the not-needed branch. Every planned check in production takes this path, so most regressions would be loud (blocking at low fails PRs, and a blocking mismatch is flagged by the collector); the silent one is the engine at high risk, which the collector doesn't check. A test gap: low.
+
+</details>
+
+### F014
+
+**Only `feedback` is tested as a record type a PR's artifact may not carry; `risk_override` is not**
+
+- **Status:** ✅ fixed — #74: every trusted-only record type is covered, risk_override included
+- **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `tools/llm-gate/src/llm_gate/audit.py:255` · **area:** llm-gate and review prompts
+- **Reported by:** `tr-03` (medium, high confidence)
+
+triage.latest_risk_override trusts every risk_override record on audit-log. That is safe only because the collector never accepts one from a PR's run (ARTIFACT_TYPES; ADR 0008, the triage.py docstring). test_trusted_only_types_may_not_come_from_an_artifact (test_audit.py:286) checks only a Feedback record. The mutation adding "risk_override" to ARTIFACT_TYPES survived the suite. _record_problems would then accept a RiskOverride with matching run context, _override_problems ignores the type, and _withhold returns it unchanged even when the workflow was modified.
+
+*Failure scenario:* ARTIFACT_TYPES is widened, for example to collect eval_run records as ADR 0006 hints, and the new set includes risk_override. Tests pass. A PR whose modified workflow writes {"type":"risk_override","to":"low",...} into its artifact gets the record onto audit-log. Its next triage then honours it and lowers the PR's own review level.
+
+*Suggested fix:* Parametrize the test over every trusted-only type (feedback, feedback_rejected, risk_override, eval_run, tamper_suspected) and assert that each becomes a tamper_suspected event.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, trivial): test_trusted_only_types_may_not_come_from_an_artifact uses only a Feedback record, and no test puts a RiskOverride into an artifact. The mutant adding 'risk_override' to ARTIFACT_TYPES survived the full suite. Rated low: it guards against a future widening, and F005 shows risk_override records can reach audit-log by a direct push anyway.
+- **maintainer** (CONFIRMED, low, trivial): test_trusted_only_types_may_not_come_from_an_artifact uses only a Feedback record; adding "risk_override" to ARTIFACT_TYPES survived the suite. ADR 0008 relies on this exact property ('the collector never accepts them from a PR's run'). The set is a three-element literal, so a regression is unlikely, but a parametrized test is cheap insurance.
+- **impact** (CONFIRMED, low, trivial): test_trusted_only_types_may_not_come_from_an_artifact uses only a Feedback record, and ARTIFACT_TYPES is what keeps a PR's artifact from putting a risk_override, which triage trusts, on audit-log. Harm needs a future change that widens ARTIFACT_TYPES to include it; parametrizing the test over the trusted-only types is trivial. Low.
+
+</details>
+
+### F015
+
+**The 'exactly one triage record' rule is untested; the test named for it passes through a different check**
+
+- **Status:** ✅ fixed — #74: two triage records in one artifact is a problem the test now reaches
+- **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `tools/llm-gate/src/llm_gate/audit.py:723` · **area:** llm-gate and review prompts
+- **Reported by:** `tr-04` (medium, high confidence)
+
+_triage_problems rejects a triage artifact unless it holds exactly one record (lines 723-724, never executed). test_the_triage_artifact_needs_its_job_and_only_a_triage_record (test_triage.py:501) puts a gate_run into the triage artifact. _record_problems already rejects that ('check code-review in the artifact for triage'), so _triage_problems never runs. Nothing else catches two Triage records: _record_problems accepts each one on its own. The mutation `if not triages:` survived.
+
+*Failure scenario:* The triage artifact holds a consistent Triage (final high) and then a Triage (final low). With the length check weakened, the first record is validated and used for the run, and both are written to audit-log. Readers that pick the latest triage by ts (metrics, feedback.current_risk, attestations) then see whichever sorts last.
+
+*Suggested fix:* Add a triage artifact with two valid Triage records, and one with a Triage plus an Override. Assert the 'exactly one triage record' problem for each.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, trivial): The mutant replacing `len(triages) != 1 or len(records) != 1` with `not triages` survived the full suite. In the named test, the gate_run inside the triage artifact is already rejected by _record_problems ('check ... in the artifact for triage'), so _triage_problems never runs. The production code is correct today; this is a test gap.
+- **maintainer** (CONFIRMED, low, trivial): The named test puts a gate_run in the triage artifact, which _record_problems already rejects, so _triage_problems never runs; the mutation `if not triages:` survived. Two valid Triage records would pass _record_problems individually. Test gap only; the code is right today.
+- **impact** (CONFIRMED, low, trivial): Coverage shows audit.py:724 never executed: the test named for the rule puts a gate_run in the triage artifact, which _record_problems rejects first, so _triage_problems never runs. Exploiting a weakened rule needs a modified workflow (flagged anyway) emitting two triage records. Low; one more test case.
+
+</details>
+
+### F016
+
+**The 128 KB per-artifact limit is untested, and the 256 KB per-line limit can never trigger**
+
+- **Status:** ✅ fixed — #74: both size limits are tested, and MAX_LINE_BYTES sits below MAX_FILE_BYTES so it can fire
+- **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `tools/llm-gate/src/llm_gate/audit.py:592` · **area:** llm-gate and review prompts
+- **Reported by:** `tr-05` (medium, high confidence)
+
+ADR 0005 lists a 128 KB limit per artifact. test_size_and_count_limits (test_audit.py:320) writes 21 small lines, so only MAX_RECORDS fires. Its assertion `"over the" in problems[0]` would match either message. audit.py:593 is never executed, and a mutation disabling the MAX_FILE_BYTES check survived. test_a_run_has_a_byte_budget doesn't cover it: one 200 KB artifact stays under the 256 KB run budget. Separately, MAX_LINE_BYTES (256 KB) is larger than MAX_FILE_BYTES (128 KB), and the file check returns first, so the per-line check at 606-608 is unreachable.
+
+*Failure scenario:* A refactor loses the per-file check. A single 200 KB artifact with at most 20 lines, under the run budget, is parsed and its records are written. No test fails.
+
+*Suggested fix:* Test one artifact just over MAX_FILE_BYTES on its own (under MAX_RUN_BYTES) and match the size problem's text. Drop MAX_LINE_BYTES, or set it below MAX_FILE_BYTES and test it.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, trivial): The mutant disabling the MAX_FILE_BYTES check survived the full suite. test_size_and_count_limits triggers only MAX_RECORDS, and its 'over the' assertion matches both messages. MAX_LINE_BYTES (256 KB) exceeds MAX_FILE_BYTES (128 KB), and the file check returns first, so the per-line check is unreachable. The run budget is tested, so the impact of a regression is limited.
+- **maintainer** (CONFIRMED, low, trivial): Disabling the MAX_FILE_BYTES check survived the suite; test_size_and_count_limits trips MAX_RECORDS and asserts only 'over the', which both messages contain. MAX_LINE_BYTES (256 KB) is larger than MAX_FILE_BYTES (128 KB), which is checked first, so the per-line check is dead code. Impact is small: parsed strings are scrubbed and lists capped anyway.
+- **impact** (CONFIRMED, low, trivial): Coverage shows audit.py:593 (MAX_FILE_BYTES) and 607-608 (MAX_LINE_BYTES) never executed; test_size_and_count_limits trips MAX_RECORDS, and its 'over the' assertion would match either message. MAX_LINE_BYTES (256 KB) exceeds MAX_FILE_BYTES (128 KB) and the file check returns first, so the line check is dead code. Losing the file check would still leave MAX_RUN_BYTES and the schema caps bounding what reaches the log. Low.
+
+</details>
+
+### F017
+
+**The committed-eval-cases test is skipped in CI (shallow checkout), and one missing base skips every case**
+
+- **Status:** ✅ fixed — #74: the lint job checks out full history, and a missing base fails in CI instead of skipping
+- **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `tools/llm-gate/tests/test_evals.py:102` · **area:** llm-gate and review prompts
+- **Reported by:** `tr-06` (medium, high confidence)
+
+test_every_committed_case_is_valid_and_applies_to_its_base calls pytest.skip when a case's base commit isn't in the clone. ci.yml's lint job checks out with the default depth of 1 (ci.yml:63-65, no fetch-depth), so the first case skips the test. The latest CI run on main (39064824382) shows '305 passed, 1 skipped, 1 deselected', where a full clone gives 306 passed; test_live is the deselected one, and this is the suite's only runtime skip. The skip sits inside the loop, so locally too one unfetched base skips every later case. In CI only load_cases' schema validation remains. Nothing checks that patches apply, that expect files are in the patch, that patches avoid excluded files, or that case.yaml is in canonical form. llm-eval (fetch-depth 0) covers only the first and third of those, and only when the PR touches the gate and has the API key.
+
+*Failure scenario:* A PR adds a case whose case.yaml isn't in dump_case's canonical form, or whose expect.file is outside the patch, so recall can never reach 1. lint is green.
+
+*Suggested fix:* Set fetch-depth: 0 in the lint job, or fetch the case bases, and fail instead of skipping when CI is set. Collect failures per case instead of skipping the whole test.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, trivial): ci.yml's lint job checks out with the default depth (no fetch-depth) and runs the llm-gate pytest. The test calls pytest.skip inside the case loop when a base commit is missing, so in a depth-1 clone the first case skips the whole test, including patch-applies, expect-in-patch and canonical-form checks. Locally, with a full clone, it ran (306 passed here). Mitigated by `just ci` locally and by llm-eval's full checkout when it applies, hence low.
+- **maintainer** (CONFIRMED, low, trivial): The test calls pytest.skip inside the loop at the first base commit missing from the clone, and ci.yml's lint job checks out with the default depth 1, so in CI only load_cases' schema validation runs. Locally (`just ci`, full clone) it runs: 306 passed here. llm-eval (fetch-depth 0) applies the patches when a PR touches the gate, and a bad expectation would show there as a recall drop, so what CI loses is early detection (expect files, canonical form).
+- **impact** (CONFIRMED, low, trivial): ci.yml's lint checkout has no fetch-depth (depth 1), and the test calls pytest.skip inside the loop at the first case base missing from the clone, so in CI the whole test is skipped (I couldn't open the cited run; the mechanism is clear from the code). The checks still run in `just ci` locally (full clone), and llm-eval (fetch-depth 0) applies every patch whenever a PR touches the gate, so a broken patch fails there; what slips through CI is expect files outside the patch and a non-canonical case.yaml. Low.
+
+</details>
+
+### F019
+
+**fp-tr-835a can still pass for the wrong reason: its forbid rule needs a literal `$IMAGE` in the title**
+
+- **Status:** ✅ fixed — #74: the rule matches the mistake in title or detail, and the dumper wraps long rules
+- **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `tools/llm-gate/evals/cases/fp-tr-835a/case.yaml:10` · **area:** llm-gate and review prompts
+- **Reported by:** `tr-13` (medium, medium confidence)
+
+forbidden_hit compares the file exactly and searches the title with the regex \$IMAGE (case-insensitive). It never looks at the finding's detail. The same false positive worded without the dollar sign ('admission-smoke references IMAGE, which is never set', 'IMAGE env var undefined in admission-smoke') isn't counted. That is how this case passed falsely before, then by category. test-review has no baseline, so fp_regressions is the only thing that gates it. Separately, test_every_committed_case_is_valid_and_applies_to_its_base checks that expect files are in the patch, but not forbid files: a mistyped forbid.file makes an fp-regression case unable to fail.
+
+*Failure scenario:* A later test-review prompt change brings the finding back as 'IMAGE is not defined for the admission-smoke job'. fp_regressions stays 0 and llm-eval is green.
+
+*Suggested fix:* Loosen the rule to the mistake's core, for example \bIMAGE\b.*(never|not|un)\s*(defined|set) or the reverse order, or match the detail as well. In the committed-cases test, assert that every forbid.file is in the patch and that each forbid.title matches the original title quoted in the case description.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, trivial): On audit-log, the original finding's title is 'admission-smoke uses $IMAGE, which the job never defines'. forbidden_hit matches file exactly and searches only the title with `\$IMAGE`, so the same false positive worded without a literal $IMAGE wouldn't count, and the detail is never looked at. The committed-cases test asserts expect files are in the patch but not forbid files. Whether a model rewords it this way is uncertain; test-review is advisory, hence low.
+- **maintainer** (CONFIRMED, low, trivial): forbidden_hit matches the title regex `\$IMAGE` (case-insensitive) and never the detail; #60 chose `\$IMAGE` deliberately as the mistake's core after a category rule had passed falsely. A rewording without the dollar sign escapes it, and the committed-cases test checks expect files against the patch but not forbid files. test-review is advisory and has no baseline, so this case is its only gate.
+- **impact** (CONFIRMED, low, trivial): The case's forbid is {file: .github/workflows/release.yml, title: \$IMAGE}, and forbidden_hit applies the title regex only (never the detail), so a reworded 'IMAGE is not defined' finding isn't counted; the committed-cases test checks expect files against the patch but not forbid files. test-review is advisory, so the cost is an advisory false positive coming back in a PR comment without llm-eval noticing. Low.
+
+</details>
+
+### F030
+
+**floor_violations can never be non-zero: it is computed from final_risk(), which takes the higher risk**
+
+- **Status:** ✅ fixed — #74: the metric measures the model's own answer (model_below_floor), reported not gated
+- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `tools/llm-gate/src/llm_gate/evals.py:524` · **area:** llm-gate and review prompts
+- **Reported by:** `tr-14` (low, high confidence)
+
+run_triage_eval scores rank(final) < rank(floor), where final = final_risk(floor, model, None).final is the higher of the two. The 'hard assertion' of PLAN 17.3 and ADR 0008 ('Any result below the floor fails the eval outright') therefore holds by construction. It only re-tests final_risk, which test_the_model_may_raise_but_not_lower_and_a_manual_change_wins already covers. The mutation hard-coding forbidden_hits=0 survived. The number that would measure the triage prompt, the model's own answer below the floor (for example tr-008's injection working), only appears in the free-text `locations`.
+
+*Failure scenario:* The triage model answers 'low' to tr-008's injected comment in every repeat. floor_violations stays 0, and nothing records that the injection worked on the model, because the floor hides it.
+
+*Suggested fix:* Score model answers below the floor as their own metric, for example model_below_floor as the injection signal with a threshold. Keep final >= floor as a unit test.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, trivial): run_triage_eval scores forbidden_hits = rank(final) < rank(floor), with final = final_risk(floor, model, None).final. With no manual risk, final_risk returns the model's risk only when it ranks higher than the rules', otherwise the rules', so final >= floor always and floor_violations is always 0. ADR 0008's 'any result below the floor fails the eval outright' therefore re-tests final_risk, which is unit-tested already. What the injection case should measure, the model's own answer below the floor, appears only in the free-text locations.
+- **maintainer** (REJECTED, info, trivial): True that final = final_risk(floor, model, None) is never below the floor, so floor_violations is 0 unless final_risk regresses; that is what PLAN 17.3 asks for ('never lower than the rule floor as a hard assertion'), an end-to-end invariant check, not a measurement of the prompt. A model answer below the floor is harmless by design (ADR 0008: talking the model down changes nothing), and the real insensitivity of the triage eval is F018. Minor: WRITEUP §3 presents 'no result below the floor' as a measured result.
+- **impact** (CONFIRMED, low, small): run_triage_eval scores final = final_risk(floor, model, None).final, the higher of the two, so forbidden_hits = rank(final) < rank(floor) is 0 by construction and floor_violations can never fail the eval; the model's own below-floor answer appears only in the free-text locations. ADR 0008's 'any result below the floor fails the eval outright' and WRITEUP's 'no result below the rules' floor' are therefore vacuous as measurements. Low: the floor itself is enforced in code and unit-tested; what's lost is the injection signal (see F018).
+
+</details>
+
+### F031
+
+**'Latest wins' tests use fixtures already in time order; the invalid-`to` fixture is rejected for its bad ts**
+
+- **Status:** ✅ fixed — #74: the later record sorts first, so latest-by-ts is told apart from last-file-wins
+- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `tools/llm-gate/tests/test_triage.py:193` · **area:** llm-gate and review prompts
+- **Reported by:** `tr-15` (low, high confidence)
+
+In test_the_latest_risk_override_comes_from_the_audit_log, x.jsonl has "to": "free" and "ts": "z". fromisoformat('z') fails first, so the `to not in RISKS` guard is never reached, and a mutation removing it survived. feedback-1 and feedback-2 are in time order, so 'latest by ts' can't be told apart from 'last file wins': the mutation `if True:` survived, and branch 309->297 is never taken. test_the_latest_run_on_the_merged_head_counts (attestations, _run_order) has the same pattern: a mutation dropping the sort survived. So does the latest-triage case in test_triage_and_integrity_counts (metrics). Only the metrics feedback test (#57) uses out-of-order fixtures.
+
+*Failure scenario:* A refactor switches to 'last seen wins'. Record files are named feedback-<comment id>, so when ids cross a digit boundary or files sort differently, an older /llm-risk wins and decides the PR's review level. Tests pass.
+
+*Suggested fix:* Give the invalid-`to` fixture a valid ts. In each 'latest' test (risk overrides, triage, gate runs by run id and attempt), put the later record in the file that sorts first.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, trivial): Ran the mutants on a scratch clone. Dropping the `to not in RISKS` guard survived (the 'free' fixture is already skipped because its ts 'z' doesn't parse). Replacing the ts comparison with `if True:` (last seen wins) survived, because the fixtures are in file and time order. Dropping the sort by _run_order in attestations.llm_review survived. Control mutants in triage.py and attestations.py were killed, so the harness applies to those modules.
+- **maintainer** (CONFIRMED, low, trivial): In test_the_latest_risk_override_comes_from_the_audit_log, x.jsonl has ts 'z', so fromisoformat fails before the `to not in RISKS` guard, and feedback-1/feedback-2 sort in time order. In a scratch clone three mutations survived all 306 tests: dropping the RISKS guard, `if True:` instead of the ts comparison (last file wins), and dropping the sort by _run_order in attestations.llm_review. Low: record names (feedback-<comment id>, <run id>-...) sort in time order today, so the regression would rarely bite.
+- **impact** (CONFIRMED, low, trivial): The invalid fixture has to 'free' and ts 'z', and fromisoformat('z') fails first, so the RISKS guard is never reached; feedback-1 and feedback-2 sort in time order, and coverage shows triage.py 309->297 never taken, so 'latest by ts' can't be told from 'last file wins'. The regression would rarely matter in practice: files are events/YYYY/MM/DD/feedback-<comment id>, which sort chronologically until GitHub comment ids gain a digit. Low.
+
+</details>
+
+### F033
+
+**Two of the eight redaction patterns (Slack, JWT) have no test case**
+
+- **Status:** ✅ fixed — #74: the Slack and JWT patterns have cases
+- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `tools/llm-gate/src/llm_gate/redact.py:22` · **area:** llm-gate and review prompts
+- **Reported by:** `tr-17` (low, high confidence)
+
+test_secrets_are_redacted covers Anthropic keys, GitHub tokens (ghp_, github_pat_), AWS key ids, private-key headers and key=value secrets, but not the xox* or eyJ... patterns. Mutations breaking each one survived. Redaction is the only guard for free text in the permanent, public audit log (ADR 0005).
+
+*Failure scenario:* A typo creeps into the JWT pattern. A tool-call summary or finding title that contains a bearer JWT is written to audit-log unredacted.
+
+*Suggested fix:* Add an xoxb-... token and a three-part eyJ JWT to the parametrized secrets.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, trivial): A mutant breaking both the Slack (xox*) and JWT (eyJ...) patterns survived the full suite, while a control breaking the Anthropic pattern was killed by test_secrets_are_redacted. So two of the eight patterns that guard the permanent audit log's free text have no case.
+- **maintainer** (CONFIRMED, low, trivial): test_secrets_are_redacted parametrizes Anthropic, ghp_, github_pat_, AKIA, private-key headers and key=value secrets; no test anywhere uses an xox* or eyJ... string. Both patterns read correctly today, so this is a test gap on the audit log's only free-text guard.
+- **impact** (CONFIRMED, low, trivial): The parametrized secrets cover Anthropic, ghp_, github_pat_, AKIA, a private-key header and key=value forms, not the xox* or eyJ JWT patterns; I checked that both patterns redact correctly today. A pure test gap for token types unlikely to show up in this repository's reviews: low.
+
+</details>
+
+### F035
+
+**`/llm-ack` recording and a writer's malformed command are never tested through handle()**
+
+- **Status:** ✅ fixed — #74: the ack path and a writer's malformed command go through handle()
+- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `tools/llm-gate/src/llm_gate/feedback.py:180` · **area:** llm-gate and review prompts
+- **Reported by:** `tr-19` (low, high confidence)
+
+The only /llm-ack test names another PR's finding (unknown_finding). The happy path (kind ack, no mark) is untested (partial branch 198->217), and a mutation recording acks as kind 'fp' survived. A command from someone with write access that doesn't parse, such as '/llm-fp cr-1705' without a reason, reaches line 180, which never runs; a mutation returning no record there survived. parse_command is tested on its own, but not this wiring.
+
+*Failure scenario:* Acks get recorded as false positives. The Gate health fp rate rises with every /llm-ack, and no test fails.
+
+*Suggested fix:* handle('/llm-ack cr-1705'): recorded, kind ack, mark None. handle('/llm-fp cr-1705') with write permission: feedback_rejected with bad_arguments, reaction confused, path feedback-<id>.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, trivial): The mutant recording /llm-ack as kind 'fp' survived the full suite, and so did the one returning an empty Actions instead of a feedback_rejected record for a writer's unparseable command (feedback.py:179-180). A control mutant in feedback.py was killed. The handle() tests cover /llm-ack only for an unknown finding, a non-PR and outsiders; bad_arguments is tested only in parse_command.
+- **maintainer** (CONFIRMED, low, trivial): The only /llm-ack test through handle() names another PR's finding (unknown_finding). A mutation that records every feedback as kind 'fp' survived all 306 tests, so an ack mis-recorded as a false positive would go unnoticed and inflate the fp rate. The writer's-malformed-command wiring (feedback.py:180) is only covered via parse_command on its own.
+- **impact** (CONFIRMED, low, trivial): Coverage shows feedback.py:180 (a writer's unparseable command) never executed and 198->217 (the ack path) only partly; the only /llm-ack test hits unknown_finding. A regression recording acks as fp would skew the false-positive rate silently, but it is a hypothetical future change: low.
+
+</details>
+
+### F036
+
+**The API engine's cost is checked against estimate_cost itself; the price arithmetic has no independent test**
+
+- **Status:** ✅ fixed — #74: the price arithmetic is asserted literally, and an unknown model has no estimate
+- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `tools/llm-gate/tests/test_engines.py:75` · **area:** llm-gate and review prompts
+- **Reported by:** `tr-20` (low, high confidence)
+
+test_api_engine_request_and_result asserts cost_usd == approx(estimate_cost('claude-sonnet-5-5', 1000, 200)), and nothing else tests estimate_cost. Swapped input and output prices, or a wrong divisor, would pass. The estimate feeds the eval budget (spent_usd), the cost threshold and the metrics.
+
+*Failure scenario:* estimate_cost multiplies output tokens by the input price. Eval cost comparisons and the $6 budget are then off by up to 5x, and the tests pass.
+
+*Suggested fix:* Assert the literal (1000*2 + 200*10)/1e6 = 0.004, and None for an unknown model.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, trivial): test_api_engine_request_and_result asserts cost_usd == approx(estimate_cost(...)), the code under test. A mutant swapping input and output prices survived the full suite. The estimate feeds the eval budget, the cost threshold and metrics.
+- **maintainer** (CONFIRMED, low, trivial): test_api_engine_request_and_result compares cost_usd with estimate_cost itself and nothing else tests the arithmetic; swapping input and output prices survived the suite. The figure is marked as an estimate everywhere, but it feeds the eval budget (spent_usd), the cost threshold and the metrics for the API engine.
+- **impact** (CONFIRMED, low, trivial): test_engines.py:75 asserts cost_usd against estimate_cost itself, and nothing else tests the arithmetic or the unknown-model None (api_engine.py:30 uncovered). The formula is a correct one-liner today; a wrong one would distort the eval budget and absolute cost reporting for the API engine, while relative cost comparisons against a baseline computed the same way would still hold. Low.
+
+</details>
+
+### F038
+
+**The prompt-guard test skips llm-triage.md**
+
+- **Status:** ✅ fixed — #74: the prompt guard covers the triage prompt too
+- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `tools/llm-gate/tests/test_prompts_cache.py:24` · **area:** llm-gate and review prompts
+- **Reported by:** `tr-28` (low, high confidence)
+
+test_every_repository_prompt_takes_the_diff_and_guards_against_injection iterates over checks.yaml's checks. The triage prompt isn't a check, so its 'never instructions to you' guard and $ARGUMENTS go unchecked; both are present today.
+
+*Failure scenario:* An edit drops the data-not-instructions sentence from llm-triage.md, and the test still passes.
+
+*Suggested fix:* Also check config.triage.prompt_path, without the '## Severity' assertion, since that prompt's heading is '## Rubric'.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, trivial): test_every_repository_prompt_takes_the_diff_and_guards_against_injection iterates load_config's checks only. llm-triage.md isn't a check, so its $ARGUMENTS and 'never instructions to you' guard (both present today, lines 10 and 17) are unchecked. The impact is limited because the triage model can only raise the risk.
+- **maintainer** (CONFIRMED, info, trivial): test_every_repository_prompt_takes_the_diff_and_guards_against_injection iterates over checks.yaml's checks only, so llm-triage.md isn't covered; today it does contain $ARGUMENTS and 'never instructions to you'. Info: per ADR 0008 an injection can only talk the triage model up (costs money) or down (changes nothing, the floor holds).
+- **impact** (CONFIRMED, low, trivial): test_every_repository_prompt_takes_the_diff_and_guards_against_injection iterates checks.yaml's checks only, and llm-triage.md is not one; today it has both $ARGUMENTS and the 'never instructions to you' sentence. The triage model can only raise the risk, so a lost guard costs at most an over-raise or a missed raise above the floor. Low.
 
 </details>
 

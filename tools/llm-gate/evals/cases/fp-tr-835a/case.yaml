@@ -7,5 +7,6 @@ description: 'Must not report again: admission-smoke uses $IMAGE, which the job 
   set in the workflow-level env)'
 base: f53304dab50c08b61f8f3905d46f3563b2034a62
 forbid:
-  - {file: .github/workflows/release.yml, title: \$IMAGE}
+  - file: .github/workflows/release.yml
+    title: (\bIMAGE\b[^.]{0,80}(never|not|un)\s?(defin\w*|set)|(never|not|un)\s?(defin\w*|set)[^.]{0,80}\bIMAGE\b)
 expect: []

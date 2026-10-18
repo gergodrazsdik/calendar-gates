@@ -9,12 +9,13 @@ from typing import Any, cast
 
 import pytest
 from conftest import git
-from test_audit import EXPECTED, artifact, gate_run
+from test_audit import EXPECTED, artifact, gate_run, override_record
 from test_engines import StubMessages, stub_client
 
 from llm_gate import aidetect, audit, feedback, triage
 from llm_gate.cli import main
 from llm_gate.config import (
+    TRIAGE,
     AiMarkers,
     ConfigError,
     GateConfig,
@@ -223,10 +224,17 @@ def risk_override(pr: int, to: str, ts: str, head_sha: str | None = None) -> str
 def test_the_latest_risk_override_comes_from_the_audit_log(tmp_path: Path) -> None:
     day = tmp_path / "events" / "2026" / "10" / "17"
     day.mkdir(parents=True)
-    (day / "feedback-1.jsonl").write_text(risk_override(7, "low", "2026-10-17T08:00:00Z") + "\n")
-    (day / "feedback-2.jsonl").write_text(risk_override(7, "high", "2026-10-17T09:00:00Z") + "\n")
+    # The later record sorts *first* by file name, so "latest by ts" can be told apart from "the
+    # last file wins": with the old fixtures both passed, and a mutation that always took the last
+    # record survived (F031).
+    (day / "feedback-1.jsonl").write_text(risk_override(7, "high", "2026-10-17T09:00:00Z") + "\n")
+    (day / "feedback-2.jsonl").write_text(risk_override(7, "low", "2026-10-17T08:00:00Z") + "\n")
     (day / "feedback-3.jsonl").write_text(risk_override(8, "medium", "2026-10-17T10:00:00Z"))
-    (day / "x.jsonl").write_text('{"type": "risk_override", "pr": 7, "to": "free", "ts": "z"}\n')
+    # A valid timestamp, so the `to not in RISKS` guard is what rejects this one, not the date.
+    (day / "x.jsonl").write_text(
+        '{"type": "risk_override", "pr": 7, "to": "free", "by": "a", "reason": "r",'
+        ' "ts": "2026-10-17T23:00:00Z"}\n'
+    )
 
     latest = triage.latest_risk_override(tmp_path, 7)
     assert latest is not None and latest.to == "high"
@@ -534,6 +542,30 @@ def test_runs_without_triage_are_accepted_but_may_not_claim_a_risk(tmp_path: Pat
     assert "no triage record" in problems(result, "audit-100-1-docs-drift")[0]
 
 
+def test_a_triage_artifact_holds_exactly_one_record(tmp_path: Path) -> None:
+    """The rule at audit.py's `_triage_problems` was never executed: the test named for it put a
+    gate_run in the triage artifact, which `_record_problems` rejects first (F015)."""
+    two = tmp_path / "two"
+    artifact(two, "audit-100-1-triage", audit.dumps(triage_record()), audit.dumps(triage_record()))
+    assert any(
+        "exactly one triage record" in p
+        for p in problems(collect_run(two, triage_expected=None), "audit-100-1-triage")
+    )
+
+    # A valid triage record plus a valid override record: each passes on its own, the pair doesn't.
+    with_override = tmp_path / "with-override"
+    artifact(
+        with_override,
+        "audit-100-1-triage",
+        audit.dumps(triage_record()),
+        audit.dumps(override_record(checks=[audit.TRIAGE_ARTIFACT])),
+    )
+    assert any(
+        "exactly one triage record" in p
+        for p in problems(collect_run(with_override, triage_expected=None), "audit-100-1-triage")
+    )
+
+
 def test_the_triage_artifact_needs_its_job_and_only_a_triage_record(tmp_path: Path) -> None:
     artifact(tmp_path, "audit-100-1-triage", audit.dumps(triage_record()))
     failed = collect_run(tmp_path, triage_expected=None, jobs={"triage": "failure"})
@@ -690,14 +722,20 @@ def test_triage_eval_scores_risk_accuracy_and_compares(tc: TriageConfig, tmp_pat
     )
 
     m = run.metrics
-    assert (run.check, m.cases, m.risk_accuracy, m.floor_violations) == ("triage", 3, 4 / 6, 0)
+    # model_below_floor counts the model's own answer below the rules' floor: the stub says "low"
+    # every time, so 4 of 6 attempts are below it. The old floor_violations was computed from the
+    # floor-dominated result and so was always 0, whatever the model said (F030).
+    assert (run.check, m.cases, m.risk_accuracy, m.model_below_floor) == ("triage", 3, 4 / 6, 4)
     assert m.verdict_accuracy is None and m.recall is None
     assert "expected high, got medium, medium" in evals.render_misses([run])
     baseline = {"triage": {evals.run_key(run): evals.baseline_entry(run)}}
     thresholds = evals.Thresholds()
     rows = {r.metric: r for r in evals.compare(run, baseline, thresholds)}
-    assert set(rows) == {"risk_accuracy", "floor_violations", "flip_rate", "cost_usd"}
+    assert set(rows) == {"risk_accuracy", "model_below_floor", "flip_rate", "cost_usd"}
     assert all(r.ok for r in rows.values())
+    # Reported, never a verdict: the floor wins whatever the model answers.
+    assert rows["model_below_floor"].current == 4
+    assert rows["model_below_floor"].ok
     worse = run.model_copy(update={"metrics": m.model_copy(update={"risk_accuracy": 0.3})})
     assert not {r.metric: r for r in evals.compare(worse, baseline, thresholds)}["risk_accuracy"].ok
 
@@ -1364,3 +1402,93 @@ def test_the_collector_allows_a_lowering_for_the_head_it_was_given_for(
 
     (triage_line,) = records
     assert triage_line["type"] == "triage"  # the head matches EXPECTED's head_sha ("a" * 40)
+
+
+def gate_repo(repo: Any) -> Path:
+    """A scratch repository carrying the real checks.yaml, a prompt for every check in it, and a
+    docs-only change on `feature`."""
+    from conftest import PROMPT
+
+    (repo.root / "tools" / "llm-gate").mkdir(parents=True, exist_ok=True)
+    (repo.root / "tools" / "llm-gate" / "checks.yaml").write_text(CONFIG.read_text())
+    config = load_gate_config(CONFIG, REPO_ROOT, env={})
+    for name in (*config.checks, TRIAGE):
+        # A real prompt, not a placeholder: these checks actually review here.
+        repo.write(f".claude/commands/llm-{name}.md", PROMPT)
+    repo.commit("gate")
+    git(repo.root, "branch", "-f", "main")
+    repo.write("docs/x.md", "words\n")
+    repo.commit("docs")
+    out: Path = repo.root.parent / "out"
+    return out
+
+
+def test_cli_run_at_low_risk_demotes_a_blocking_check_to_advisory(
+    repo: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The level's version of a check (`plan_for`) was never exercised for a check it *runs*: only
+    the not-needed branch had a test, and a mutation ignoring the level survived (F013)."""
+    from conftest import FakeEngine, finding, result
+
+    from llm_gate.models import Severity
+
+    out = gate_repo(repo)
+    api = FakeEngine("api", result(finding(Severity.CRITICAL)))
+
+    code = main(
+        [
+            "--repo",
+            str(repo.root),
+            "run",
+            "--check",
+            "code-review",
+            "--base",
+            "main",
+            "--risk",
+            "low",
+            "--out",
+            str(out),
+        ],
+        engines={"api": api, "agent": FakeEngine("agent")},
+    )
+
+    assert code == 0  # a critical finding, but nothing blocks at low risk
+    out_text = capsys.readouterr().out
+    assert "advisory" in out_text
+    (record,) = [json.loads(x) for x in (out / audit.AUDIT_FILE).read_text().splitlines()]
+    assert (record["verdict"], record["risk"], record["blocking"]) == ("pass", "low", False)
+    # The level demotes the mode; the engine stays the check's own (code-review is agent).
+    assert record["engine"] == "agent"
+
+
+def test_cli_run_at_high_risk_moves_a_blocking_check_to_the_agent_engine(
+    repo: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from conftest import FakeEngine, result
+
+    out = gate_repo(repo)
+    api = FakeEngine("api", result())
+    agent = FakeEngine("agent", result())
+
+    code = main(
+        [
+            "--repo",
+            str(repo.root),
+            "run",
+            "--check",
+            "security-review",
+            "--base",
+            "main",
+            "--risk",
+            "high",
+            "--out",
+            str(out),
+        ],
+        engines={"api": api, "agent": agent},
+    )
+
+    assert code == 0
+    assert api.requests == []  # security-review's own engine is api; high risk overrides it
+    assert len(agent.requests) == 1
+    (record,) = [json.loads(x) for x in (out / audit.AUDIT_FILE).read_text().splitlines()]
+    assert (record["engine"], record["risk"], record["blocking"]) == ("agent", "high", True)

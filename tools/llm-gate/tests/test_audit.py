@@ -128,6 +128,10 @@ def test_finding_ids_are_short_stable_and_ignore_punctuation() -> None:
         "ghp_" + "A" * 36,
         "github_pat_" + "B" * 30,
         "AKIA" + "C" * 16,
+        "xoxb-" + "1234567890" + "-" + "D" * 24,  # Slack (F033: no case covered this)
+        # A JWT, assembled at run time: a whole one on a source line is what gitleaks flags, and
+        # the pre-commit hook is right to. redact() still sees the complete token.
+        "eyJhbGciOiJIUzI1NiJ9." + "eyJzdWIiOiIxMjM0NTY3ODkwIn0." + "E" * 27,
         "-----BEGIN OPENSSH PRIVATE KEY-----",
         'api_key = "hunter2hunter2"',
         '"token": "abcdefghijkl"',
@@ -283,22 +287,50 @@ def test_forged_records_become_a_tamper_event(
     assert any(problem in p for p in event["problems"]), event["problems"]
 
 
-def test_trusted_only_types_may_not_come_from_an_artifact(tmp_path: Path) -> None:
-    feedback = audit.Feedback(
-        repo="owner/repo",
-        pr=7,
-        head_sha="a" * 40,
-        workflow_run_id=100,
-        run_attempt=1,
-        finding_id="cr-0000",
-        kind="fp",
-        by="me",
-    )
-    artifact(tmp_path, "audit-100-1-code-review", audit.dumps(feedback))
+def trusted_only_record(type_: str) -> str:
+    """A record of a type only the collector or the feedback workflow may write, as a PR's own
+    artifact would have to spell it. Not built through the models: the point is what the collector
+    does with the raw type."""
+    base = {
+        "schema": "audit/v1",
+        "id": "0" * 8 + "-0000-4000-8000-" + "0" * 12,
+        "ts": "2026-10-17T10:00:00Z",
+        "repo": "owner/repo",
+        "pr": 7,
+        "head_sha": "a" * 40,
+        "workflow_run_id": 100,
+        "run_attempt": 1,
+        "run_url": EXPECTED.run_url,
+        "type": type_,
+    }
+    by_type: dict[str, dict[str, Any]] = {
+        "feedback": {"finding_id": "cr-0000", "check": "code-review", "kind": "fp", "by": "me"},
+        "feedback_rejected": {"by": "me", "command": "fp", "code": "not_a_collaborator"},
+        "risk_override": {"from": "low", "to": "high", "by": "me", "reason": "mine now"},
+        "eval_run": {
+            "prompt_sha256": "0" * 64,
+            "model": "claude-sonnet-5-5",
+            "engine": "api",
+            "scores": {"recall": 1.0},
+        },
+        "tamper_suspected": {"artifact": "audit-100-1-code-review", "problems": ["invented"]},
+    }
+    return json.dumps({**base, **by_type[type_]})
+
+
+@pytest.mark.parametrize(
+    "type_", ["feedback", "feedback_rejected", "risk_override", "eval_run", "tamper_suspected"]
+)
+def test_trusted_only_types_may_not_come_from_an_artifact(tmp_path: Path, type_: str) -> None:
+    """Every type the collector writes itself, not just `feedback` (F014). `risk_override` is the
+    one that matters most: triage trusts those records precisely because a PR's run can't write
+    one (ADR 0008), and a mutation adding it to ARTIFACT_TYPES survived the old single-type test."""
+    artifact(tmp_path, "audit-100-1-code-review", trusted_only_record(type_))
 
     ((info, lines),) = collect(tmp_path)
+
     assert info.tamper is True
-    assert "may not come from a PR's workflow" in lines[0]["problems"][0]
+    assert any("may not come from a PR's workflow" in p for p in lines[0]["problems"])
 
 
 @pytest.mark.parametrize(
@@ -317,12 +349,36 @@ def test_unparseable_or_empty_artifacts_are_tamper_events(
     assert info.tamper is True
 
 
-def test_size_and_count_limits(tmp_path: Path) -> None:
+def test_too_many_records_in_one_artifact(tmp_path: Path) -> None:
     line = audit.dumps(gate_run())
     artifact(tmp_path, "audit-100-1-code-review", *[line] * (audit.MAX_RECORDS + 1))
     ((info, lines),) = collect(tmp_path)
     assert info.tamper is True
-    assert "over the" in lines[0]["problems"][0]
+    assert f"over the {audit.MAX_RECORDS} limit" in lines[0]["problems"][0]
+
+
+def test_one_artifact_over_the_byte_limit(tmp_path: Path) -> None:
+    """ADR 0005's 128 KB per artifact. The old test wrote 21 small lines, so only the record count
+    fired and its assertion ("over the") matched either message (F016)."""
+    artifact(tmp_path, "audit-100-1-code-review", audit.dumps(gate_run()))
+    path = tmp_path / "artifacts" / "audit-100-1-code-review" / audit.AUDIT_FILE
+    # Padded past the file limit while staying under the run budget, so only this check can fire.
+    path.write_bytes(path.read_bytes() + b" " * (audit.MAX_FILE_BYTES + 1 - path.stat().st_size))
+
+    ((info, lines),) = collect(tmp_path)
+
+    assert info.tamper is True
+    assert f"over the {audit.MAX_FILE_BYTES} limit" in lines[0]["problems"][0]
+
+
+def test_one_record_over_the_line_limit(tmp_path: Path) -> None:
+    """MAX_LINE_BYTES sits below MAX_FILE_BYTES, so it can actually fire (F016)."""
+    artifact(tmp_path, "audit-100-1-code-review", "{" + " " * audit.MAX_LINE_BYTES + "}")
+
+    ((info, lines),) = collect(tmp_path)
+
+    assert info.tamper is True
+    assert f"line over {audit.MAX_LINE_BYTES} bytes" in " ".join(lines[0]["problems"])
 
 
 def test_duplicate_ids_are_rejected(tmp_path: Path) -> None:

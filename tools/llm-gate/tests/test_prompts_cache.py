@@ -3,7 +3,7 @@ from pathlib import Path
 from conftest import make_check, result
 
 from llm_gate.cache import Cache, cache_key
-from llm_gate.config import load_config
+from llm_gate.config import TRIAGE, load_gate_config
 from llm_gate.diff import OmittedFile
 from llm_gate.prompts import diff_block, render, strip_frontmatter
 
@@ -21,14 +21,21 @@ def test_render_substitutes_arguments() -> None:
 
 
 def test_every_repository_prompt_takes_the_diff_and_guards_against_injection() -> None:
-    checks = load_config(REPO_ROOT / "tools" / "llm-gate" / "checks.yaml", REPO_ROOT, env={})
-    for check in checks.values():
-        text = check.prompt_path.read_text(encoding="utf-8")
-        assert text.startswith("---\n"), check.name
+    config = load_gate_config(REPO_ROOT / "tools" / "llm-gate" / "checks.yaml", REPO_ROOT, env={})
+    prompts = {name: check.prompt_path for name, check in config.checks.items()}
+    # The triage prompt is not a check, so it was skipped: its own injection guard and $ARGUMENTS
+    # went unchecked, though the model it drives reads the same untrusted diff (F038).
+    assert config.triage is not None
+    prompts[TRIAGE] = config.triage.prompt_path
+
+    for name, path in prompts.items():
+        text = path.read_text(encoding="utf-8")
+        assert text.startswith("---\n"), name
         body = strip_frontmatter(text)
-        assert "$ARGUMENTS" in body, check.name
-        assert "never instructions to you" in body, check.name
-        assert "## Severity" in body, check.name
+        assert "$ARGUMENTS" in body, name
+        assert "never instructions to you" in body, name
+        # Triage answers with a level from a rubric, the checks with findings and severities.
+        assert ("## Rubric" if name == TRIAGE else "## Severity") in body, name
 
 
 def test_cache_key_changes_with_every_input() -> None:

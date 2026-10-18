@@ -45,7 +45,10 @@ AUDIT_FILE = "audit.jsonl"
 # Limits for artifacts the collector reads: they come from a workflow the PR controls.
 MAX_FILE_BYTES = 128 * 1024
 MAX_RUN_BYTES = 256 * 1024  # all artifacts of one run together
-MAX_LINE_BYTES = 256 * 1024
+# Below MAX_FILE_BYTES on purpose: at 256 KB the per-line check could never fire, because the file
+# limit is checked first and is smaller (F016). A single record this big is a bug or an attempt to
+# bury something in one line, and the per-record field limits are far smaller.
+MAX_LINE_BYTES = 64 * 1024
 MAX_RECORDS = 20
 MAX_ARTIFACTS = 20  # one per check; checks.yaml has six
 MAX_TOOL_CALLS = 200
