@@ -155,6 +155,46 @@ def test_an_override_without_a_reason_is_not_honoured(
     assert gate_run["override_honoured"] is False
 
 
+@pytest.mark.parametrize(
+    ("check", "engine_result"),
+    [
+        ("code-review", result()),  # blocking and clean: nothing was overridden
+        ("docs-drift", result(finding(Severity.CRITICAL))),  # advisory: it never blocked anyway
+        ("api-contract", result()),  # not applicable: no endpoint changed
+    ],
+)
+def test_the_override_label_alone_writes_no_record(
+    gate: Repo, monkeypatch: pytest.MonkeyPatch, check: str, engine_result: EngineResult
+) -> None:
+    """Every llm job reads the label, so the record has to come from the outcome, not the label."""
+    change(gate)
+    monkeypatch.setenv("LLM_GATE_OVERRIDE", "true")
+    monkeypatch.setenv("LLM_GATE_OVERRIDE_REASON", "hotfix, reviewed by hand")
+    monkeypatch.setenv("LLM_GATE_OVERRIDE_BY", "maintainer")
+    api = FakeEngine("api", engine_result)
+
+    assert run({"api": api}, "--check", check) == 0
+
+    assert [line["type"] for line in audit_lines(gate)] == ["gate_run"]
+
+
+def test_an_advisory_check_omitting_files_needs_no_override_record(
+    gate: Repo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An advisory check trims without asking anyone, so the label changed nothing for it."""
+    change(gate, "src/Api/Domain/Small.cs", "class Small {}\n")
+    change(gate, "src/Api/Grpc/Generated.pb.cs", GENERATED + "x = 1;\n" * 10000)
+    monkeypatch.setenv("LLM_GATE_OVERRIDE", "true")
+    monkeypatch.setenv("LLM_GATE_OVERRIDE_REASON", "generated stubs")
+    monkeypatch.setenv("LLM_GATE_OVERRIDE_BY", "maintainer")
+    api = FakeEngine("api")
+
+    assert run({"api": api}, "--check", "docs-drift") == 0
+
+    (gate_run,) = audit_lines(gate)
+    assert omitted_paths(gate_run["omitted_files"]) == ["src/Api/Grpc/Generated.pb.cs"]
+
+
 def test_engine_errors_fail_closed_for_blocking_checks(gate: Repo) -> None:
     change(gate)
     api = FakeEngine("api", EngineError("the model declined"))

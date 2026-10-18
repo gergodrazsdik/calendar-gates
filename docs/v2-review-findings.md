@@ -31,13 +31,13 @@ A review of the whole repository at `43ec3c2` (2026-10-17), after PLAN-v2 was wr
 | accepted | 0 | 0 | 0 | 2 | 1 | 3 |
 | rejected | 0 | 0 | 0 | 0 | 11 | 11 |
 
-**Fixed so far: 69 of 119** (3 partial, 46 open, 1 unverifiable). By severity:
+**Fixed so far: 71 of 119** (3 partial, 44 open, 1 unverifiable). By severity:
 
 | Status | critical | high | medium | low | info | total |
 |---|---|---|---|---|---|---|
-| ✅ fixed | 0 | 2 | 14 | 34 | 19 | 69 |
+| ✅ fixed | 0 | 2 | 14 | 36 | 19 | 71 |
 | 🟡 partial | 0 | 0 | 1 | 2 | 0 | 3 |
-| open | 0 | 0 | 1 | 38 | 7 | 46 |
+| open | 0 | 0 | 1 | 36 | 7 | 44 |
 | ⚪ unverifiable | 0 | 0 | 1 | 0 | 0 | 1 |
 
 Each fix names the PR that made it. The status column is maintained by hand as fixes land; the verdicts and severities below are the review's own and are not revised.
@@ -118,7 +118,12 @@ exactly the bypass it describes, so it was not built. What is confirmed without 
 `http-tests` and `k8s-smoke` hold `checks: write` while running PR code. Moving test reporting to
 a job that runs no PR code removes the question.
 
-**Since the review (2026-10-18).** Ten things changed under this document:
+**Since the review (2026-10-18).** Twelve things changed under this document:
+- **#75** made the override record follow the outcome instead of the label (F025) and put the
+  admission rule that decides on critical vulnerabilities under an offline test (F069).
+- **#74** covered the guards a silent mutation could break: the risk-level transformations, the
+  trusted-only record types, both audit size limits, the eval forbid rules and the metrics
+  (F004's neighbours, ten items in all, each named on its own Status line).
 - **#73** pinned uv itself (F052) and made a malformed `?year=` the same ValidationProblem in both
   environments (F081), leaving F003 as the last open medium.
 - **#71** made the approval attestation required, proven on the project cluster: v0.3.2 admitted,
@@ -195,7 +200,6 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F022](#f022) | open | low | low | A | The collector rechecks a run's triage against the default branch's checks.yaml at collection time, not the config the run used | small | S:C/low M:C/low I:C/low |
 | [F023](#f023) | open | low | low | A | api-contract's paths filter misses files that change the HTTP contract outside Endpoints/, Domain/, Program.cs and http/ | trivial | S:C/low M:C/low I:C/low |
 | [F024](#f024) | open | low | low | A | A PR that changes only http/calendar.http is rated low, where api-contract doesn't run, so its http/** filter never fires for such PRs | trivial | S:C/low M:C/low I:C/low |
-| [F025](#f025) | open | low | low | A | One /llm-override writes an override record per check job, including advisory, passing and not-applicable checks, and the release attestation repeats them all | trivial | S:C/low M:C/low I:C/low |
 | [F026](#f026) | open | low | low | A | /llm-fp and /llm-ack on a finding from the current run are rejected as unknown_finding until audit-collect has written that run | small | S:C/low M:C/low I:C/low |
 | [F027](#f027) | open | low | low | A | The llm-review attestation doesn't list a PR whose merged head is missing a record for a blocking check | small | S:C/low M:C/low I:C/low |
 | [F029](#f029) | open | low | low | A | Model-written review text reaches the PR comment and job summary without redaction or markup neutralisation | small | S:C/low M:C/low I:C/low |
@@ -208,7 +212,6 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F054](#f054) | open | low | low | B | The deployable unit, the chart, is installed by a mutable version tag and verified by nothing | small | S:C/low M:C/low I:C/low |
 | [F056](#f056) | open | low | low | B | k8s-up's restart path neither waits for the API server nor restores the kubeconfig | small | S:C/low M:C/low I:C/low |
 | [F057](#f057) | open | low | low | B | cluster=local inherits $KUBECONFIG, so it breaks in exactly the shell setup AGENTS.md suggests | trivial | S:C/low M:C/low I:C/low |
-| [F069](#f069) | open | low | low | B | No test exercises the admission rule 'no critical vulnerabilities' | medium | S:A/info M:C/low I:C/low |
 | [F071](#f071) | open | low | low | B | The version tags, the moving X.Y tag and the chart are pushed before admission-smoke and smoke run | small | S:C/low M:C/low I:C/low |
 | [F072](#f072) | open | low | low | B | pr-title isn't re-checked when the title is edited, so the check can stay green on a title that isn't a Conventional Commit | small | S:C/low M:C/low I:C/low |
 | [F073](#f073) | open | low | low | B | Records are dropped when an llm-review run completes after its PR was merged | trivial | S:C/low M:C/low I:C/low |
@@ -262,6 +265,8 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F107](#f107) | ✅ fixed | low | low | C | llm-eval also fails when a forbidden (fp-regression) finding returns; gates.md and WRITEUP don't say so | trivial | S:C/low M:C/low I:C/low |
 | [F108](#f108) | ✅ fixed | low | low | C | /new-endpoint skips the two exact OpenAPI route lists a new endpoint must be added to | trivial | S:C/info M:C/low I:C/low |
 | [F109](#f109) | ✅ fixed | low | low | C | The quick start's requirements don't cover `just setup` / `just ci`, which now need an exact kyverno CLI | trivial | S:C/low M:C/low I:C/low |
+| [F025](#f025) | ✅ fixed | low | low | A | One /llm-override writes an override record per check job, including advisory, passing and not-applicable checks, and the release attestation repeats them all | trivial | S:C/low M:C/low I:C/low |
+| [F069](#f069) | ✅ fixed | low | low | B | No test exercises the admission rule 'no critical vulnerabilities' | medium | S:A/info M:C/low I:C/low |
 | [F028](#f028) | open | info | low | A | eval add-from-fp looks up a 16-bit finding id across every PR and takes the last match | trivial | S:C/info M:C/low I:C/info |
 | [F040](#f040) | open | info | info | A | gate_run records for checks that triage didn't need carry the configured blocking flag, not the effective one | trivial | S:C/info M:C/info I:C/info |
 | [F080](#f080) | open | info | info | B | Tool versions pinned inside run: steps and with: inputs aren't covered by Dependabot | medium | S:C/info M:C/info I:C/info |
@@ -1046,7 +1051,7 @@ triage.rules rate `http/**` low (line 56), and the low level runs only code-revi
 
 **One /llm-override writes an override record per check job, including advisory, passing and not-applicable checks, and the release attestation repeats them all**
 
-- **Status:** open
+- **Status:** ✅ fixed — #75: the record follows the outcome, not the label: findings overridden, an oversized diff accepted, or a blocking check reviewing a diff with files missing
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `tools/llm-gate/src/llm_gate/cli.py:381` · **area:** llm-gate and review prompts
 - **Reported by:** `api-13` (low, high confidence)
@@ -1386,7 +1391,7 @@ For cluster=local the justfile sets KUBECONFIG to env('KUBECONFIG', ~/.kube/conf
 
 **No test exercises the admission rule 'no critical vulnerabilities'**
 
-- **Status:** open
+- **Status:** ✅ fixed — #75: the clause is evaluated offline over mock predicates, and a script keeps that copy identical to the policy's
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** medium
 - **Where:** `deploy/policies/base/release.yaml:61` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `tr-26` (low, medium confidence)
