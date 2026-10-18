@@ -20,7 +20,7 @@ from typing import Any
 import yaml
 
 GITHUB_ACTIONS_APP_ID = 15368
-WORKFLOWS = ("ci.yml", "llm-review.yml", "llm-eval.yml")
+WORKFLOWS = ("ci.yml", "pr-title.yml", "llm-review.yml", "llm-eval.yml")
 MATRIX_CHECK = "${{ matrix.check }}"
 
 
@@ -30,21 +30,30 @@ def load_yaml(path: Path) -> Any:
 
 def job_check_names(
     workflows_dir: Path, workflow: str, llm_checks: list[str]
-) -> set[str]:
-    """Check names a workflow's jobs report, as GitHub renders them."""
+) -> tuple[set[str], set[str]]:
+    """Check names a workflow's jobs report, as GitHub renders them, and those whose job carries an
+    `if:` that can skip them. A required check that never reports blocks every PR, and one that
+    reports "skipped" satisfies the ruleset without having run, so both are worth knowing (F074).
+    `always()` is fine: the job runs and decides for itself."""
     names: set[str] = set()
+    conditional: set[str] = set()
     for job_id, job in load_yaml(workflows_dir / workflow)["jobs"].items():
         name = str(job.get("name", job_id))
         uses = job.get("uses", "")
+        mine: set[str] = set()
         if uses.startswith("./.github/workflows/"):
             # A job calling a reusable workflow reports `<caller> / <called job>`.
             called = load_yaml(workflows_dir / Path(uses).name)["jobs"]
-            names |= {f"{name} / {c.get('name', cid)}" for cid, c in called.items()}
+            mine = {f"{name} / {c.get('name', cid)}" for cid, c in called.items()}
         elif MATRIX_CHECK in name:
-            names |= {name.replace(MATRIX_CHECK, check) for check in llm_checks}
+            mine = {name.replace(MATRIX_CHECK, check) for check in llm_checks}
         else:
-            names.add(name)
-    return names
+            mine = {name}
+        names |= mine
+        condition = str(job.get("if", "")).strip()
+        if condition and "always()" not in condition:
+            conditional |= mine
+    return names, conditional
 
 
 def blocking_checks(config: dict[str, Any]) -> set[str]:
@@ -76,10 +85,13 @@ def main(root: Path) -> int:
     checks = config["checks"]
     blocking = blocking_checks(config)
     produced: set[str] = set()
+    conditional: set[str] = set()
     for workflow in WORKFLOWS:
-        produced |= job_check_names(
+        names, skippable = job_check_names(
             root / ".github" / "workflows", workflow, list(checks)
         )
+        produced |= names
+        conditional |= skippable
 
     errors: list[str] = []
     contexts = {check["context"] for check in required}
@@ -92,6 +104,12 @@ def main(root: Path) -> int:
         if check.get("integration_id") != GITHUB_ACTIONS_APP_ID:
             errors.append(
                 f"required check {context!r} is not pinned to GitHub Actions (15368)"
+            )
+        if context in conditional:
+            # GitHub treats a skipped required check as satisfied, so a job-level `if:` on a
+            # required check is a way past the ruleset without running anything (F074).
+            errors.append(
+                f"required check {context!r} comes from a job with an `if:` that can skip it"
             )
     required_llm = {
         c.removeprefix("llm / ") for c in contexts if c.startswith("llm / ")

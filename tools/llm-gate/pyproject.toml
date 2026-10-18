@@ -33,6 +33,10 @@ build-backend = "uv_build"
 [tool.uv]
 # Supply-chain cooldown: resolve only releases at least two weeks old at lock time.
 # Move the date forward when updating dependencies (`uv lock --upgrade`).
+# It is a fixed ceiling, so everything that re-resolves later is capped by it — including
+# Dependabot's uv PRs, which can never bring anything newer than this date (F076).
+# `scripts/check-cooldown-date.py` fails the lint gate once it is more than 90 days old, so the
+# stall is visible; Dependabot's own `cooldown: default-days: 14` is the dynamic layer.
 exclude-newer = "2026-10-01T00:00:00Z"
 
 [tool.ruff]

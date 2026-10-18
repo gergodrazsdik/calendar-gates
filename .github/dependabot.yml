@@ -27,6 +27,8 @@ updates:
       nuget-minor-patch:
         update-types: [minor, patch]
 
+  # The cooldown here is the dynamic layer; pyproject's `exclude-newer` is a fixed ceiling that
+  # caps these PRs too, and check-cooldown-date.py fails lint once it goes stale (F076).
   - package-ecosystem: uv
     directory: "/tools/llm-gate"
     schedule:

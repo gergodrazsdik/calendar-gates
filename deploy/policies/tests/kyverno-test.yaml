@@ -16,6 +16,7 @@ results:
       - release-by-digest
       - release-tag-and-digest
       - release-with-plain-volumes
+      - release-ephemeral-container
     result: pass
   - policy: calendar-gates-images
     kind: Pod
@@ -25,4 +26,5 @@ results:
       - foreign-init-container
       - foreign-image-volume
       - release-image-volume
+      - foreign-ephemeral-container
     result: fail
