@@ -1,11 +1,12 @@
 # The release was approved before it was published (F048, docs/adr/0010-admission-control.md).
 # The other four attestations are made in release.yml's `attest` job, which runs before the
-# approval-gated `publish`, on purpose: the approver sees bytes that are already attested
+# approval-gated `approve` job, on purpose: the approver sees bytes that are already attested
 # (ADR 0009). The consequence was that a candidate built, scanned, attested and then *rejected*
 # carried everything admission asked for, and drill 23 showed a `candidate-v…` tag being admitted.
-# This attestation is created inside `publish`, so only an approved release has it.
+# This attestation is created inside the gated job, so only an approved release has it — and since
+# 2026-10-18 it is also what lets the smoke jobs run before anything is published (F071).
 #
-# **Deny since v0.3.2** (2026-10-18), the first release whose `publish` job created this
+# **Deny since v0.3.2** (2026-10-18), the first release whose gated job created this
 # attestation. It started as Audit because no earlier release carries one and denying would have
 # made them undeployable; v0.3.0 and v0.3.1 are now refused here, which is true to what they are.
 # The same path the LLM-review policy took in #54.

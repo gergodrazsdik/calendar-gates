@@ -31,13 +31,13 @@ A review of the whole repository at `43ec3c2` (2026-10-17), after PLAN-v2 was wr
 | accepted | 0 | 0 | 0 | 2 | 1 | 3 |
 | rejected | 0 | 0 | 0 | 0 | 11 | 11 |
 
-**Fixed so far: 82 of 119** (3 partial, 33 open, 1 unverifiable). By severity:
+**Fixed so far: 83 of 119** (3 partial, 32 open, 1 unverifiable). By severity:
 
 | Status | critical | high | medium | low | info | total |
 |---|---|---|---|---|---|---|
-| ✅ fixed | 0 | 2 | 15 | 45 | 20 | 82 |
+| ✅ fixed | 0 | 2 | 15 | 46 | 20 | 83 |
 | 🟡 partial | 0 | 0 | 1 | 2 | 0 | 3 |
-| open | 0 | 0 | 0 | 27 | 6 | 33 |
+| open | 0 | 0 | 0 | 26 | 6 | 32 |
 | ⚪ unverifiable | 0 | 0 | 1 | 0 | 0 | 1 |
 
 Each fix names the PR that made it. The status column is maintained by hand as fixes land; the verdicts and severities below are the review's own and are not revised.
@@ -118,7 +118,11 @@ exactly the bypass it describes, so it was not built. What is confirmed without 
 `http-tests` and `k8s-smoke` hold `checks: write` while running PR code. Moving test reporting to
 a job that runs no PR code removes the question.
 
-**Since the review (2026-10-18).** Fifteen things changed under this document:
+**Since the review (2026-10-18).** Sixteen things changed under this document:
+- **#79** reordered the release: approval attests and publishes nothing, the smoke and admission
+  tests run on the digest and a locally packaged chart, and only then does `promote` push the
+  version tags, that same chart tarball and the GitHub Release. A failed test no longer leaves
+  public tags behind or burns the version (F071). Proven by releasing v0.3.3.
 - **#78** took the open items that still affected whether the gate can be talked around or its
   records can be wrong: an override by label needed no write access (F007), the gates' own
   configuration was rated medium (F021), a `checks.yaml` merging mid-review turned that run into
@@ -218,7 +222,6 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F054](#f054) | open | low | low | B | The deployable unit, the chart, is installed by a mutable version tag and verified by nothing | small | S:C/low M:C/low I:C/low |
 | [F056](#f056) | open | low | low | B | k8s-up's restart path neither waits for the API server nor restores the kubeconfig | small | S:C/low M:C/low I:C/low |
 | [F057](#f057) | open | low | low | B | cluster=local inherits $KUBECONFIG, so it breaks in exactly the shell setup AGENTS.md suggests | trivial | S:C/low M:C/low I:C/low |
-| [F071](#f071) | open | low | low | B | The version tags, the moving X.Y tag and the chart are pushed before admission-smoke and smoke run | small | S:C/low M:C/low I:C/low |
 | [F072](#f072) | open | low | low | B | pr-title isn't re-checked when the title is edited, so the check can stay green on a title that isn't a Conventional Commit | small | S:C/low M:C/low I:C/low |
 | [F073](#f073) | open | low | low | B | Records are dropped when an llm-review run completes after its PR was merged | trivial | S:C/low M:C/low I:C/low |
 | [F074](#f074) | open | low | low | B | The consistency check validates the main.json file, not the live ruleset, and ignores job-level if: | small | S:C/low M:C/low I:C/low |
@@ -281,6 +284,7 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F027](#f027) | ✅ fixed | low | low | A | The llm-review attestation doesn't list a PR whose merged head is missing a record for a blocking check | small | S:C/low M:C/low I:C/low |
 | [F039](#f039) | ✅ fixed | low | low | A | Audit file paths use the date of collection, so re-running audit-collect or llm-feedback on another day writes duplicates | small | S:C/low M:C/low I:C/low |
 | [F075](#f075) | ✅ fixed | low | low | B | GH_TOKEN with contents: write is set for the whole collect job, including the step that parses untrusted artifacts | trivial | S:C/low M:C/low I:C/info |
+| [F071](#f071) | ✅ fixed | low | low | B | The version tags, the moving X.Y tag and the chart are pushed before admission-smoke and smoke run | small | S:C/low M:C/low I:C/low |
 | [F028](#f028) | open | info | low | A | eval add-from-fp looks up a 16-bit finding id across every PR and takes the last match | trivial | S:C/info M:C/low I:C/info |
 | [F080](#f080) | open | info | info | B | Tool versions pinned inside run: steps and with: inputs aren't covered by Dependabot | medium | S:C/info M:C/info I:C/info |
 | [F110](#f110) | open | info | low | C | Friday-the-13th lists are compared ignoring order | trivial | S:C/info M:C/info I:C/info |
@@ -1429,7 +1433,7 @@ calendar-gates-release requires results.all(r, r.counts.critical == 0). The offl
 
 **The version tags, the moving X.Y tag and the chart are pushed before admission-smoke and smoke run**
 
-- **Status:** open
+- **Status:** ✅ fixed — #79: approve (gated, attests only) → smoke + admission-smoke → promote; the chart the admission tests installed is the tarball that is pushed
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `.github/workflows/release.yml:326` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `wr-10` (low, high confidence)
