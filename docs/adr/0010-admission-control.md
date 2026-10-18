@@ -106,10 +106,12 @@ no registry (`just lint-policies`, ci.yml).
   *rejected* carried everything admission asked for, and drill 23 showed a `candidate-v…` tag
   being admitted. `publish` now also attests `release-approved/v1`, which can only exist after a
   person approved that environment, and `calendar-gates-approved` requires it.
-  **It starts as Audit**, because no release up to v0.3.1 carries it and denying now would make
-  the current releases undeployable; it flips to Deny once v0.3.2 is out, the same path the
-  LLM-review policy took. `just verify-release` already requires it, so it fails on older
-  releases for that type, as it does for v0.1.0 and v0.2.0 on the newer ones.
+  It started as Audit, because no release up to v0.3.1 carries one, and **denies since v0.3.2**
+  (2026-10-18), the first release whose `publish` job created it: the same path the LLM-review
+  policy took. v0.3.0 and v0.3.1 are refused in `calendar-gates` from now on, which is true to
+  what they are — images nobody approved under this scheme. `just verify-release` requires the
+  type too, so it fails on older releases for it, as it does for v0.1.0 and v0.2.0 on the newer
+  ones. Deploy an older release only in `calendar-gates-dev`, which audits.
 - **Admission trusts the signing identity, not where the commit sits** (2026-10-18). The
   attestors accept `release.yml@refs/tags/v…`, which a tag on an unmerged commit also gets
   (ADR 0009's amendment). The cluster can't check whether a commit is on `main`, so that check

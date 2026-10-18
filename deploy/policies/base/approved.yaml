@@ -5,15 +5,16 @@
 # carried everything admission asked for, and drill 23 showed a `candidate-v…` tag being admitted.
 # This attestation is created inside `publish`, so only an approved release has it.
 #
-# **Audit until a release carries it.** No release up to v0.3.1 does, and flipping to Deny now
-# would make the current releases undeployable. The same path the LLM-review policy took: Audit
-# first, Deny once v0.3.2 is out (then set validationActions: [Deny] here and say so in ADR 0010).
+# **Deny since v0.3.2** (2026-10-18), the first release whose `publish` job created this
+# attestation. It started as Audit because no earlier release carries one and denying would have
+# made them undeployable; v0.3.0 and v0.3.1 are now refused here, which is true to what they are.
+# The same path the LLM-review policy took in #54.
 apiVersion: policies.kyverno.io/v1
 kind: ImageValidatingPolicy
 metadata:
   name: calendar-gates-approved
 spec:
-  validationActions: [Audit]
+  validationActions: [Deny]
   matchConstraints:
     namespaceSelector:
       matchLabels:
