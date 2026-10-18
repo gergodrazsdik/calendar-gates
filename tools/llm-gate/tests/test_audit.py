@@ -178,27 +178,52 @@ def comment(
     return {"user": {"login": by}, "body": body, "created_at": at, "updated_at": edited or at}
 
 
+# The logins the caller resolved to a write, maintain or admin role. An override needs one whoever
+# added the label, because labels can be applied with the triage role (F007).
+WRITERS = frozenset({"alice", "bob"})
+
+
+def override(events: list[dict[str, Any]], comments: list[dict[str, Any]]) -> Any:
+    return audit.find_override(events, comments, writers=WRITERS)
+
+
 def test_override_needs_a_reason_from_whoever_added_the_label() -> None:
     events = [labeled("alice"), labeled("bob", "other")]
 
-    found = audit.find_override(events, [comment("alice", "/llm-override hotfix for prod\nmore")])
+    found = override(events, [comment("alice", "/llm-override hotfix for prod\nmore")])
     assert found == audit.OverrideRequest(by="alice", reason="hotfix for prod")
 
-    no_reason = audit.find_override(events, [comment("alice", "/llm-override   ")])
+    no_reason = override(events, [comment("alice", "/llm-override   ")])
     assert isinstance(no_reason, str) and "`/llm-override <reason>`" in no_reason
 
-    someone_else = audit.find_override(events, [comment("mallory", "/llm-override trust me")])
+    someone_else = override(events, [comment("mallory", "/llm-override trust me")])
     assert isinstance(someone_else, str)
+
+
+def test_a_labeller_without_write_access_cannot_override() -> None:
+    """Applying a label is the triage role, which has no write access; `/llm-override` as a command
+    is refused for it, so the label path can't honour it either (F007)."""
+    events = [labeled("trish")]
+    comments = [comment("trish", "/llm-override shipping anyway")]
+
+    refused = audit.find_override(events, comments, writers=WRITERS)
+    assert isinstance(refused, str) and "write access" in refused
+
+    # Nothing is honoured when the caller looked up no roles at all.
+    assert isinstance(audit.find_override(events, comments), str)
+    assert isinstance(
+        audit.find_override([labeled("alice")], [comment("alice", "/llm-override ok")]), str
+    )
 
 
 def test_the_latest_labeller_counts() -> None:
     events = [labeled("alice"), labeled("bob")]
-    found = audit.find_override(events, [comment("alice", "/llm-override reason")])
+    found = override(events, [comment("alice", "/llm-override reason")])
     assert isinstance(found, str) and found.startswith("bob")
 
 
 def test_no_label_event_is_no_override() -> None:
-    assert isinstance(audit.find_override([], [comment("a", "/llm-override x")]), str)
+    assert isinstance(override([], [comment("a", "/llm-override x")]), str)
 
 
 # --- validation and collection (trusted side) ---
@@ -532,7 +557,7 @@ def unlabeled(by: str, at: str) -> dict[str, Any]:
 
 def test_an_override_comment_may_come_before_the_label() -> None:
     before = comment("alice", "/llm-override hotfix", at="2026-10-16T09:59:00Z")
-    assert audit.find_override([labeled("alice")], [before]) == audit.OverrideRequest(
+    assert override([labeled("alice")], [before]) == audit.OverrideRequest(
         by="alice", reason="hotfix"
     )
 
@@ -546,10 +571,10 @@ def test_an_override_comment_from_an_earlier_round_or_edited_does_not_count() ->
     ]
     edited = comment("alice", "/llm-override new", edited="2026-10-16T11:00:00Z")
 
-    assert isinstance(audit.find_override(events, [old]), str)
-    assert isinstance(audit.find_override(events, [edited]), str)
+    assert isinstance(override(events, [old]), str)
+    assert isinstance(override(events, [edited]), str)
     new = comment("alice", "/llm-override ok", at="2026-10-15T13:00:00Z")  # after the removal
-    assert audit.find_override(events, [old, new]) == audit.OverrideRequest(by="alice", reason="ok")
+    assert override(events, [old, new]) == audit.OverrideRequest(by="alice", reason="ok")
 
 
 # --- CLI ---
@@ -621,13 +646,21 @@ def test_cli_override(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Non
     events.write_text(json.dumps([labeled("alice")]))
     comments = tmp_path / "comments.json"
     comments.write_text(json.dumps([comment("alice", "/llm-override flaky reviewer")]))
+    writers = tmp_path / "writers.json"
+    writers.write_text(json.dumps(sorted(WRITERS)))
     args = ["audit", "override", "--events", str(events), "--comments", str(comments)]
+    with_roles = [*args, "--writers", str(writers)]
 
-    assert main(args) == 0
+    assert main(with_roles) == 0
     assert json.loads(capsys.readouterr().out) == {"by": "alice", "reason": "flaky reviewer"}
 
-    comments.write_text("[]")
+    # The same inputs without the role list: an override the caller can't attribute to someone
+    # with write access isn't one (F007).
     assert main(args) == 1
+    assert "write access" in capsys.readouterr().err
+
+    comments.write_text("[]")
+    assert main(with_roles) == 1
     assert "`/llm-override <reason>`" in capsys.readouterr().err
 
 
@@ -900,3 +933,45 @@ def test_a_refused_read_survives_the_tool_call_limit(tmp_path: Path) -> None:
     assert len(entry.tool_calls) == audit.MAX_TOOL_CALLS
     assert [c.input for c in entry.tool_calls if c.denied] == ["file_path=/proc/self/environ"]
     assert entry.denied_reads == 1
+
+
+# --- the config a run was judged by (F022) -------------------------------------------------------
+
+
+def test_a_run_is_judged_by_the_checks_yaml_it_used(repo: Any, tmp_path: Path) -> None:
+    """A checks.yaml that merges while a review is in flight used to turn that whole run into
+    tamper_suspected. The run's own config is used when it can be proved to be ours: the commit is
+    an ancestor of the trunk and the file hashes to what the record says (F022)."""
+    from argparse import Namespace
+
+    from llm_gate.cli import _run_gate_config
+    from llm_gate.diff import git as run_git
+
+    config = repo.root / "tools" / "llm-gate" / "checks.yaml"
+    run_git(repo.root, "switch", "-q", "main")
+    then = "checks:\n  code-review: {mode: blocking, fail_on: high}\n"
+    repo.write("tools/llm-gate/checks.yaml", then)
+    repo.commit("the config the run used")
+    gate_sha = run_git(repo.root, "rev-parse", "HEAD").strip()
+    repo.write("tools/llm-gate/checks.yaml", then + "  docs-drift: {mode: advisory}\n")
+    repo.commit("the rules changed after the run")
+
+    def resolved(**record: Any) -> Path:
+        artifacts = tmp_path / "artifacts" / "audit-1-1-code-review"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        (artifacts / "audit.jsonl").write_text(json.dumps({"type": "gate_run", **record}) + "\n")
+        args = Namespace(
+            artifacts=tmp_path / "artifacts",
+            out=tmp_path / "out",
+            default_branch="main",
+        )
+        return _run_gate_config(args, repo.root, config)
+
+    good = resolved(gate_sha=gate_sha, config_sha256=audit.sha256_text(then))
+    assert good != config and good.read_text(encoding="utf-8") == then
+
+    # A sha that isn't on the trunk, and a hash that doesn't match the file there: both fall back
+    # to the collector's own config, so a forged hint can't pick the rules it is judged by.
+    assert resolved(gate_sha="0" * 40, config_sha256=audit.sha256_text(then)) == config
+    assert resolved(gate_sha=gate_sha, config_sha256="f" * 64) == config
+    assert resolved(gate_sha=gate_sha) == config  # no hash at all

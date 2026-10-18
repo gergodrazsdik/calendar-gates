@@ -21,8 +21,8 @@ jobs:
       actions: read # the latest llm-eval artifact
       pull-requests: read # the merged PRs
       issues: write # the Gate health issue
+    # Per step, not job-wide: the report step is local work and needs no token (F075).
     env:
-      GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
       ISSUE: ${{ vars.GATE_HEALTH_ISSUE }}
     steps:
@@ -34,6 +34,8 @@ jobs:
           cache-dependency-glob: tools/llm-gate/uv.lock
 
       - name: Inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git fetch --quiet --no-tags --depth 1 origin audit-log
           mkdir -p .audit-log && git archive FETCH_HEAD | tar -x -C .audit-log
@@ -58,6 +60,8 @@ jobs:
 
       - name: Update the Gate health issue
         if: env.ISSUE != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           [[ "$ISSUE" =~ ^[0-9]+$ ]] || { echo "::error::GATE_HEALTH_ISSUE is not a number"; exit 1; }
           jq -n --rawfile body "$RUNNER_TEMP/report.md" '{body: $body}' \

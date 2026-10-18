@@ -4,11 +4,13 @@ import argparse
 import json
 import logging
 import os
+import re
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -205,6 +207,11 @@ def build_parser() -> argparse.ArgumentParser:
     collect.add_argument("--out", type=Path, required=True)
     collect.add_argument("--date", type=date.fromisoformat, help="default: today (UTC)")
     collect.add_argument(
+        "--default-branch",
+        default="main",
+        help="the trunk a run's gate_sha must be on before its own checks.yaml is trusted (F022)",
+    )
+    collect.add_argument(
         "--events", type=Path, required=True, help="the PR's issue events (JSON array)"
     )
     collect.add_argument(
@@ -281,6 +288,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="JSON array of {commit, pr, head_sha}: the release's commits and their PRs",
     )
     rev.add_argument("--audit-dir", type=Path, required=True)
+    rev.add_argument(
+        "--config",
+        type=Path,
+        help="checks.yaml, for the blocking checks per risk level (default: tools/llm-gate/)",
+    )
     rev.add_argument("--out", type=Path, required=True)
     rev.add_argument("--notes", type=Path, help="also write the release notes section here")
 
@@ -307,7 +319,10 @@ def _at_risk(config: GateConfig, name: str, risk: Risk | None) -> tuple[Check, s
         raise ConfigError("--risk given, but checks.yaml has no triage section")
     planned = triage.plan_for(risk, config.triage, config.checks)[name]
     if planned is None:
-        return check, f"not needed at risk: {risk}"
+        # `blocking` has to mean the same thing on every record: a check the plan dropped didn't
+        # block anything, whatever its mode in checks.yaml says (F040). Same shape as the advisory
+        # branch of `triage.plan_for`.
+        return replace(check, mode="advisory", fail_on=None), f"not needed at risk: {risk}"
     return planned, None
 
 
@@ -612,14 +627,84 @@ def _audit(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_gate_config(args: argparse.Namespace, root: Path, current: Path) -> Path:
+    """The `checks.yaml` the run itself used, when it can be proved to be one of ours; otherwise
+    the collector's own.
+
+    The collector used to recompute every run's triage from the default branch's config **at
+    collection time**, so a `checks.yaml` that merged while a review was in flight turned that
+    whole run into `tamper_suspected` and the next release listed it as unverified (F022). Each
+    `gate_run` names the commit its tooling ran from (`gate_sha`) and the hash of the config it
+    read (`config_sha256`), and both are checkable: the commit must be an ancestor of the default
+    branch, and the file at that commit must hash to what the record says. A forged sha fails the
+    ancestry test, a forged hash fails the comparison, and either way the run keeps being judged
+    by the current config, exactly as before.
+    """
+    pairs = {
+        (str(record["gate_sha"]), str(record["config_sha256"]))
+        for record in _artifact_records(args.artifacts)
+        if record.get("type") == "gate_run"
+        and record.get("gate_sha")
+        and record.get("config_sha256")
+    }
+    if len(pairs) != 1:  # nothing to go on, or artifacts that disagree
+        return current
+    ((sha, digest),) = pairs
+    if not re.fullmatch(r"[0-9a-f]{40}", sha) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+        return current
+    branch = args.default_branch
+    try:
+        for ref in (f"origin/{branch}", branch):
+            try:
+                git(root, "merge-base", "--is-ancestor", sha, ref)
+                break
+            except DiffError:
+                continue
+        else:
+            log.warning(
+                "audit collect: gate_sha %s is not on %s; using the current config",
+                sha[:12],
+                branch,
+            )
+            return current
+        text = git(root, "show", f"{sha}:tools/llm-gate/checks.yaml")
+    except DiffError as error:
+        log.warning("audit collect: %s; using the current config", error)
+        return current
+    if audit.sha256_text(text) != digest:
+        log.warning("audit collect: checks.yaml at %s is not the one the run recorded", sha[:12])
+        return current
+    path = Path(args.out) / f"checks-{sha[:12]}.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    log.info("audit collect: recomputing triage from checks.yaml at %s", sha[:12])
+    return path
+
+
+def _artifact_records(artifacts: Path) -> list[Mapping[str, Any]]:
+    """Every JSON line in the downloaded artifacts. Untrusted: used only for hints that are then
+    verified against the repository."""
+    found: list[Mapping[str, Any]] = []
+    for file in sorted(artifacts.glob("**/*.jsonl")) if artifacts.is_dir() else []:
+        for line in file.read_text(encoding="utf-8", errors="replace").splitlines():
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(record, dict):
+                found.append(record)
+    return found
+
+
 def _triage_expected(args: argparse.Namespace) -> audit.TriageExpected | None:
     """The triage the collector expects, computed from the default branch's checks.yaml and
     inputs fetched by the trusted workflow, never from the artifact."""
     if args.triage_inputs is None:
         return None
     root = repo_root(args.repo or Path.cwd())
-    config_path = args.config or root / "tools" / "llm-gate" / "checks.yaml"
-    config = load_gate_config(config_path, repo_root(config_path.resolve().parent))
+    current = args.config or root / "tools" / "llm-gate" / "checks.yaml"
+    config_path = _run_gate_config(args, root, current)
+    config = load_gate_config(config_path, repo_root(current.resolve().parent))
     data = json.loads(args.triage_inputs.read_text(encoding="utf-8"))
     files = data.get("compare_files")
     if config.triage is None or files is None:  # no triage, or too many files to recompute
@@ -785,8 +870,32 @@ def cmd_eval(
     return 1 if failed else 0
 
 
+def _blocking_levels(config: Path | None) -> dict[str, frozenset[str]] | None:
+    """Which checks block at each risk level, for the attestation's "no record" gaps (F027). None
+    when there is no readable config: then the attestation only reports the records it has, as
+    before, rather than inventing an expectation."""
+    path = config or Path("tools/llm-gate/checks.yaml")
+    if not path.is_file():
+        return None
+    try:
+        gate = load_gate_config(path, repo_root(path.resolve().parent))
+    except ConfigError, DiffError, OSError:
+        return None
+    if gate.triage is None:
+        return None
+    return {
+        risk: frozenset(
+            name
+            for name, check in triage.plan_for(risk, gate.triage, gate.checks).items()
+            if check is not None and check.blocking
+        )
+        for risk in RISKS
+    }
+
+
 def cmd_attest(args: argparse.Namespace) -> int:
-    """Predicates for release.yml's `attest` job; no repository needed."""
+    """Predicates for release.yml's `attest` job; no repository needed (a readable checks.yaml adds
+    the expected blocking checks per level, see `_blocking_levels`)."""
     try:
         if args.attest_command == "vuln-scan":
             reports = [json.loads(p.read_text(encoding="utf-8")) for p in args.grype]
@@ -797,6 +906,7 @@ def cmd_attest(args: argparse.Namespace) -> int:
                 args.audit_dir,
                 range_from=args.range_from or None,
                 range_to=args.range_to,
+                blocking=_blocking_levels(args.config),
             )
             if args.notes:
                 args.notes.write_text(attestations.render_notes(predicate), encoding="utf-8")

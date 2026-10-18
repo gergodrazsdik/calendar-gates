@@ -27,11 +27,20 @@ repository's PRs, and the audit log the feedback goes into is permanent.
 - `/llm-fp` and `/llm-ack` must name a finding the audit log has for this PR. `/llm-override`
   records an `override`, adds the label, and re-runs the PR's latest `llm-review` run: labels
   added with `GITHUB_TOKEN` start no workflows. `llm-review` reads the PR's labels from the API,
-  because a re-run keeps the original event's payload. `find_override` accepts a label added by
-  `github-actions[bot]` only when the `/llm-override <reason>` came from someone with write access
-  (`scripts/override-writers.sh` looks the roles up for `llm-review` and the collector).
+  because a re-run keeps the original event's payload. `find_override` honours a label only when
+  the `/llm-override <reason>` came from someone with write access, whether the label was added by
+  `github-actions[bot]` or by hand (`scripts/override-writers.sh` looks the roles up for
+  `llm-review` and the collector; applying a label needs only the triage role, so the label alone
+  says nothing, F007).
 
 ## Consequences
+
+- **Amended 2026-10-18 (F026): a command for a run that isn't collected yet is answered, not
+  recorded.** A finding's id is in the sticky comment as soon as its check finishes, but the
+  collector runs on `workflow_run: completed` and then needs a run of its own, so a `/llm-fp`
+  posted in that window used to become a permanent `feedback_rejected` with `unknown_finding`.
+  When the log holds no review of the PR at all, the workflow reacts 👀, says so in a comment and
+  writes nothing. Ids are still only ever resolved against the audit log.
 
 - The plan recorded outsiders' commands as `feedback_rejected` too. They're filtered out before the
   job starts instead: a permanent public log shouldn't grow with every stranger's comment, and a

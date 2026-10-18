@@ -54,6 +54,18 @@ output can't simply be trusted either.
   `/llm-override <reason>` comment by whoever added the label last, written since the label was
   last removed, before or after adding it (issue events API); `llm-gate run` ignores an override without a reason and records one with it
   as an `override` event.
+- **Amended 2026-10-18 (F007, F022, F039, F075).** Four things the collector and the override
+  check got wrong, none of them exploitable in this one-owner repository and all of them wrong as
+  soon as it isn't: an override added as a *label* skipped the write-role lookup that the
+  `/llm-override` comment path enforces, although applying a label needs only the triage role, so
+  both paths use the role list now and neither is honoured without it; a run is judged by the
+  `checks.yaml` **it used**, read at its own `gate_sha` once that commit is proved to be an
+  ancestor of the trunk and the file hashes to the record's `config_sha256`, so a config change
+  that merges mid-review no longer turns the run into `tamper_suspected`; record paths follow the
+  triggering event's day (`--date`, the comment's `created_at`) instead of the collector's clock,
+  so a re-run hits the same path and the append-only guard sees it; and `GH_TOKEN` is set on the
+  steps that call the API, not on the job, so the step that parses PR-written artifacts holds no
+  token that can write to a branch.
 - **Amended 2026-10-18 (F025): an `override` record means the override changed an
   outcome.** The label is PR-wide and every llm job reads it, so a record per job made one
   override read as six in the release notes and the attestation, including advisory, passing and

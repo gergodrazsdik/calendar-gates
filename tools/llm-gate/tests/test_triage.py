@@ -53,7 +53,14 @@ def changes(*items: tuple[str, int]) -> list[FileChange]:
         ([("docs/gates.md", 3)], "low"),
         ([("README.md", 3), ("tests/A.cs", 9)], "low"),
         ([("src/CalendarGates.Api/Program.cs", 5)], "medium"),
-        ([("justfile", 2)], "medium"),  # no rule: default_risk
+        # The deterministic gates' own configuration: an ignore or a threshold here changes what
+        # a gate accepts, so it is rated with the gates and not by default_risk (F021).
+        ([("justfile", 2)], "high"),
+        ([(".grype.yaml", 2)], "high"),
+        ([(".config/dotnet-tools.json", 1)], "high"),
+        ([("Directory.Build.props", 1)], "high"),
+        ([("global.json", 1)], "high"),
+        ([("CalendarGates.slnx", 1)], "medium"),  # still no rule: default_risk
         ([("CLAUDE.md", 1)], "medium"),  # agents read it, before **/*.md
         ([("tools/llm-gate/uv.lock", 900)], "high"),  # tools/llm-gate/** comes first
         ([("tests/CalendarGates.UnitTests/packages.lock.json", 2)], "medium"),

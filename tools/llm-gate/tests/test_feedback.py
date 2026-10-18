@@ -351,3 +351,47 @@ def test_a_writers_malformed_command_is_rejected_with_a_reason(audit_dir: Path) 
     assert "feedback-" in actions.path  # a writer's rejection is filed per comment, not per person
     r = record(actions)
     assert (r["type"], r["command"], r["code"]) == ("feedback_rejected", "fp", "bad_arguments")
+
+
+def test_a_command_for_a_run_that_is_not_collected_yet_is_answered_not_rejected(
+    tmp_path: Path,
+) -> None:
+    """A finding's id is in the sticky comment as soon as its check finishes, but the collector
+    runs after the whole workflow, so a command in that window is early, not wrong (F026)."""
+    empty = tmp_path / "events"
+    empty.mkdir(parents=True)
+
+    actions = handle("/llm-fp cr-1705 wrong line", tmp_path)
+
+    assert not actions.recorded
+    assert actions.records == []  # nothing permanent for a timing accident
+    assert actions.path == ""  # so the workflow writes nothing
+    assert actions.reaction == "eyes"
+    assert actions.comment is not None and "Try again" in actions.comment
+
+
+def test_an_unknown_id_on_a_collected_pr_is_still_a_rejection(audit_dir: Path) -> None:
+    actions = handle("/llm-fp cr-dead no such finding", audit_dir)
+
+    assert record(actions)["code"] == "unknown_finding"
+    assert actions.reaction == "confused"
+
+
+def test_the_record_path_follows_the_comment_not_the_clock(audit_dir: Path) -> None:
+    """Re-handling the same comment on another day must hit the same path, or the append-only
+    guard lets a second copy through (F039)."""
+    posted = event("/llm-ack cr-1705")
+    posted["comment"]["created_at"] = "2026-10-16T23:30:00Z"
+
+    actions = feedback.handle(
+        posted,
+        audit_dir=audit_dir,
+        blocking_checks=["code-review"],
+        context=CONTEXT,
+        now=datetime(2026, 10, 20, 9, 0, tzinfo=UTC),  # handled four days later
+        permission="write",
+    )
+
+    assert actions.path == "events/2026/10/16/feedback-1234.jsonl"
+    # The path is the comment's day; the record's own ts is when it was handled, not that day.
+    assert not record(actions)["ts"].startswith("2026-10-16")

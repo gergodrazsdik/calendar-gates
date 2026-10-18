@@ -127,8 +127,9 @@ class Actions:
 
     path: str
     recorded: bool
-    reaction: Literal["+1", "confused"] | None
+    reaction: Literal["+1", "confused", "eyes"] | None
     label: str | None = None
+    comment: str | None = None  # posted on the PR when the answer needs words (F026)
     rerun: bool = False
     mark: dict[str, str] | None = None  # {"check", "finding_id", "by"} for /llm-fp
     message: str = ""
@@ -136,6 +137,21 @@ class Actions:
 
     def to_json(self) -> str:
         return json.dumps(asdict(self))
+
+
+def has_runs(audit_dir: Path, pr: int) -> bool:
+    """Whether the log holds any review of this PR at all. A finding id appears in the sticky
+    comment as soon as its check finishes, but the collector runs after the whole workflow and then
+    needs a run of its own, so a command posted in that window is early, not wrong (F026)."""
+    for path in sorted(audit_dir.glob("events/**/*.jsonl")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            if record.get("type") == "gate_run" and record.get("pr") == pr:
+                return True
+    return False
 
 
 def find_finding(audit_dir: Path, pr: int, finding_id: str) -> str | None:
@@ -187,7 +203,10 @@ def handle(
     comment = event.get("comment") or {}
     pr = issue.get("number")
     login = (comment.get("user") or {}).get("login") or ""
-    day = f"{now:%Y}/{now:%m}/{now:%d}"
+    # The comment's own day, so re-handling the same comment later hits the same path and the
+    # append-only guard sees it; `now` stays the handling time on the record itself (F039).
+    posted = audit.parse_time(comment.get("created_at")) or now
+    day = f"{posted:%Y}/{posted:%m}/{posted:%d}"
     comment_id = comment.get("id")
     base = context.model_copy(update={"pr": pr if isinstance(pr, int) else None})
 
@@ -232,6 +251,20 @@ def handle(
     if parsed.name in ("fp", "ack"):
         assert parsed.finding_id is not None  # noqa: S101  # parse_command guarantees it
         check = find_finding(audit_dir, pr, parsed.finding_id)
+        if check is None and not has_runs(audit_dir, pr):
+            # Early, not wrong: say so and write nothing, so a retry still works and the metrics'
+            # rejected count stays about real mistakes (F026).
+            return Actions(
+                path="",
+                recorded=False,
+                reaction="eyes",
+                message=f"{parsed.name}: not collected yet",
+                comment=(
+                    f"`/{'llm-' + parsed.name} {parsed.finding_id}`: this PR's reviews aren't on "
+                    "the audit log yet (the collector runs after the whole workflow). Try again in "
+                    "a minute."
+                ),
+            )
         if check is None:
             return reject(parsed.name, "unknown_finding", outsider=False)
         record: audit.Feedback | audit.Override | audit.RiskOverride = audit.Feedback(

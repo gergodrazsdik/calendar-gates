@@ -30,8 +30,10 @@ jobs:
       actions: read # the run's artifacts and job conclusions
       issues: read # the PR's label events and comments (override check)
       pull-requests: read # the PR of a fork run (the event lists none)
+    # GH_TOKEN is set per step, on the four that call the API: `llm-gate audit collect` parses
+    # artifacts a PR's own workflow wrote, and a parser bug there should not come with a token that
+    # can write to a branch (F075; llm-feedback.yml does the same).
     env:
-      GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
       RUN_ID: ${{ github.event.workflow_run.id }}
       RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
@@ -44,6 +46,9 @@ jobs:
       - name: Collector code from the default branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # Full history: a run is judged by the checks.yaml it used, which means reading the file
+          # at its gate_sha and checking that commit is an ancestor of the trunk (F022).
+          fetch-depth: 0
           persist-credentials: false
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
@@ -51,6 +56,8 @@ jobs:
 
       - name: Find the PR
         id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           pr="$PR_FROM_EVENT"
           if [ -z "$pr" ]; then # fork PRs: the event lists no pull_requests
@@ -67,6 +74,8 @@ jobs:
       - name: Download the audit artifacts (untrusted)
         id: download
         if: steps.pr.outputs.pr != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           WORK="$RUNNER_TEMP/audit"
           mkdir -p "$WORK/artifacts"
@@ -92,6 +101,7 @@ jobs:
         id: gather
         if: steps.download.outputs.count > 0
         env:
+          GH_TOKEN: ${{ github.token }}
           PR: ${{ steps.pr.outputs.pr }}
         run: |
           WORK="$RUNNER_TEMP/audit"
@@ -150,6 +160,7 @@ jobs:
             --events "$WORK/events.json" --comments "$WORK/comments.json" \
             --writers "$WORK/writers.json" \
             --triage-inputs "$WORK/triage-inputs.json" --audit-dir "$WORK/audit-log" \
+            --date "${RUN_STARTED_AT%%T*}" --default-branch "$DEFAULT_BRANCH" \
             --checks "$(cat "$WORK/checks.json")" ${WORKFLOW_MODIFIED:-} \
             --out "$WORK/out" > "$WORK/collected.json"
           {
@@ -164,6 +175,8 @@ jobs:
 
       - name: Write to the audit-log branch
         if: steps.download.outputs.count > 0
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           WORK="$RUNNER_TEMP/audit"
           # Append-only: an existing file is never overwritten (a re-run of this job skips it).

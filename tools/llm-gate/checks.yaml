@@ -53,12 +53,27 @@ ai_markers:
 triage:
   model: ${LLM_MODEL_CHEAP:-claude-haiku-5-5}
   max_diff_kb: 50 # what the model sees; the rules see every file
-  default_risk: medium # justfile, lefthook.yml, global.json, .config/ ...
+  default_risk: medium # CalendarGates.slnx, .gitignore, .vscode/ ...
   rules:
     - paths:
         [".github/**", "tools/llm-gate/**", ".claude/commands/llm-*", "scripts/**", ".gitattributes"]
       risk: high
       reason: changes CI or the gates
+    # The deterministic gates' own configuration. These decide what `lint`, `format`, `grype` and
+    # `build-test` accept, so an added ignore or a lowered threshold here is a gate change in the
+    # sense AGENTS.md means, and used to fall through to default_risk: medium (F021).
+    - paths:
+        - .grype.yaml
+        - .yamllint.yaml
+        - .editorconfig
+        - lefthook.yml
+        - justfile
+        - global.json
+        - uv.toml
+        - .config/**
+        - Directory.Build.props
+      risk: high
+      reason: changes what a gate enforces
     - {paths: ["Dockerfile", "deploy/**"], risk: high, reason: runtime or deployment}
     - {paths: ["AGENTS.md", "CLAUDE.md", ".claude/**"], risk: medium, reason: instructions agents read}
     - paths: ["Directory.Packages.props", "**/packages.lock.json", "**/uv.lock"]

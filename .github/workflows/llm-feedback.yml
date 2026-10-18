@@ -81,8 +81,20 @@ jobs:
             "rerun=\(.rerun)", "command=\(.message)", "mark_check=\(.mark.check // "")",
             "mark_finding=\(.mark.finding_id // "")", "mark_by=\(.mark.by // "")"' \
             "$RUNNER_TEMP/actions.json" >> "$GITHUB_OUTPUT"
+          jq -r '.comment // "" | select(. != "")' "$RUNNER_TEMP/actions.json" \
+            > "$RUNNER_TEMP/answer.md"
           jq -r '"llm-feedback: \(.message) (recorded: \(.recorded))"' "$RUNNER_TEMP/actions.json" \
             >> "$GITHUB_STEP_SUMMARY"
+
+      # A command for a run the collector hasn't written yet is early, not wrong: it gets an answer
+      # and no record (F026).
+      - name: Answer the comment
+        if: steps.handle.outputs.path == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -s "$RUNNER_TEMP/answer.md" ] || exit 0
+          gh pr comment "$PR" --body-file "$RUNNER_TEMP/answer.md"
 
       - name: Write the record to audit-log
         if: steps.handle.outputs.path != ''

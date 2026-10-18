@@ -531,8 +531,9 @@ def find_override(
     if it never was). Before or after adding it both work, so the comment can come first and the
     labelled run sees it. When the feedback workflow added the label (`/llm-override` as a
     command), the comment's author must instead be in `writers` (logins with a write, maintain or
-    admin role, looked up by the caller), and is the one recorded. Without `writers`, such a
-    label is never honoured.
+    admin role, looked up by the caller), and is the one recorded. Either way the person must be in
+    `writers`: labels can be applied with the triage role, which has no write access, so without
+    the list no label is honoured at all (F007).
     """
     mine = [e for e in events if (e.get("label") or {}).get("name") == label]
     labelled = [e for e in mine if e.get("event") == "labeled"]
@@ -542,14 +543,14 @@ def find_override(
     if not labeller:
         return f"cannot tell who added the {label} label"
     via_command = labeller == WORKFLOW_BOT
-    labelled_at = _when(labelled[-1].get("created_at"))
+    labelled_at = parse_time(labelled[-1].get("created_at"))
     if labelled_at is None:
         return f"cannot tell when the {label} label was added"
     removals = [
         when
         for e in mine
         if e.get("event") == "unlabeled"
-        and (when := _when(e.get("created_at"))) is not None
+        and (when := parse_time(e.get("created_at"))) is not None
         and when <= labelled_at
     ]
     round_start = max(removals, default=None)
@@ -558,14 +559,17 @@ def find_override(
         if via_command:
             if writers is None or author not in writers:
                 continue
-        elif author != labeller:
+        elif author != labeller or writers is None or labeller not in writers:
+            # Adding a label is the *triage* role, which has no write access, and `feedback.handle`
+            # refuses a command from it. This path used to need no role at all, so the two paths
+            # disagreed about the same person (F007).
             continue
-        created = _when(comment.get("created_at"))
+        created = parse_time(comment.get("created_at"))
         # Only a comment written for this round counts (a reason from an earlier override doesn't
         # carry over), and only as written: an edit could change it after it was honoured.
         if created is None or (round_start is not None and created <= round_start):
             continue
-        if _when(comment.get("updated_at")) != created:
+        if parse_time(comment.get("updated_at")) != created:
             continue
         body = str(comment.get("body") or "").strip()
         first, _, _ = body.partition("\n")
@@ -578,12 +582,13 @@ def find_override(
             f"unedited `{OVERRIDE_COMMAND} <reason>` since it was last removed"
         )
     return (
-        f"{labeller} added {label} but wrote no unedited `{OVERRIDE_COMMAND} <reason>` comment "
-        "since it was last removed"
+        f"{labeller} added {label}, but no unedited `{OVERRIDE_COMMAND} <reason>` comment by them "
+        "with write access followed, since the label was last removed"
     )
 
 
-def _when(value: object) -> datetime | None:
+def parse_time(value: object) -> datetime | None:
+    """A GitHub timestamp, or None when it is missing or unparseable."""
     try:
         return datetime.fromisoformat(str(value)) if value else None
     except ValueError:

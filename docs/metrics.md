@@ -14,6 +14,7 @@ PRs merged before the log existed can't be covered.
 | Metric | Definition | Source |
 |---|---|---|
 | Coverage | merged PRs where every blocking check has a `gate_run` with a real verdict (`pass`, `fail`, `not_applicable`; not `skipped_no_key` or `error`) / merged PRs | `gate_run`, merged PRs |
+
 | Review turnaround | `finished_at − pr_event_at` per check, p50/p90, for reviews that ran (`pass`, `fail`, `error`) | `gate_run` |
 | False-positive rate | per check and severity: findings marked `/llm-fp` / distinct findings (a finding counts once per PR, however often it was re-reported; when people marked it more than once, the latest verdict by time wins); also fp / (fp + ack), over the findings people looked at | `gate_run` findings, `feedback` |
 | Override rate | PRs with an honoured override / PRs where a blocking check failed | `gate_run` (`override_honoured`, `verdict`) |
@@ -23,7 +24,9 @@ PRs merged before the log existed can't be covered.
 | Eval trend | the latest eval run's recall, false blocks, verdict accuracy and flips per check, engine and prompt | `llm-eval` artifact (`reports/eval/`) |
 | Integrity | `tamper_suspected` events, reviews from PRs that changed the review workflow, rejected `/llm-*` commands | `tamper_suspected`, `gate_run.workflow_modified`, `feedback_rejected` |
 
-A metric without data says "no data yet".
+A metric without data says "no data yet". A record's `blocking` is what the check actually was for
+that run: one the triage plan dropped records `blocking: false`, whatever its mode in `checks.yaml`
+says, so a query for "blocking checks that didn't review" can't count every low-risk PR (F040).
 
 ## Feedback commands
 

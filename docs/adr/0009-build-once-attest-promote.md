@@ -78,6 +78,12 @@ verifiable outside GitHub.
 
 ## Consequences
 
+- **Amended 2026-10-18 (F027): a planned blocking check with no record is listed as unreviewed.**
+  The predicate used to report only the records that existed, so a failed artifact upload or a
+  collector that gave up mid-write read as a clean release: the check was simply absent. The
+  triage record's `checks_plan` says what was supposed to run, and the levels in `checks.yaml` say
+  which of those block, so a missing one is named (`security-review: no record`).
+
 - **A failed scan leaves only the candidate tag.** No version tags, chart or release appear.
   Approval comes after the scan and the attestations, so the reviewer approves known bytes.
 - **The vulnerability attestation is true when it was made.** A CVE published later doesn't show
