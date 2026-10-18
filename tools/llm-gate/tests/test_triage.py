@@ -5,7 +5,7 @@ import json
 from datetime import UTC, date, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from conftest import git
@@ -18,6 +18,7 @@ from llm_gate.config import (
     AiMarkers,
     ConfigError,
     GateConfig,
+    Risk,
     TriageConfig,
     load_gate_config,
 )
@@ -1027,3 +1028,242 @@ def test_an_advisory_cached_verdict_is_fine(tmp_path: Path) -> None:
     result = collect_run(tmp_path, triage_expected=None, jobs={"llm / docs-drift": "success"})
 
     assert problems(result, "audit-100-1-docs-drift") == []
+
+
+# --- the collector's own recomputation (F004) ---
+
+
+def real_plan(real: GateConfig, risk: str) -> list[str]:
+    """The checks plan of a level, from the repository's own checks.yaml: what the collector
+    computes, so a fixture can't drift away from it."""
+    assert real.triage is not None
+    plan = triage.plan_for(cast("Risk", risk), real.triage, real.checks)
+    return sorted(name for name, check in plan.items() if check is not None)
+
+
+def collect_cli(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    *,
+    inputs: dict[str, Any],
+    audit_dir: Path | None = None,
+    comments: Any = None,
+    writers: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """`llm-gate audit collect` with --triage-inputs, so cli._triage_expected really runs: the
+    collector recomputes the floor from the compare API and the PR's /llm-risk records, and never
+    trusts the artifact (ADR 0008). Everything below goes through this, not the helper."""
+    jobs = tmp_path / "jobs.jsonl"
+    jobs.write_text(
+        '{"name": "triage", "conclusion": "success"}\n'
+        '{"name": "llm / code-review", "conclusion": "failure"}\n'
+    )
+    triage_inputs = tmp_path / "triage-inputs.json"
+    triage_inputs.write_text(json.dumps(inputs))
+    empty = tmp_path / "empty.json"
+    empty.write_text("[]")
+    comments_file = tmp_path / "comments.json"
+    comments_file.write_text(json.dumps(comments if comments is not None else []))
+    writers_file = tmp_path / "writers.json"
+    writers_file.write_text(json.dumps(writers if writers is not None else ["alice"]))
+    out = tmp_path / "out"
+    code = main(
+        [
+            "audit",
+            "collect",
+            "--repo-name",
+            "owner/repo",
+            "--run-id",
+            "100",
+            "--run-attempt",
+            "1",
+            "--head-sha",
+            "a" * 40,
+            "--pr",
+            "7",
+            "--artifacts",
+            str(tmp_path / "artifacts"),
+            "--checks",
+            '["code-review", "security-review", "docs-drift"]',
+            "--jobs",
+            str(jobs),
+            "--out",
+            str(out),
+            "--date",
+            "2026-10-17",
+            "--events",
+            str(empty),
+            "--comments",
+            str(comments_file),
+            "--triage-inputs",
+            str(triage_inputs),
+            "--writers",
+            str(writers_file),
+            *(["--audit-dir", str(audit_dir)] if audit_dir else []),
+        ]
+    )
+    assert code == 0
+    return [
+        json.loads(line)
+        for summary in json.loads(capsys.readouterr().out)
+        for line in (out / summary["path"]).read_text().splitlines()
+    ]
+
+
+def compare_file(name: str, additions: int = 1) -> dict[str, Any]:
+    return {"filename": name, "additions": additions, "deletions": 0, "patch": "@@"}
+
+
+def test_the_collector_recomputes_the_floor_and_accepts_a_matching_triage(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], real: GateConfig
+) -> None:
+    artifact(
+        tmp_path,
+        "audit-100-1-triage",
+        audit.dumps(triage_record(checks_plan=real_plan(real, "medium"))),
+    )
+    artifact(tmp_path, "audit-100-1-code-review", audit.dumps(gate_run(risk="medium")))
+
+    records = collect_cli(
+        tmp_path,
+        capsys,
+        inputs={
+            "compare_files": [compare_file("src/Api/A.cs")],  # src/** -> medium, as the record says
+            "commits": [{"commit": {"message": "fix: a thing"}}],
+            "body": "",
+            "head_ref": "fix/a",
+            "run_started_at": "2026-10-17T10:00:00Z",
+        },
+    )
+
+    assert [r["type"] for r in records] == ["triage", "gate_run"]
+
+
+@pytest.mark.parametrize(
+    ("record", "files", "problem"),
+    [
+        # The floor the collector computes itself, not the one the artifact claims.
+        (
+            {"rules_risk": "low", "final_risk": "low", "checks_plan": ["code-review"]},
+            [compare_file(".github/workflows/ci.yml")],
+            "rules_risk low, but the rules give high",
+        ),
+        # AI markers are recomputed from the PR's commits and body.
+        (
+            {"ai_assisted": True},
+            [compare_file("src/Api/A.cs")],
+            "ai_assisted True, but the markers say False",
+        ),
+        # A manual level with no /llm-risk record behind it.
+        (
+            {"source": "manual", "final_risk": "low", "checks_plan": ["code-review"]},
+            [compare_file("src/Api/A.cs")],
+            "no such /llm-risk in the log",
+        ),
+        # The plan has to match the level, from the default branch's checks.yaml.
+        (
+            {"checks_plan": ["code-review"]},
+            [compare_file("src/Api/A.cs")],
+            "checks_plan does not match risk medium",
+        ),
+    ],
+)
+def test_the_collector_catches_a_triage_record_that_does_not_add_up(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    record: dict[str, Any],
+    files: list[dict[str, Any]],
+    problem: str,
+) -> None:
+    artifact(tmp_path, "audit-100-1-triage", audit.dumps(triage_record(**record)))
+
+    records = collect_cli(
+        tmp_path,
+        capsys,
+        inputs={
+            "compare_files": files,
+            "commits": [{"commit": {"message": "fix: a thing"}}],
+            "body": "",
+            "head_ref": "fix/a",
+            "run_started_at": "2026-10-17T10:00:00Z",
+        },
+    )
+
+    (tamper,) = records
+    assert tamper["type"] == "tamper_suspected"
+    assert any(problem in p for p in tamper["problems"]), tamper["problems"]
+
+
+def test_the_collector_honours_a_risk_override_backed_by_its_comment(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], real: GateConfig
+) -> None:
+    """The /llm-risk path end to end: the record on audit-log plus the comment the collector
+    fetched itself (F005), against a run that was triaged manually."""
+    log = tmp_path / "audit-log"
+    day = log / "events" / "2026" / "10" / "17"
+    day.mkdir(parents=True)
+    (day / "feedback-2.jsonl").write_text(risk_override(7, "high", "2026-10-17T09:00:00Z") + "\n")
+    manual = triage_record(source="manual", final_risk="high", checks_plan=real_plan(real, "high"))
+    artifact(tmp_path, "audit-100-1-triage", audit.dumps(manual))
+
+    records = collect_cli(
+        tmp_path,
+        capsys,
+        audit_dir=log,
+        comments=[comment(2, "/llm-risk high the chart change deserves it")],
+        inputs={
+            "compare_files": [compare_file("src/Api/A.cs")],
+            "commits": [{"commit": {"message": "fix: a thing"}}],
+            "body": "",
+            "head_ref": "fix/a",
+            "run_started_at": "2026-10-17T10:00:00Z",
+        },
+    )
+
+    (triage_line,) = records
+    assert triage_line["type"] == "triage"  # honoured, not flagged
+    assert triage_line["final_risk"] == "high"
+
+
+def test_a_risk_override_with_no_comment_cannot_explain_the_level(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], real: GateConfig
+) -> None:
+    """The same record, appended straight to the branch with no comment behind it: the collector
+    computes manual_allowed without it, so the run is flagged instead of accepted."""
+    log = tmp_path / "audit-log"
+    day = log / "events" / "2026" / "10" / "17"
+    day.mkdir(parents=True)
+    (day / "feedback-2.jsonl").write_text(risk_override(7, "low", "2026-10-17T09:00:00Z") + "\n")
+    manual = triage_record(source="manual", final_risk="low", checks_plan=real_plan(real, "low"))
+    artifact(tmp_path, "audit-100-1-triage", audit.dumps(manual))
+
+    records = collect_cli(
+        tmp_path,
+        capsys,
+        audit_dir=log,
+        comments=[],  # the comment the record names doesn't exist
+        inputs={
+            "compare_files": [compare_file("src/Api/A.cs")],
+            "commits": [{"commit": {"message": "fix: a thing"}}],
+            "body": "",
+            "head_ref": "fix/a",
+            "run_started_at": "2026-10-17T10:00:00Z",
+        },
+    )
+
+    (tamper,) = records
+    assert tamper["type"] == "tamper_suspected"
+    assert any("no such /llm-risk in the log" in p for p in tamper["problems"])
+
+
+def test_too_many_files_to_recompute_means_no_expectation(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The compare API truncates at 300 files; the workflow then passes null and the collector
+    checks what it can rather than inventing a floor."""
+    artifact(tmp_path, "audit-100-1-triage", audit.dumps(triage_record(rules_risk="low")))
+
+    records = collect_cli(tmp_path, capsys, inputs={"compare_files": None})
+
+    (triage_line,) = records
+    assert triage_line["type"] == "triage"

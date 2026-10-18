@@ -31,13 +31,13 @@ A review of the whole repository at `43ec3c2` (2026-10-17), after PLAN-v2 was wr
 | accepted | 0 | 0 | 0 | 2 | 1 | 3 |
 | rejected | 0 | 0 | 0 | 0 | 11 | 11 |
 
-**Fixed so far: 49 of 119** (2 partial, 67 open, 1 unverifiable). By severity:
+**Fixed so far: 50 of 119** (2 partial, 66 open, 1 unverifiable). By severity:
 
 | Status | critical | high | medium | low | info | total |
 |---|---|---|---|---|---|---|
-| ✅ fixed | 0 | 2 | 7 | 21 | 19 | 49 |
+| ✅ fixed | 0 | 2 | 8 | 21 | 19 | 50 |
 | 🟡 partial | 0 | 0 | 1 | 1 | 0 | 2 |
-| open | 0 | 0 | 8 | 52 | 7 | 67 |
+| open | 0 | 0 | 7 | 52 | 7 | 66 |
 | ⚪ unverifiable | 0 | 0 | 1 | 0 | 0 | 1 |
 
 Each fix names the PR that made it. The status column is maintained by hand as fixes land; the verdicts and severities below are the review's own and are not revised.
@@ -156,7 +156,6 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F001](#f001) | ✅ fixed | high | high | A | A PR's own .gitattributes can hide its changes from every LLM reviewer and from triage's size rule | small | S:C/high M:C/high I:C/medium |
 | [F002](#f002) | ✅ fixed | high | high | A | Review results restored from the Actions cache are trusted unverified, and other workflows of the same PR can write that cache | medium | S:C/high M:C/high I:C/medium |
 | [F003](#f003) | open | medium | high | A | The agent reviewer's file reads are not fenced to the reviewed checkout, and its output is published unredacted | small | S:P/medium M:C/medium I:C/low |
-| [F004](#f004) | open | medium | high | A | The collector's triage recomputation (_triage_expected) has no test at all | small | S:C/medium M:C/medium I:C/low |
 | [F008](#f008) | open | medium | medium | A | llm-eval checks only flips and fp-regressions when the run's engine/model has no baseline entry, so changing a check's model skips the regression gate | small | S:C/medium M:C/medium I:C/medium |
 | [F010](#f010) | open | medium | medium | A | Name-based EXCLUDES drop compiled C# from the review, and a PR made only of excluded files passes as 'not applicable' | small | S:C/medium M:C/medium I:C/low |
 | [F020](#f020) | open | medium | medium | A | A /llm-risk decision isn't tied to a head: lowering the risk once removes blocking review from every later push to the PR | small | S:C/medium M:C/low I:C/medium |
@@ -164,6 +163,7 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F052](#f052) | open | medium | medium | B | uv itself is unpinned: every setup-uv step installs the newest uv release, in the signing job and the write-token jobs too | small | S:C/low M:C/medium I:C/medium |
 | [F081](#f081) | open | medium | medium | C | A malformed or empty ?year= on /api/friday13 gets a 400 without `errors` in Production and a 500 in Development, not the 400 ValidationProblem | small | S:C/medium M:C/medium I:C/medium |
 | [F012](#f012) | 🟡 partial | medium | medium | A | Cache keys ignore llm-gate's request code and engine settings, so llm-eval scores engine changes from main's cached reviews | small | S:C/medium M:C/medium I:C/medium |
+| [F004](#f004) | ✅ fixed | medium | high | A | The collector's triage recomputation (_triage_expected) has no test at all | small | S:C/medium M:C/medium I:C/low |
 | [F005](#f005) | ✅ fixed | medium | medium | A | Triage and the collector accept any risk_override record on audit-log, so a hand-pushed record can lower the risk with a forged author and an unbeatable timestamp | medium | S:C/medium M:C/medium I:C/medium |
 | [F006](#f006) | ✅ fixed | medium | medium | A | Re-running only the failed llm jobs turns their records into tamper_suspected, because the new attempt has no triage artifact | small | S:C/medium M:C/medium I:C/medium |
 | [F011](#f011) | ✅ fixed | medium | medium | A | Schema-invalid or truncated model output escapes structured_call as pydantic.ValidationError, crashing triage instead of leaving the floor | small | S:C/medium M:C/medium I:C/medium |
@@ -386,29 +386,6 @@ The Review step exports ANTHROPIC_API_KEY, and the Agent SDK passes os.environ o
 
 </details>
 
-### F004
-
-**The collector's triage recomputation (_triage_expected) has no test at all**
-
-- **Status:** open
-- **Severity:** medium (reviewers: high) · **outcome:** confirmed · **fix cost:** small
-- **Where:** `tools/llm-gate/src/llm_gate/cli.py:594` · **area:** llm-gate and review prompts
-- **Reported by:** `tr-01` (high, high confidence)
-
-_triage_expected builds the TriageExpected that audit-collect.yml checks every run's triage against (ADR 0008 decision 6): the floor from the compare API files, the AI flag from commits/body/branch, manual_required (the latest /llm-risk written before run_started_at) versus manual_allowed (that one plus the latest), and the per-level plans from the default branch's checks.yaml. Branch coverage shows cli.py 599-625 never executed, and no test passes --triage-inputs. The collector tests in test_triage.py hand-build expected(), so they never exercise this builder. On a scratch copy, two mutations survived all 306 tests: (a) manual_required taken from the latest override instead of the one before the run started; (b) the function always returning None. With (b), _triage_problems returns [] and _risk_problems falls back to the artifact's own checks_plan, so the floor, AI flag and plans are no longer recomputed. ADR 0005 says the collector's validation has its own tests; this part has none. It is defence in depth behind workflow_modified, but it runs on every collection.
-
-*Failure scenario:* A refactor makes _triage_expected return None, or swaps required/latest. All tests pass. In production either no run's triage is checked any more, or every run that started before a later /llm-risk is written as tamper_suspected. Those are permanent false alarms, and the release attestation then lists those PRs as unverified.
-
-*Suggested fix:* CLI tests of `audit collect --triage-inputs` with a temporary checks.yaml and an audit-log dir holding risk_override records from before and after run_started_at. Add a case with compare_files null, and assert the outcome (written or tamper_suspected) each time. Or unit-test _triage_expected directly with an argparse.Namespace.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, medium, small): No test passes --triage-inputs or calls _triage_expected (grep of tests). I ran both mutants against the full suite through an import-hook plugin, without touching the repo: _triage_expected always returning None survived (306 passed), and manual_required taken from the latest override survived (306 passed); a control mutant in the same module was killed, so the harness applies cli mutations. Calibrated to medium: it's a test gap, but mutant (b) would silently turn off the collector's triage recomputation (ADR 0008 decision 6).
-- **maintainer** (CONFIRMED, medium, small): No test passes --triage-inputs or calls _triage_expected; the collector tests hand-build TriageExpected. In a scratch clone both mutations survived all 306 tests: _triage_expected always returning None, and manual_required computed without `before=started`. ADR 0005 says the collector's validation has its own tests, and this builder decides every run's triage check. It is a test gap, not wrong behaviour today, hence medium rather than high.
-- **impact** (CONFIRMED, low, small): Branch coverage of the suite (pytest-cov) shows cli.py 599-625 never executed, no test passes --triage-inputs, and test_triage.py hand-builds TriageExpected, so both described mutations survive. The impact is smaller than reported: the recomputation adds value only when a run's triage artifact can lie, which needs a modified workflow (already flagged workflow_modified) or an exotic route, and its likely regressions are either silent loss of a mostly redundant check (return None) or loud false tamper events. A real test gap on the collector, but low.
-
-</details>
-
 ### F008
 
 **llm-eval checks only flips and fp-regressions when the run's engine/model has no baseline entry, so changing a check's model skips the regression gate**
@@ -591,6 +568,29 @@ cache_key covers [CACHE_VERSION, check, engine name, model, prompt body, diff]. 
 
 </details>
 
+### F004
+
+**The collector's triage recomputation (_triage_expected) has no test at all**
+
+- **Status:** ✅ fixed — #68: six tests drive the real collect CLI, with the plans read from checks.yaml so they can't drift
+- **Severity:** medium (reviewers: high) · **outcome:** confirmed · **fix cost:** small
+- **Where:** `tools/llm-gate/src/llm_gate/cli.py:594` · **area:** llm-gate and review prompts
+- **Reported by:** `tr-01` (high, high confidence)
+
+_triage_expected builds the TriageExpected that audit-collect.yml checks every run's triage against (ADR 0008 decision 6): the floor from the compare API files, the AI flag from commits/body/branch, manual_required (the latest /llm-risk written before run_started_at) versus manual_allowed (that one plus the latest), and the per-level plans from the default branch's checks.yaml. Branch coverage shows cli.py 599-625 never executed, and no test passes --triage-inputs. The collector tests in test_triage.py hand-build expected(), so they never exercise this builder. On a scratch copy, two mutations survived all 306 tests: (a) manual_required taken from the latest override instead of the one before the run started; (b) the function always returning None. With (b), _triage_problems returns [] and _risk_problems falls back to the artifact's own checks_plan, so the floor, AI flag and plans are no longer recomputed. ADR 0005 says the collector's validation has its own tests; this part has none. It is defence in depth behind workflow_modified, but it runs on every collection.
+
+*Failure scenario:* A refactor makes _triage_expected return None, or swaps required/latest. All tests pass. In production either no run's triage is checked any more, or every run that started before a later /llm-risk is written as tamper_suspected. Those are permanent false alarms, and the release attestation then lists those PRs as unverified.
+
+*Suggested fix:* CLI tests of `audit collect --triage-inputs` with a temporary checks.yaml and an audit-log dir holding risk_override records from before and after run_started_at. Add a case with compare_files null, and assert the outcome (written or tamper_suspected) each time. Or unit-test _triage_expected directly with an argparse.Namespace.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, medium, small): No test passes --triage-inputs or calls _triage_expected (grep of tests). I ran both mutants against the full suite through an import-hook plugin, without touching the repo: _triage_expected always returning None survived (306 passed), and manual_required taken from the latest override survived (306 passed); a control mutant in the same module was killed, so the harness applies cli mutations. Calibrated to medium: it's a test gap, but mutant (b) would silently turn off the collector's triage recomputation (ADR 0008 decision 6).
+- **maintainer** (CONFIRMED, medium, small): No test passes --triage-inputs or calls _triage_expected; the collector tests hand-build TriageExpected. In a scratch clone both mutations survived all 306 tests: _triage_expected always returning None, and manual_required computed without `before=started`. ADR 0005 says the collector's validation has its own tests, and this builder decides every run's triage check. It is a test gap, not wrong behaviour today, hence medium rather than high.
+- **impact** (CONFIRMED, low, small): Branch coverage of the suite (pytest-cov) shows cli.py 599-625 never executed, no test passes --triage-inputs, and test_triage.py hand-builds TriageExpected, so both described mutations survive. The impact is smaller than reported: the recomputation adds value only when a run's triage artifact can lie, which needs a modified workflow (already flagged workflow_modified) or an exotic route, and its likely regressions are either silent loss of a mostly redundant check (return None) or loud false tamper events. A real test gap on the collector, but low.
+
+</details>
+
 ### F005
 
 **Triage and the collector accept any risk_override record on audit-log, so a hand-pushed record can lower the risk with a forged author and an unbeatable timestamp**
@@ -760,7 +760,7 @@ release-tags blocks deletion, update and non-fast-forward of v* tags, but not th
 
 **/llm-risk and /llm-override posted while llm-review is running get a +1 reaction but may never take effect**
 
-- **Status:** ✅ fixed — #65: the feedback workflow waits for a run in flight, then re-runs it
+- **Status:** ✅ fixed — #65: the feedback workflow waits for a run in flight, then re-runs it; proven on #68 ("re-ran llm-review run 39127461371 after 30s")
 - **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `.github/workflows/llm-feedback.yml:158` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `api-16` (low, medium confidence), `wr-02` (medium, high confidence)
