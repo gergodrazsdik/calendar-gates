@@ -31,13 +31,13 @@ A review of the whole repository at `43ec3c2` (2026-10-17), after PLAN-v2 was wr
 | accepted | 0 | 0 | 0 | 2 | 1 | 3 |
 | rejected | 0 | 0 | 0 | 0 | 11 | 11 |
 
-**Fixed so far: 52 of 119** (3 partial, 63 open, 1 unverifiable). By severity:
+**Fixed so far: 53 of 119** (3 partial, 62 open, 1 unverifiable). By severity:
 
 | Status | critical | high | medium | low | info | total |
 |---|---|---|---|---|---|---|
-| ✅ fixed | 0 | 2 | 10 | 21 | 19 | 52 |
+| ✅ fixed | 0 | 2 | 10 | 22 | 19 | 53 |
 | 🟡 partial | 0 | 0 | 1 | 2 | 0 | 3 |
-| open | 0 | 0 | 5 | 51 | 7 | 63 |
+| open | 0 | 0 | 5 | 50 | 7 | 62 |
 | ⚪ unverifiable | 0 | 0 | 1 | 0 | 0 | 1 |
 
 Each fix names the PR that made it. The status column is maintained by hand as fixes land; the verdicts and severities below are the review's own and are not revised.
@@ -118,7 +118,13 @@ exactly the bypass it describes, so it was not built. What is confirmed without 
 `http-tests` and `k8s-smoke` hold `checks: write` while running PR code. Moving test reporting to
 a job that runs no PR code removes the question.
 
-**Since the review (2026-10-18).** Seven things changed under this document:
+**Since the review (2026-10-18).** Eight things changed under this document:
+- **v0.3.2 shipped** and exercised four things for the first time: the LLM-review Deny policy in
+  `admission-smoke`, the `release-approved` attestation, the tag-creation rule (the push logged
+  "Bypassed rule violations ... creations being restricted"), and `verify-release`'s ancestry and
+  `--source-digest` checks. It also exposed a bug in F005's fix, which **#70** repairs: the
+  writers list the collector compares a `/llm-risk` against was built from `/llm-override`
+  comments only, so #68's run became seven tamper events in that release's attestation.
 - **#69** took the admission pair and the stale-risk hole: image volumes are refused (F047), the
   approval is its own attestation (F048, Audit until v0.3.2 carries it), and a `/llm-risk`
   lowering no longer covers later pushes (F020).
@@ -207,7 +213,6 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F056](#f056) | open | low | low | B | k8s-up's restart path neither waits for the API server nor restores the kubeconfig | small | S:C/low M:C/low I:C/low |
 | [F057](#f057) | open | low | low | B | cluster=local inherits $KUBECONFIG, so it breaks in exactly the shell setup AGENTS.md suggests | trivial | S:C/low M:C/low I:C/low |
 | [F069](#f069) | open | low | low | B | No test exercises the admission rule 'no critical vulnerabilities' | medium | S:A/info M:C/low I:C/low |
-| [F070](#f070) | open | low | low | B | Nothing tests who may honour a bot-added override (override-writers.sh) | small | S:C/low M:C/low I:C/low |
 | [F071](#f071) | open | low | low | B | The version tags, the moving X.Y tag and the chart are pushed before admission-smoke and smoke run | small | S:C/low M:C/low I:C/low |
 | [F072](#f072) | open | low | low | B | pr-title isn't re-checked when the title is edited, so the check can stay green on a title that isn't a Conventional Commit | small | S:C/low M:C/low I:C/low |
 | [F073](#f073) | open | low | low | B | Records are dropped when an llm-review run completes after its PR was merged | trivial | S:C/low M:C/low I:C/low |
@@ -234,6 +239,7 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F062](#f062) | ✅ fixed | low | low | B | A failed push in just release leaves the local tag behind, and the retry stops at 'already exists' | trivial | S:C/info M:C/low I:C/low |
 | [F064](#f064) | ✅ fixed | low | low | B | gh-setup uploads the whole pass entry as ANTHROPIC_API_KEY, while the other recipes use only its first line | trivial | S:C/info M:C/low I:C/low |
 | [F065](#f065) | ✅ fixed | low | low | B | The timeout counts attempts, not seconds, because curl runs without --max-time | trivial | S:C/low M:C/low I:C/low |
+| [F070](#f070) | ✅ fixed | low | low | B | Nothing tests who may honour a bot-added override (override-writers.sh) | small | S:C/low M:C/low I:C/low |
 | [F082](#f082) | ✅ fixed | low | medium | C | OpenAPI documents only 200 for /api/easter/{year}, /api/leap/{year} and /api/friday13, which also return 400 ValidationProblem | trivial | S:C/low M:C/low I:C/low |
 | [F089](#f089) | ✅ fixed | low | low | C | docs/gates.md's list of required checks leaves out llm-eval and says the other checks don't block | trivial | S:C/low M:C/low I:C/low |
 | [F092](#f092) | ✅ fixed | low | low | C | Undocumented: llm-eval passes without running when there's no API key, and LLM_GATE_MISSING_KEY doesn't apply to it | trivial | S:C/low M:C/low I:C/low |
@@ -1668,29 +1674,6 @@ calendar-gates-release requires results.all(r, r.counts.critical == 0). The offl
 
 </details>
 
-### F070
-
-**Nothing tests who may honour a bot-added override (override-writers.sh)**
-
-- **Status:** open
-- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
-- **Where:** `scripts/override-writers.sh:12` · **area:** workflows, release, deploy, scripts
-- **Reported by:** `tr-29` (low, high confidence)
-
-For llm-review and the collector (ADR 0007), the script decides which /llm-override authors count as writers: user logins only, with the role admin, maintain or write. It has no test, and find_override is tested only with a hand-written writers set.
-
-*Failure scenario:* The case pattern is widened (say, triage added) or the login regex is dropped. A /llm-override from a read-only collaborator is then honoured, and no test fails.
-
-*Suggested fix:* A test with a stub `gh` on PATH that returns a role per login, asserting that only write, maintain and admin users are printed and bots are skipped.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, low, small): No test exercises scripts/override-writers.sh: it appears only as a triage path in test_triage.py, and find_override is tested with a hand-written writers set (test_feedback.py:230-236). The script decides which /llm-override authors count for llm-review and the collector (roles admin, maintain, write; user logins only), so widening its case pattern or dropping the login filter would go unnoticed. Impact is bounded because llm-feedback adds the label only after checking the commenter's role itself, so low.
-- **maintainer** (CONFIRMED, low, small): scripts/override-writers.sh decides who may honour a bot-added override for llm-review.yml:255 and audit-collect.yml:94 (ADR 0007), and no test runs it: the only test reference (test_triage.py:59) uses its path as a triage-rule input, and find_override is tested with hand-made writer sets. The script is 10 lines and shellchecked, but it's security-relevant; a pytest with a stub gh on PATH is small.
-- **impact** (CONFIRMED, low, small): scripts/override-writers.sh decides which /llm-override authors count as writers for llm-review and the collector, and no test runs it: the only test reference is test_triage.py using its path as a triage input, and test_feedback.py passes find_override a hand-built writers={'alice'}. A regression would widen who can override blocking checks, but llm-feedback separately checks the commenter's role before adding the label, and this repository has a single collaborator, so the practical exposure today is nil: low.
-
-</details>
-
 ### F071
 
 **The version tags, the moving X.Y tag and the chart are pushed before admission-smoke and smoke run**
@@ -2354,6 +2337,29 @@ Each attempt is `curl -fsS` with no --max-time or --connect-timeout, followed by
 
 </details>
 
+### F070
+
+**Nothing tests who may honour a bot-added override (override-writers.sh)**
+
+- **Status:** ✅ fixed — #70: override-writers.sh has tests with a stubbed gh, which is what caught the writers-list bug
+- **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
+- **Where:** `scripts/override-writers.sh:12` · **area:** workflows, release, deploy, scripts
+- **Reported by:** `tr-29` (low, high confidence)
+
+For llm-review and the collector (ADR 0007), the script decides which /llm-override authors count as writers: user logins only, with the role admin, maintain or write. It has no test, and find_override is tested only with a hand-written writers set.
+
+*Failure scenario:* The case pattern is widened (say, triage added) or the login regex is dropped. A /llm-override from a read-only collaborator is then honoured, and no test fails.
+
+*Suggested fix:* A test with a stub `gh` on PATH that returns a role per login, asserting that only write, maintain and admin users are printed and bots are skipped.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, low, small): No test exercises scripts/override-writers.sh: it appears only as a triage path in test_triage.py, and find_override is tested with a hand-written writers set (test_feedback.py:230-236). The script decides which /llm-override authors count for llm-review and the collector (roles admin, maintain, write; user logins only), so widening its case pattern or dropping the login filter would go unnoticed. Impact is bounded because llm-feedback adds the label only after checking the commenter's role itself, so low.
+- **maintainer** (CONFIRMED, low, small): scripts/override-writers.sh decides who may honour a bot-added override for llm-review.yml:255 and audit-collect.yml:94 (ADR 0007), and no test runs it: the only test reference (test_triage.py:59) uses its path as a triage-rule input, and find_override is tested with hand-made writer sets. The script is 10 lines and shellchecked, but it's security-relevant; a pytest with a stub gh on PATH is small.
+- **impact** (CONFIRMED, low, small): scripts/override-writers.sh decides which /llm-override authors count as writers for llm-review and the collector, and no test runs it: the only test reference is test_triage.py using its path as a triage input, and test_feedback.py passes find_override a hand-built writers={'alice'}. A regression would widen who can override blocking checks, but llm-feedback separately checks the commenter's role before adding the label, and this repository has a single collaborator, so the practical exposure today is nil: low.
+
+</details>
+
 ### F082
 
 **OpenAPI documents only 200 for /api/easter/{year}, /api/leap/{year} and /api/friday13, which also return 400 ValidationProblem**
@@ -2532,7 +2538,7 @@ Line 151 ("The one false positive marked so far was on a drill"), line 165 ("The
 
 **"Denied in calendar-gates since v0.3.1": the Deny switch came after v0.3.1 and no release has exercised it**
 
-- **Status:** ✅ fixed — #63: ADR 0010 says Deny came after v0.3.1 and no release has exercised it
+- **Status:** ✅ fixed — #63 documented it; v0.3.2's admission-smoke ran the Deny policy for the first time and passed
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** trivial
 - **Where:** `docs/adr/0010-admission-control.md:67` · **area:** API, tests, docs
 - **Reported by:** `dd-07` (low, high confidence), `dd-08` (low, medium confidence)
