@@ -568,3 +568,17 @@ def test_a_padded_file_in_a_generated_directory_is_not_trimmed(gate: Repo) -> No
     data = record(gate, "docs-drift", "api")
     assert data["omitted"] == []
     assert "diff too large" in str(data["reason"])
+
+
+def test_a_diff_of_nothing_but_excluded_files_says_so(gate: Repo) -> None:
+    """ "no changes" and "only lock files changed" used to read the same in the record, and the
+    second is a PR no check looked at (F010)."""
+    change(gate, "tools/x/uv.lock", "lock = 2\n")
+    api = FakeEngine("api")
+
+    assert run({"api": api}, "--check", "code-review") == 0
+
+    assert api.requests == []
+    reason = str(record(gate, "code-review", "api")["reason"])
+    assert "1 changed file(s) are excluded" in reason
+    assert "tools/x/uv.lock" in reason

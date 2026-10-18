@@ -624,12 +624,29 @@ class Comparison(BaseModel):
 
 
 def compare(run: EvalRun, baseline: Mapping[str, Any], thresholds: Thresholds) -> list[Comparison]:
-    """The run against its baseline entry (same check, engine and model). No entry: only the
-    absolute limits apply."""
+    """The run against its baseline entry (same check, engine and model).
+
+    A missing entry used to mean "only the absolute limits apply", which made the gate vacuous for
+    exactly the change most worth checking: switch a check's engine or model and recall, false
+    blocks and verdict accuracy were all compared against nothing, leaving only flips and
+    fp-regressions (F008). It is a failure now, with the remedy in the row: run
+    `just eval-baseline` in the same PR, which is already how an intended trade-off is recorded
+    (ADR 0006).
+    """
     entry = baseline.get(run.check, {}).get(run_key(run))
     old: dict[str, Any] = entry["metrics"] if entry else {}
     new = run.metrics
     rows: list[Comparison] = []
+    if entry is None:
+        rows.append(
+            Comparison(
+                metric="baseline",
+                baseline=None,
+                current=None,
+                limit=f"an entry for {run_key(run)}",
+                ok=False,
+            )
+        )
 
     def delta_row(name: str, current: float | None, limit: float, direction: int) -> None:
         before = old.get(name)

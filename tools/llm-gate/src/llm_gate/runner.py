@@ -65,7 +65,16 @@ def run_check(
     if not_needed is not None:
         pass
     elif not diff.files:
-        not_applicable = f"no changes against {diff.base}"
+        # Say which it is: an empty diff and a diff of nothing but excluded files look the same in
+        # the record otherwise, and the second one is a PR that no check looked at (F010).
+        if diff.excluded:
+            names = ", ".join(diff.excluded[:5]) + (" ..." if len(diff.excluded) > 5 else "")
+            not_applicable = (
+                f"nothing to review against {diff.base}: "
+                f"{len(diff.excluded)} changed file(s) are excluded ({names})"
+            )
+        else:
+            not_applicable = f"no changes against {diff.base}"
     elif check.paths and not touches(diff.files, check.paths):
         not_applicable = f"the change touches none of {', '.join(check.paths)}"
     elif check.blocking and diff.omitted and not override:

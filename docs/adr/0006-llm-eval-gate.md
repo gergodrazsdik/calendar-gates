@@ -21,6 +21,12 @@ missed bugs or annoyed authors later.
   deliberate, reviewed change (`just eval-baseline` in a PR). `evals/thresholds.yaml` says how much
   worse a PR may be: recall may drop by at most 0.05, no new false blocks are allowed, the flip rate
   must stay at or below 0.10, and cost may rise by at most 25 %.
+- **Amended 2026-10-18: a missing baseline entry fails the comparison.** It used to mean "only the
+  absolute limits apply", which made the gate vacuous for the change most worth checking: switch a
+  check's engine or model and recall, false blocks and verdict accuracy were each compared against
+  nothing, leaving only flips and fp-regressions (F008). The row now says which entry is missing,
+  and the remedy is the one this ADR already prescribes for an intended trade-off: run
+  `just eval-baseline` in the same PR, so the new scores are reviewed as part of the change.
 - `llm-eval.yml` runs on every PR and passes as "not applicable" unless the PR touches
   `.claude/commands/llm-*` or `tools/llm-gate/`. When it applies, it runs **the PR's** prompts and
   code. This is the opposite of ADR 0004, because here the change is the thing under test. The
