@@ -93,6 +93,10 @@ no registry (`just lint-policies`, ci.yml).
 - **Verification is slow when cold.** A cold check fetches every attestation and the Sigstore
   trust root, which took more than the 10 s webhook default. The image policies allow 30 s, the
   maximum, and Kyverno caches results for an hour.
+- **Admission trusts the signing identity, not where the commit sits** (2026-10-18). The
+  attestors accept `release.yml@refs/tags/v…`, which a tag on an unmerged commit also gets
+  (ADR 0009's amendment). The cluster can't check whether a commit is on `main`, so that check
+  lives in `just verify-release` and in the `release-tags` ruleset's `creation` rule, not here.
 - **Failure is closed.** The webhooks fail closed. When Kyverno is down, no pod starts in
   `calendar-gates`, and a policy that can't be evaluated denies. The spike saw this: a wrong CEL
   path denied the release instead of admitting it.

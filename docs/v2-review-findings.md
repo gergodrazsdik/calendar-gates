@@ -31,13 +31,13 @@ A review of the whole repository at `43ec3c2` (2026-10-17), after PLAN-v2 was wr
 | accepted | 0 | 0 | 0 | 2 | 1 | 3 |
 | rejected | 0 | 0 | 0 | 0 | 11 | 11 |
 
-**Fixed so far: 45 of 119** (1 partial, 72 open, 1 unverifiable). By severity:
+**Fixed so far: 46 of 119** (1 partial, 71 open, 1 unverifiable). By severity:
 
 | Status | critical | high | medium | low | info | total |
 |---|---|---|---|---|---|---|
-| ✅ fixed | 0 | 0 | 5 | 21 | 19 | 45 |
+| ✅ fixed | 0 | 0 | 6 | 21 | 19 | 46 |
 | 🟡 partial | 0 | 0 | 0 | 1 | 0 | 1 |
-| open | 0 | 2 | 11 | 52 | 7 | 72 |
+| open | 0 | 2 | 10 | 52 | 7 | 71 |
 | ⚪ unverifiable | 0 | 0 | 1 | 0 | 0 | 1 |
 
 Each fix names the PR that made it. The status column is maintained by hand as fixes land; the verdicts and severities below are the review's own and are not revised.
@@ -118,7 +118,8 @@ exactly the bypass it describes, so it was not built. What is confirmed without 
 `http-tests` and `k8s-smoke` hold `checks: write` while running PR code. Moving test reporting to
 a job that runs no PR code removes the question.
 
-**Since the review (2026-10-18).** Four things changed under this document:
+**Since the review (2026-10-18).** Five things changed under this document:
+- **#67** bound a release tag to a commit on `main` (F043), outside the workflow the tag supplies.
 - **#65** fixed the four findings that misfire in normal use: a partial re-run recorded as
   tampering (F006), commands dropped mid-review (F044), the triage job dying on schema-invalid
   model output (F011), and an appended `risk_override` that could crash triage or outrank a real
@@ -159,13 +160,13 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F012](#f012) | open | medium | medium | A | Cache keys ignore llm-gate's request code and engine settings, so llm-eval scores engine changes from main's cached reviews | small | S:C/medium M:C/medium I:C/medium |
 | [F020](#f020) | open | medium | medium | A | A /llm-risk decision isn't tied to a head: lowering the risk once removes blocking review from every later push to the PR | small | S:C/medium M:C/low I:C/medium |
 | [F042](#f042) | open | medium | medium | B | `workflow_modified` only looks at llm-review.yml, so other PR changes that steer the review still count as verified | small | S:C/medium M:C/medium I:C/medium |
-| [F043](#f043) | open | medium | medium | B | A v* tag on any commit, merged or not, mints release attestations, because the 'on main' check runs inside that commit's own release.yml | medium | S:C/medium M:C/medium I:C/medium |
 | [F047](#f047) | open | medium | medium | B | No policy inspects OCI image volumes, so a pod in calendar-gates can run code from any registry next to an attested container | trivial | S:C/medium M:C/medium I:C/low |
 | [F052](#f052) | open | medium | medium | B | uv itself is unpinned: every setup-uv step installs the newest uv release, in the signing job and the write-token jobs too | small | S:C/low M:C/medium I:C/medium |
 | [F081](#f081) | open | medium | medium | C | A malformed or empty ?year= on /api/friday13 gets a 400 without `errors` in Production and a 500 in Development, not the 400 ValidationProblem | small | S:C/medium M:C/medium I:C/medium |
 | [F005](#f005) | ✅ fixed | medium | medium | A | Triage and the collector accept any risk_override record on audit-log, so a hand-pushed record can lower the risk with a forged author and an unbeatable timestamp | medium | S:C/medium M:C/medium I:C/medium |
 | [F006](#f006) | ✅ fixed | medium | medium | A | Re-running only the failed llm jobs turns their records into tamper_suspected, because the new attempt has no triage artifact | small | S:C/medium M:C/medium I:C/medium |
 | [F011](#f011) | ✅ fixed | medium | medium | A | Schema-invalid or truncated model output escapes structured_call as pydantic.ValidationError, crashing triage instead of leaving the floor | small | S:C/medium M:C/medium I:C/medium |
+| [F043](#f043) | ✅ fixed | medium | medium | B | A v* tag on any commit, merged or not, mints release attestations, because the 'on main' check runs inside that commit's own release.yml | medium | S:C/medium M:C/medium I:C/medium |
 | [F044](#f044) | ✅ fixed | medium | medium | B | /llm-risk and /llm-override posted while llm-review is running get a +1 reaction but may never take effect | small | S:C/medium M:C/medium I:C/medium |
 | [F084](#f084) | ✅ fixed | medium | medium | C | "A failed smoke leaves a draft; re-running the workflow refreshes it" no longer holds under build-once releases | trivial | S:C/medium M:C/medium I:C/medium |
 | [F007](#f007) | open | low | medium | A | An override by label skips the write-role check that `/llm-override` enforces | trivial | S:C/low M:C/low I:C/low |
@@ -543,39 +544,6 @@ The collector flags a run only when the compare API's file list contains the tri
 
 </details>
 
-### F043
-
-**A v* tag on any commit, merged or not, mints release attestations, because the 'on main' check runs inside that commit's own release.yml**
-
-- **Status:** open
-- **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** medium
-- **Where:** `.github/rulesets/tags.json:9` · **area:** workflows, release, deploy, scripts
-- **Reported by:** `cr-ops-03` (medium, high confidence), `wr-07` (medium, high confidence)
-
-**`cr-ops-03`: A v* tag on any commit, merged or not, mints release attestations, because the 'on main' check runs inside that commit's own release.yml**
-
-The attestor identity is release.yml@refs/tags/v[0-9].* (release.yaml:38, llm-review.yaml:34). verify-release requires the same identity (--signer-workflow .../release.yml, --source-ref refs/tags/vX). A tag push runs release.yml as it is in the tagged commit. The checks that the tag is SemVer, annotated, verified by GitHub and on main are steps of that same file's verify job (release.yml:40-63), so a commit that edits release.yml simply doesn't have them. The release-tags ruleset (tags.json:9-13) blocks deletion, update and non-fast-forward, but not creation. So anyone with write access, or a token or agent acting for them, can push a vX.Y.Z tag on an unmerged branch commit whose release.yml builds and attests whatever it likes. No PR, triage, LLM review or audit record is involved, and the ruleset then keeps the tag forever. ADR 0009 assumes release.yml changes arrive by PR ('A PR that changes release.yml is high risk in triage'). WRITEUP §4 lists the hole of a PR editing llm-review.yml, but not this path, which needs no PR at all.
-
-*Failure scenario:* On a throwaway branch, edit release.yml so it drops verify and scan and builds any Dockerfile, commit, then git tag v9.9.9 and git push origin v9.9.9 -> release.yml@refs/tags/v9.9.9 attests the digest -> Kyverno admits the image in calendar-gates, and just verify-release 9.9.9 passes.
-
-*Suggested fix:* Add a creation rule to release-tags with only the repository admin role as bypass actor. Have verify-release check that the provenance's source commit (buildDefinition.resolvedDependencies gitCommit) is an ancestor of origin/main. Record the remaining risk in WRITEUP §4 and ADR 0010: whoever can create v* tags can mint the release identity.
-
-**`wr-07`: Any v* tag on any commit runs that commit's release.yml, so a writer can mint attestations Kyverno admits, with no approval and no main check**
-
-release-tags blocks deletion, update and non-fast-forward of v* tags, but not their creation, and nothing ties a tag to main. The on-main and signed-tag checks live in release.yml's verify job, and a tag push runs release.yml from the tagged commit. A writer can push a commit to any branch with a modified release.yml (verify removed, `environment: release` dropped, any digest attested) and tag it v9.9.9. That run has id-token: write and gets Fulcio certificates for .../release.yml@refs/tags/v9.9.9. Kyverno's attestors accept exactly that identity (subjectRegExp release.yml@refs/tags/v[0-9].* in deploy/policies/base), and so does `just verify-release` (--signer-workflow release.yml --source-ref refs/tags/vX). The release environment guards no secret, since signing is keyless and GHCR pushes use GITHUB_TOKEN, so dropping it skips approval. Even with the unmodified workflow, attest runs before publish's approval, so a candidate the owner rejects stays fully attested and is admissible by digest. ADR 0009 considers PRs that change release.yml, not a tag on a non-main commit, which needs no PR at all.
-
-*Failure scenario:* A writer, or an agent with their push rights, pushes branch tmp with a release.yml that only builds an image and attests a vuln-scan predicate with zero criticals, then runs `git push origin v9.9.9`. The run attests the image as release.yml@refs/tags/v9.9.9. Kyverno admits it in calendar-gates and verify-release passes, with no approval and no commit on main.
-
-*Suggested fix:* Add a creation rule to release-tags, with only the admin role as bypass actor. Run attest after approval (environment: release on attest), and give the approval teeth, for example by signing with key material held as a release-environment secret. In verify-release, also check that the certificate's source repository digest is an ancestor of origin/main.
-
-<details><summary>Council</summary>
-
-- **skeptic** (CONFIRMED, medium, small): release-tags (tags.json:9-13) has only deletion, update and non_fast_forward rules, so any writer can create a v* tag on any commit; a tag push runs release.yml from the tagged commit, and the SemVer/annotated/signed/on-main checks are steps of that same file's verify job (release.yml:40-63), so an edited release.yml on an unmerged branch simply omits them. Both Kyverno attestors (subjectRegExp ...release\.yml@refs/tags/v[0-9].*) and verify-release (--signer-workflow release.yml --source-ref refs/tags/vX) accept the resulting identity and nothing checks that the source commit is on main. The attest job never used the approval-gated release environment, so dropping it costs nothing. ADR 0009 considers only release.yml changes arriving by PR; this path is recorded nowhere.
-- **maintainer** (CONFIRMED, medium, medium): tags.json blocks deletion, update and non-fast-forward but not creation, and release.yml runs from the tagged commit, so the 'annotated, signed, on main' checks (release.yml:40-63) are steps the tagged commit can drop. Kyverno's subjectRegExp (release.yaml:38, llm-review.yaml:34) and verify-release (--signer-workflow release.yml, --source-ref refs/tags/vX) accept exactly the identity such a run gets, and attest needs no approval. ADR 0009 only considers release.yml edits that arrive by PR; a tag on an unmerged branch commit needs no PR and is not mentioned in ADR 0009/0010 or the WRITEUP threat model. In this solo repo the actor is the owner or an agent with their push rights (a plausible accident: tagging a branch to test a modified release.yml), and the ruleset then keeps the tag forever. Note the suggested creation rule with admin bypass would not stop the owner's own agent; the cheap, real mitigation is verify-release checking that the provenance's source commit is an ancestor of origin/main, plus documenting the limit.
-- **impact** (CONFIRMED, medium, medium): release.yml runs on push of v*.*.* tags, so the workflow file is the tagged commit's; the SemVer/signed/on-main checks live in that same file's verify job, and release-tags (tags.json) restricts deletion, update and non-fast-forward but not creation. A writer can tag an unmerged branch commit whose release.yml skips verify and the release environment (which guards no secret: signing is keyless OIDC, GHCR uses GITHUB_TOKEN) and mint attestations under release.yml@refs/tags/vX, which both Kyverno's subjectRegExp and verify-release accept. ADR 0009 only considers release.yml edits arriving by PR. Calibrated to medium: it needs deliberate action by someone with push rights (no accidental path: the unmodified verify job rejects off-main tags), the target is a local kind cluster, and the stray tag and Rekor entry stay visible. A creation rule with admin bypass alone doesn't close it in this solo-admin repo, hence a medium fix (tie the signing identity to main, e.g. sign from a default-branch workflow).
-
-</details>
-
 ### F047
 
 **No policy inspects OCI image volumes, so a pod in calendar-gates can run code from any registry next to an attested container**
@@ -750,6 +718,39 @@ structured_call catches only anthropic exceptions, but beta.messages.parse valid
 - **skeptic** (CONFIRMED, medium, small): Reproduced through the real anthropic 1.11 SDK over an httpx2 MockTransport, with no network. A response with 11 reasons, truncated JSON with stop_reason max_tokens, and refusal text with stop_reason refusal each raise pydantic ValidationError out of triage.assess, whose docstring says 'Never raises'; a valid response is the control. The cause: beta.messages.parse validates every text block with TypeAdapter.validate_json, and transform_schema only appends maxItems to the description. cmd_triage doesn't catch it, so the triage job fails and the llm matrix never reports, against ADR 0008's 'if it fails or refuses, the floor stands'. Reviews survive only via run_check's catch-all.
 - **maintainer** (CONFIRMED, medium, small): anthropic 1.11's parse_beta_response runs TypeAdapter.validate_json on every text block regardless of stop_reason, and _transform moves maxItems into the description, so max_length=10 is client-side only. With a mock httpx2 transport, 11 reasons, JSON cut off at max_tokens, and a refusal with text each raised pydantic ValidationError out of triage.assess (documented 'Never raises'); cmd_triage and main() don't catch it, so the triage job fails, the needs: triage matrix never runs and no llm / <check> reports. Fails closed, but contradicts ADR 0008's 'If it fails or refuses, the floor stands'; the review path survives only through run_check's catch-all.
 - **impact** (CONFIRMED, medium, small): Reproduced with SDK 1.11 over a mock httpx2 transport: beta.messages.parse runs TypeAdapter.validate_json inside the call, so 11 reasons (maxItems is moved into the description, not sent), truncated JSON with stop_reason max_tokens, and an empty text block with stop_reason refusal all raise pydantic ValidationError out of triage.assess, whose docstring says it never raises. cmd_triage and main don't catch it, so the triage job fails and the llm matrix (needs: triage) never runs: every required llm / <check> of the PR is missing. The trigger is the model's own output: rare for the first two, plausible for refusals on security-flavoured diffs, and then possibly persistent with no workaround (/llm-risk doesn't skip the model call). Reviews survive through run_check's catch-all and fail closed. Medium; catching ValidationError in structured_call is trivial, plus a test.
+
+</details>
+
+### F043
+
+**A v* tag on any commit, merged or not, mints release attestations, because the 'on main' check runs inside that commit's own release.yml**
+
+- **Status:** ✅ fixed — #67: verify-release requires the tag's commit on main and binds every attestation to it; only admins may create a v* tag
+- **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** medium
+- **Where:** `.github/rulesets/tags.json:9` · **area:** workflows, release, deploy, scripts
+- **Reported by:** `cr-ops-03` (medium, high confidence), `wr-07` (medium, high confidence)
+
+**`cr-ops-03`: A v* tag on any commit, merged or not, mints release attestations, because the 'on main' check runs inside that commit's own release.yml**
+
+The attestor identity is release.yml@refs/tags/v[0-9].* (release.yaml:38, llm-review.yaml:34). verify-release requires the same identity (--signer-workflow .../release.yml, --source-ref refs/tags/vX). A tag push runs release.yml as it is in the tagged commit. The checks that the tag is SemVer, annotated, verified by GitHub and on main are steps of that same file's verify job (release.yml:40-63), so a commit that edits release.yml simply doesn't have them. The release-tags ruleset (tags.json:9-13) blocks deletion, update and non-fast-forward, but not creation. So anyone with write access, or a token or agent acting for them, can push a vX.Y.Z tag on an unmerged branch commit whose release.yml builds and attests whatever it likes. No PR, triage, LLM review or audit record is involved, and the ruleset then keeps the tag forever. ADR 0009 assumes release.yml changes arrive by PR ('A PR that changes release.yml is high risk in triage'). WRITEUP §4 lists the hole of a PR editing llm-review.yml, but not this path, which needs no PR at all.
+
+*Failure scenario:* On a throwaway branch, edit release.yml so it drops verify and scan and builds any Dockerfile, commit, then git tag v9.9.9 and git push origin v9.9.9 -> release.yml@refs/tags/v9.9.9 attests the digest -> Kyverno admits the image in calendar-gates, and just verify-release 9.9.9 passes.
+
+*Suggested fix:* Add a creation rule to release-tags with only the repository admin role as bypass actor. Have verify-release check that the provenance's source commit (buildDefinition.resolvedDependencies gitCommit) is an ancestor of origin/main. Record the remaining risk in WRITEUP §4 and ADR 0010: whoever can create v* tags can mint the release identity.
+
+**`wr-07`: Any v* tag on any commit runs that commit's release.yml, so a writer can mint attestations Kyverno admits, with no approval and no main check**
+
+release-tags blocks deletion, update and non-fast-forward of v* tags, but not their creation, and nothing ties a tag to main. The on-main and signed-tag checks live in release.yml's verify job, and a tag push runs release.yml from the tagged commit. A writer can push a commit to any branch with a modified release.yml (verify removed, `environment: release` dropped, any digest attested) and tag it v9.9.9. That run has id-token: write and gets Fulcio certificates for .../release.yml@refs/tags/v9.9.9. Kyverno's attestors accept exactly that identity (subjectRegExp release.yml@refs/tags/v[0-9].* in deploy/policies/base), and so does `just verify-release` (--signer-workflow release.yml --source-ref refs/tags/vX). The release environment guards no secret, since signing is keyless and GHCR pushes use GITHUB_TOKEN, so dropping it skips approval. Even with the unmodified workflow, attest runs before publish's approval, so a candidate the owner rejects stays fully attested and is admissible by digest. ADR 0009 considers PRs that change release.yml, not a tag on a non-main commit, which needs no PR at all.
+
+*Failure scenario:* A writer, or an agent with their push rights, pushes branch tmp with a release.yml that only builds an image and attests a vuln-scan predicate with zero criticals, then runs `git push origin v9.9.9`. The run attests the image as release.yml@refs/tags/v9.9.9. Kyverno admits it in calendar-gates and verify-release passes, with no approval and no commit on main.
+
+*Suggested fix:* Add a creation rule to release-tags, with only the admin role as bypass actor. Run attest after approval (environment: release on attest), and give the approval teeth, for example by signing with key material held as a release-environment secret. In verify-release, also check that the certificate's source repository digest is an ancestor of origin/main.
+
+<details><summary>Council</summary>
+
+- **skeptic** (CONFIRMED, medium, small): release-tags (tags.json:9-13) has only deletion, update and non_fast_forward rules, so any writer can create a v* tag on any commit; a tag push runs release.yml from the tagged commit, and the SemVer/annotated/signed/on-main checks are steps of that same file's verify job (release.yml:40-63), so an edited release.yml on an unmerged branch simply omits them. Both Kyverno attestors (subjectRegExp ...release\.yml@refs/tags/v[0-9].*) and verify-release (--signer-workflow release.yml --source-ref refs/tags/vX) accept the resulting identity and nothing checks that the source commit is on main. The attest job never used the approval-gated release environment, so dropping it costs nothing. ADR 0009 considers only release.yml changes arriving by PR; this path is recorded nowhere.
+- **maintainer** (CONFIRMED, medium, medium): tags.json blocks deletion, update and non-fast-forward but not creation, and release.yml runs from the tagged commit, so the 'annotated, signed, on main' checks (release.yml:40-63) are steps the tagged commit can drop. Kyverno's subjectRegExp (release.yaml:38, llm-review.yaml:34) and verify-release (--signer-workflow release.yml, --source-ref refs/tags/vX) accept exactly the identity such a run gets, and attest needs no approval. ADR 0009 only considers release.yml edits that arrive by PR; a tag on an unmerged branch commit needs no PR and is not mentioned in ADR 0009/0010 or the WRITEUP threat model. In this solo repo the actor is the owner or an agent with their push rights (a plausible accident: tagging a branch to test a modified release.yml), and the ruleset then keeps the tag forever. Note the suggested creation rule with admin bypass would not stop the owner's own agent; the cheap, real mitigation is verify-release checking that the provenance's source commit is an ancestor of origin/main, plus documenting the limit.
+- **impact** (CONFIRMED, medium, medium): release.yml runs on push of v*.*.* tags, so the workflow file is the tagged commit's; the SemVer/signed/on-main checks live in that same file's verify job, and release-tags (tags.json) restricts deletion, update and non-fast-forward but not creation. A writer can tag an unmerged branch commit whose release.yml skips verify and the release environment (which guards no secret: signing is keyless OIDC, GHCR uses GITHUB_TOKEN) and mint attestations under release.yml@refs/tags/vX, which both Kyverno's subjectRegExp and verify-release accept. ADR 0009 only considers release.yml edits arriving by PR. Calibrated to medium: it needs deliberate action by someone with push rights (no accidental path: the unmodified verify job rejects off-main tags), the target is a local kind cluster, and the stray tag and Rekor entry stay visible. A creation rule with admin bypass alone doesn't close it in this solo-admin repo, hence a medium fix (tie the signing identity to main, e.g. sign from a default-branch workflow).
 
 </details>
 
