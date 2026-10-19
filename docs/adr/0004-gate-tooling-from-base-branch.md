@@ -70,3 +70,10 @@ approve, the v1 configuration reported no findings on an obvious bug; with nothi
   runs `workflow_modified` (Phase 14) and the release review attestation lists them as unverified
   (Phase 18). Closing it fully needs workflows enforced from outside the repository (organization
   "required workflows" rulesets), which a personal repository doesn't have.
+
+  **Amended 2026-10-19.** The second mitigation was weaker than this text implied: `workflow-review`
+  was advisory at every risk level and was not a required check, so the check named here as guarding
+  CI changes could only comment on one. It now blocks on high findings at high risk and is required
+  (`llm / workflow-review`). The hole itself is unchanged — a PR still supplies the workflow that
+  runs the check — so this buys a reviewer that can say no, not a boundary. The marking mitigations
+  are what the release attestation still relies on.

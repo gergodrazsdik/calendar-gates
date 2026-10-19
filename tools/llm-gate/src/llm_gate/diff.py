@@ -53,12 +53,19 @@ class DiffError(Exception):
     pass
 
 
+# Why a file is not in the text the model sees. Fixed strings, ours, so they are safe to put in a
+# prompt and in a PR comment next to a path that came from the PR.
+OVER_SIZE = "over the check's size cap for a single file"
+NOT_TEXT = "not text, so there is nothing to show the model"
+
+
 @dataclass(frozen=True)
 class OmittedFile:
-    """A file left out of what the model sees, because its own diff is over `max_file_kb`."""
+    """A file left out of what the model sees: over `max_file_kb`, or not decodable as text."""
 
     path: str
     bytes: int
+    reason: str = OVER_SIZE
 
 
 @dataclass(frozen=True)
@@ -80,14 +87,26 @@ class Diff:
         return len(self.text.encode("utf-8"))
 
 
-def git(repo_root: Path, *args: str) -> str:
+def git_bytes(repo_root: Path, *args: str) -> bytes:
+    """git's stdout, undecoded.
+
+    The diff of a single file goes through here because `--text` asks git to inline binary content
+    rather than report "Binary files ... differ", and a PNG is not UTF-8. Decoding it as text where
+    it is read is what lets `merge_base_diff` treat such a file as omitted instead of raising.
+    """
     try:
-        completed = subprocess.run(
-            ["git", *args], cwd=repo_root, check=True, capture_output=True, text=True
-        )
+        completed = subprocess.run(["git", *args], cwd=repo_root, check=True, capture_output=True)
     except subprocess.CalledProcessError as error:
-        raise DiffError(f"git {' '.join(args)} failed: {error.stderr.strip()}") from error
+        stderr = error.stderr.decode("utf-8", "replace").strip()
+        raise DiffError(f"git {' '.join(args)} failed: {stderr}") from error
     return completed.stdout
+
+
+def git(repo_root: Path, *args: str) -> str:
+    # `surrogateescape`, not `strict` or `replace`: a path whose bytes are not UTF-8 round-trips
+    # back through a pathspec unchanged, where `replace` would mangle it into a name git cannot
+    # find and `strict` would raise. File *contents* are decoded strictly, by `merge_base_diff`.
+    return git_bytes(repo_root, *args).decode("utf-8", "surrogateescape")
 
 
 def repo_root(start: Path) -> Path:
@@ -106,8 +125,13 @@ def merge_base_diff(root: Path, base: str) -> Diff:
     without the first, git reads the **PR's** `.gitattributes`, where one `src/** -diff` line turns
     every file into "Binary files ... differ" for both blocking reviews; without the second, a NUL
     byte anywhere in a file does the same through git's binary heuristic. Attributes from the base
-    commit are the same rule ADR 0004 applies to the rest of the gate. Genuine binaries are kept
-    out by `EXCLUDES` instead, which is code on the base branch rather than a file the PR writes.
+    commit are the same rule ADR 0004 applies to the rest of the gate.
+
+    `--text` is also why a genuine binary arrives here as undecodable bytes: git inlines the blob.
+    Such a file is **omitted**, exactly like a generated file over the size cap — named in the
+    prompt, the comment, the record and the attestation, and a blocking check needs an honoured
+    override before it reviews the rest. It is deliberately not an `EXCLUDES` entry: an exclusion
+    means nobody looks and nothing says so, which is the wrong answer for a file the PR changed.
     """
     excludes = [f":(exclude,glob){pattern}" for pattern in EXCLUDES]
     common = [
@@ -125,19 +149,21 @@ def merge_base_diff(root: Path, base: str) -> Diff:
     files = tuple(name for name in names.split("\0") if name)
     every = git(root, *common, "--name-only", "-z", "--merge-base", base, "HEAD")
     excluded = tuple(name for name in every.split("\0") if name and name not in set(files))
-    chunks = tuple(
-        (
-            path,
-            git(root, *common, "--merge-base", base, "HEAD", "--", f":(literal){path}"),
-        )
-        for path in files
-    )
+    chunks: list[tuple[str, str]] = []
+    binary: list[OmittedFile] = []
+    for path in files:
+        raw = git_bytes(root, *common, "--merge-base", base, "HEAD", "--", f":(literal){path}")
+        try:
+            chunks.append((path, raw.decode("utf-8")))
+        except UnicodeDecodeError:
+            binary.append(OmittedFile(path=path, bytes=len(raw), reason=NOT_TEXT))
     return Diff(
         base=base,
         text="".join(c for _, c in chunks),
         files=files,
-        chunks=chunks,
+        chunks=tuple(chunks),
         excluded=excluded,
+        omitted=tuple(binary),
     )
 
 
@@ -175,7 +201,7 @@ def trim_large_files(
             root is None or is_generated(root, path)
         )
         if size > limit and generated:
-            omitted.append(OmittedFile(path=path, bytes=size))
+            omitted.append(OmittedFile(path=path, bytes=size, reason=OVER_SIZE))
         else:
             kept.append((path, chunk))
     if not omitted:
@@ -183,7 +209,9 @@ def trim_large_files(
     return replace(
         diff,
         text="".join(c for _, c in kept),
-        omitted=tuple(omitted),
+        # Added to, never replaced: `merge_base_diff` may already have omitted a binary file, and
+        # dropping that entry here would turn a named omission into a silent one.
+        omitted=(*diff.omitted, *omitted),
         chunks=tuple(kept),
     )
 

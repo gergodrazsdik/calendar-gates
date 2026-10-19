@@ -9,4 +9,5 @@ expect:
   - file: .github/workflows/ci.yml
     lines: [34, 34]
     min_severity: medium
+    blocking: true
     category: injection

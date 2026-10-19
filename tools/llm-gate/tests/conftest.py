@@ -47,6 +47,12 @@ class Repo:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text, encoding="utf-8")
 
+    def write_bytes(self, path: str, data: bytes) -> None:
+        """For the files a repository really holds that are not text: images, fonts, archives."""
+        target = self.root / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+
     def commit(self, message: str) -> None:
         git(self.root, "add", "-A")
         git(self.root, "commit", "-q", "-m", message)

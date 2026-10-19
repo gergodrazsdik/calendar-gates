@@ -45,7 +45,13 @@ checks:
       - Directory.Build.props
       - Directory.Packages.props
       - http/**
-  workflow-review: {mode: advisory, paths: [".github/**"]}
+  # Blocking, at high only, which is the only level it can reach: a `.github/**` change
+  # floors to high by the rule above, so adding it to `medium` would be dead config. It was
+  # advisory everywhere until 2026-10-19, which meant the check ADR 0004 names as the
+  # mitigation for its own remaining hole (a PR supplies the workflow that reviews it) could
+  # only comment. `fail_on: high` rather than medium because this prompt has one eval case
+  # and no clean ones, so its false-positive behaviour is unmeasured: start conservative.
+  workflow-review: {mode: blocking, fail_on: high, paths: [".github/**"]}
   docs-drift: {mode: advisory, model: "${LLM_MODEL_CHEAP:-claude-haiku-5-5}"}
 
 # AI-assisted detection (aidetect.py, ADR 0008). Self-declared markers: a transparency signal that
@@ -104,7 +110,7 @@ triage:
       blocking: [code-review, security-review]
     high:
       run: all
-      blocking: [code-review, security-review]
+      blocking: [code-review, security-review, workflow-review]
       # The blocking checks move to the agent engine (it reads the surrounding code) and keep their
       # own model; advisory checks keep both. Opus was measured on 2026-10-17 and was no better
       # than Sonnet here, at 3-4x the cost (ADR 0008, docs/WRITEUP.md).

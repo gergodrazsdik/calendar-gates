@@ -5,7 +5,7 @@ ones that need no container or cluster (`pr-title`, `format`, `lint`, `build-tes
 `grype` and `k8s-smoke` have their own recipes. Required checks on `main` are set in the ruleset
 `.github/rulesets/main.json` (applied with `just gh-rulesets`): `pr-title`, `format`, `lint`,
 `build-test / dotnet`, `http-tests`, `grype`, `k8s-smoke`, `gates`, `llm / code-review`,
-`llm / security-review` and `llm-eval` (required on its own, not part of `gates`:
+`llm / security-review`, `llm / workflow-review` and `llm-eval` (required on its own, not part of `gates`:
 [ADR 0006](adr/0006-llm-eval-gate.md)). The advisory `llm / <check>` jobs report but don't
 block. `lint` fails if the ruleset, the workflow job names and the blocking
 checks in `checks.yaml` disagree (`scripts/check-ruleset-consistency.py`). The `release-tags`
@@ -145,7 +145,10 @@ changes CI state for no convenience gain.
 
   The level decides which checks review and which block. At `low`, only code-review and docs-drift
   review, and both are advisory. At `high`, the blocking checks use the agent engine, with their usual
-  model. A check the level doesn't need still reports success with "not needed at risk: <level>",
+  model, and **workflow-review blocks there too** — a `.github/**` change always floors to high, so
+  that is the only level it can reach. It blocks on `high` findings rather than medium, because it
+  has one eval case and no clean ones, so unlike the other two its false-positive rate is not
+  measured; medium would be a threshold nobody has evidence for. A check the level doesn't need still reports success with "not needed at risk: <level>",
   so required checks never go missing (and that record says `blocking: false`, because it blocked
   nothing). The job summary shows why the PR got its level.
 - **api-contract** runs when a PR touches `Endpoints/`, `Domain/`, `Program.cs`, the API's `.csproj`
