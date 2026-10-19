@@ -37,10 +37,22 @@ missed bugs or annoyed authors later.
 
 ## Consequences
 
-- A PR that changes the gate pays only for the checks whose prompt or code it changes: `llm-eval`
-  also runs on pushes to `main` that touch the gate, and the cache it saves there is the one every
-  PR restores (GitHub lets a PR read only its own branch's caches and `main`'s). Without it, each
-  such PR re-reviewed every case cold, about $1.30. A rerun of an unchanged PR is free.
+- A PR that changes the gate pays only for the checks whose **prompt or engine settings** it
+  changes: `llm-eval` also runs on pushes to `main` that touch the gate, and the cache it saves
+  there is the one every PR restores (GitHub lets a PR read only its own branch's caches and
+  `main`'s). Without it, each such PR re-reviewed every case cold, about $1.30. A rerun of an
+  unchanged PR is free.
+
+  **Amended 2026-10-19: "or code" was too generous a reading, and the gap mattered.** The cache
+  key held check, engine, model, prompt and diff, so a change to anything else in the gate was a
+  cache *hit*: a PR that halved `max_turns`, emptied the read-only tool list or changed the output
+  schema -- touching no prompt -- reproduced the baseline exactly and passed (F012, F139). Each
+  engine now declares its `request_shape` (limits, tool lists, schema) and that joins the key.
+  What is still not covered is the rest of the gate's code -- the prompt assembly, the diff
+  builder, `policy.decide` -- so `CACHE_VERSION` remains a hand-bumped constant, and a PR that
+  changes how a request is *built* rather than what it contains still needs that bump. The eval
+  gate's own review (code-review blocks at high risk on `tools/llm-gate/**`) is what is supposed
+  to catch a missing bump.
 - The PR's code runs with the API key. Only collaborators can open PRs here and fork PRs get no
   secrets; the key's exposure is the same as for v1's llm-review. A team repository would add
   CODEOWNERS review for `tools/llm-gate/`.

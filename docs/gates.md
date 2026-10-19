@@ -126,7 +126,9 @@ changes CI state for no convenience gain.
 
 - **llm / <check>**: the model returns findings; llm-gate decides from their severities
   ([ADR 0002](adr/0002-llm-gate-policy.md)). Advisory checks never fail. Locally, results are
-  cached per check, engine, model, prompt and diff, so re-runs without changes are free. **In CI
+  cached per check, engine, model, prompt, diff **and the engine's own request shape** — its limits,
+  tool lists and output schema, so a change to any of them is a miss rather than an answer stored
+  under different settings (F139) — and re-runs without changes are free. **In CI
   there is no cache**: the key is made of inputs a PR author knows and a sibling workflow the PR
   adds reads the same secrets, so a cached pass would be forgeable (ADR 0002). Every CI re-run
   pays again, about $0.12 at high risk.
