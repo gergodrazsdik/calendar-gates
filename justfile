@@ -94,7 +94,7 @@ lint:
     uv run --directory tools/llm-gate --locked mypy
     uv run --directory tools/llm-gate --locked pytest -q
     uv run --locked --script scripts/check-ruleset-consistency.py
-    uv run --locked --script scripts/check-cooldown-date.py
+    uv run --locked --script scripts/check-cooldown.py
     uv run --locked --script scripts/check-tool-pins.py
 
 # Fetch the audit-log branch into .audit-log/ for local queries (jq over events/**/*.jsonl)

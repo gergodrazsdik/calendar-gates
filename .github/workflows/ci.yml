@@ -106,8 +106,8 @@ jobs:
           uv run --locked pytest -q
       - name: Ruleset matches workflows and checks.yaml
         run: uv run --locked --script scripts/check-ruleset-consistency.py
-      - name: The uv cooldown date hasn't gone stale
-        run: uv run --locked --script scripts/check-cooldown-date.py
+      - name: The uv cooldown is still a rolling window
+        run: uv run --locked --script scripts/check-cooldown.py
       - name: Tool pins Dependabot can't see agree with each other
         run: uv run --locked --script scripts/check-tool-pins.py
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1

@@ -58,6 +58,16 @@ Updating one is still a human edit, which is the honest state of affairs: nothin
 PR that bumps a digest and knows it is the right one. What has changed is that nobody has to
 remember to look.
 
+The same 14 days govern the gate's Python dependencies, as uv's `exclude-newer` in
+`tools/llm-gate/pyproject.toml` and in `scripts/check-ruleset-consistency.py`'s inline metadata. It
+is a **rolling window** (`"14 days"`, recorded in the locks as `exclude-newer-span = "P14D"`), not a
+date: a date is a ceiling on every later resolution, so Dependabot's uv PRs re-resolved under it and
+could never bring anything newer than the date, stalling silently until someone moved it
+([F076](v2-review-findings.md#f076)). `scripts/check-cooldown.py` runs in `lint` and fails if the
+cooldown becomes a date again, drops below Dependabot's 14 days, climbs over 90, disappears, or
+stops matching between the configuration and the locks. The locks still pin exact versions — the
+window only decides what a *re-resolution* may pick, so `uv lock --upgrade` is what moves them.
+
 ## What the agent's permissions do and don't buy you
 
 `.claude/settings.json` pre-approves `just`, `dotnet`, `uv run` and read-only `gh run` commands and
