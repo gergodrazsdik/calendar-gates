@@ -21,8 +21,8 @@ env:
   # Gate health job, reports which of them upstream has moved past. The image refs are longer
   # than the line limit and cannot be wrapped.
   # yamllint disable rule:line-length
-  JUST_VERSION: 1.57.0
-  HELM_VERSION: v4.2.2
+  JUST_VERSION: 1.58.0
+  HELM_VERSION: v4.3.0
   KIND_VERSION: v0.33.0
   KUBECTL_VERSION: v1.37.0
   GRYPE_VERSION: v0.120.1
@@ -30,7 +30,7 @@ env:
   YAMLLINT_VERSION: 1.38.0
   RUFF_VERSION: 0.16.10
   ACTIONLINT_IMAGE: docker.io/rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
-  HADOLINT_IMAGE: docker.io/hadolint/hadolint:v2.14.0@sha256:27086352fd5e1907ea2b934eb1023f217c5ae087992eb59fde121dce9c9ff21e
+  HADOLINT_IMAGE: docker.io/hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d
   KUBECONFORM_IMAGE: ghcr.io/yannh/kubeconform:v0.8.0@sha256:faffaf43f95aa6425306e1ab8d6fcad72acb9049158f38e574c085ea1ec0f64e
   KYVERNO_CLI_IMAGE: ghcr.io/kyverno/kyverno-cli:v1.19.1@sha256:ced7b2be0b04250cabfe695f15307f69eb715fe23234816388af4f3812915b2a
   IJHTTP_IMAGE: docker.io/jetbrains/intellij-http-client:261.25134.95@sha256:1fdeab28e7eacac2ec8e0564499248452e29c55c380497eb92088bd49cfc3096

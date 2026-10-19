@@ -27,7 +27,7 @@ env:
   # Tool versions Dependabot cannot see (F080): one definition each, used through ${{ env.* }}
   # below, and checked against ci.yml and the justfile by scripts/check-tool-pins.py. kubectl is
   # deliberately *not* ci.yml's version: the project cluster runs 1.35 for Kyverno (ADR 0010).
-  HELM_VERSION: v4.2.2
+  HELM_VERSION: v4.3.0
   KIND_VERSION: v0.33.0
   KUBECTL_VERSION: v1.35.8
   GRYPE_VERSION: v0.120.1

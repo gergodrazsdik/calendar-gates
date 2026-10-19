@@ -3,7 +3,7 @@
 # requires-python = ">=3.14"
 # dependencies = ["pyyaml>=6.0.3"]
 # [tool.uv]
-# exclude-newer = "2026-10-01T00:00:00Z"
+# exclude-newer = "2026-10-05T00:00:00Z"
 # ///
 """Fail when .github/rulesets/main.json and the workflows or checks.yaml disagree.
 

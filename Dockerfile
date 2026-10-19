@@ -33,6 +33,10 @@ COPY --from=build /app ./
 # The image's appsettings never change, so don't watch them: each watcher takes an inotify
 # instance, and a host running several kind clusters runs out (docs/adr/0010-admission-control.md).
 ENV DOTNET_hostBuilder__reloadConfigOnChange=false
-USER app
+# The numeric uid, not the `app` name: Kubernetes cannot verify `runAsNonRoot` against a user name
+# ("cannot verify user is non-root"), which is why the chart has to repeat the number in
+# `runAsUser`. 1654 is the base image's own APP_UID, and its Config.User is already numeric —
+# `USER app` was replacing a number with a name. hadolint 2.15 flags that as DL3066.
+USER 1654
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "CalendarGates.Api.dll"]

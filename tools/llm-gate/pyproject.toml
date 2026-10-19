@@ -37,7 +37,7 @@ build-backend = "uv_build"
 # Dependabot's uv PRs, which can never bring anything newer than this date (F076).
 # `scripts/check-cooldown-date.py` fails the lint gate once it is more than 90 days old, so the
 # stall is visible; Dependabot's own `cooldown: default-days: 14` is the dynamic layer.
-exclude-newer = "2026-10-01T00:00:00Z"
+exclude-newer = "2026-10-05T00:00:00Z"
 
 [tool.ruff]
 line-length = 100

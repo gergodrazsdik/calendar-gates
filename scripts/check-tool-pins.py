@@ -16,15 +16,27 @@ the thing that keeps those definitions equal to each other, and `--updates` asks
 the current version is and reports what we are behind. Default mode is offline and fails on
 disagreement; `--updates` needs the network and only reports.
 
+`--updates` reports the newest release that is **at least two weeks old**, not the newest release.
+That is the same cooldown the rest of the supply chain uses -- Dependabot's `cooldown: 14` and uv's
+`exclude-newer` in `tools/llm-gate/pyproject.toml` -- and a report measuring against the newest
+release instead would be asking for a bump the project's own policy says to wait on. A release
+younger than that is shown in its own column, so the wait is visible rather than invisible.
+
 Usage: scripts/check-tool-pins.py [--updates] [repo root]
 """
 
 import json
+import os
 import re
 import sys
 import urllib.error
 import urllib.request
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+# The supply-chain delay this repository applies everywhere else (Dependabot `cooldown: 14`,
+# uv `exclude-newer`): a release has to have been out this long before a gate is pinned to it.
+COOLDOWN = timedelta(days=14)
 
 # tool -> (where its current version is defined, how to ask upstream)
 # A GitHub repository means "latest release tag"; a PyPI name means "latest version".
@@ -114,17 +126,41 @@ def justfile_pins(path: Path) -> dict[str, str]:
 _PRERELEASE = re.compile(r"-(rc|alpha|beta|pre)", re.IGNORECASE)
 
 
-def latest(kind: str, source: str) -> str | None:
-    """The newest *stable* upstream version. `releases/latest` can be a release candidate — Kyverno
-    tags them as full releases — and a candidate is not something to bump a gate to."""
+def _parse_time(value: str) -> datetime:
+    return datetime.fromisoformat(value)  # 3.11+ parses the trailing Z
+
+
+def version_key(version: str) -> tuple[int, ...]:
+    """`1.58.0` -> `(1, 58, 0)`, for comparing two of these tools' versions.
+
+    Ordering by release *date* instead would be wrong for any project that maintains more than one
+    branch: helm's newest release by date is a 3.22.x maintenance build, not 4.3.x. Pre-releases are
+    filtered out before this runs, so numeric components are all there is to compare.
+    """
+    return tuple(int(part) for part in re.findall(r"\d+", version))
+
+
+def latest(kind: str, source: str) -> tuple[str | None, str | None]:
+    """`(newest eligible, newest overall)` upstream *stable* versions.
+
+    Eligible means released at least `COOLDOWN` ago. The two differ exactly when upstream has
+    published something inside the cooldown window, which is the case worth seeing. `releases/latest`
+    can be a release candidate -- Kyverno tags them as full releases -- and a candidate is not
+    something to bump a gate to.
+    """
     url = (
-        f"https://api.github.com/repos/{source}/releases?per_page=20"
+        f"https://api.github.com/repos/{source}/releases?per_page=30"
         if kind == GITHUB
         else f"https://pypi.org/pypi/{source}/json"
     )
-    request = urllib.request.Request(
-        url, headers={"User-Agent": "calendar-gates-tool-pins"}
-    )
+    headers = {"User-Agent": "calendar-gates-tool-pins"}
+    # Unauthenticated GitHub is 60 requests an hour per IP, shared with every other job on the
+    # runner, and a rate-limited table reports "could not be reached" for half the tools. The
+    # token is only ever used to read public release lists.
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if kind == GITHUB and token:
+        headers["Authorization"] = f"Bearer {token}"
+    request = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
             data = json.load(response)
@@ -133,17 +169,39 @@ def latest(kind: str, source: str) -> str | None:
             f"  {source}: could not ask upstream ({type(error).__name__})",
             file=sys.stderr,
         )
-        return None
+        return None, None
+
+    # (published_at, version), newest first. PyPI dates a version by its earliest file upload;
+    # ordering by that date rather than by parsing versions keeps this dependency-free, and a
+    # yanked-then-reuploaded version is not something to bump to anyway.
+    released: list[tuple[datetime, str]] = []
     if kind == PYPI:
-        return str(data["info"]["version"]).removeprefix("v")
-    stable = [
-        release["tag_name"]
-        for release in data
-        if not release.get("prerelease")
-        and not release.get("draft")
-        and not _PRERELEASE.search(str(release.get("tag_name", "")))
-    ]
-    return str(stable[0]).removeprefix("v") if stable else None
+        for version, files in data["releases"].items():
+            uploads = [
+                _parse_time(f["upload_time_iso_8601"])
+                for f in files
+                if not f.get("yanked")
+            ]
+            if uploads and not _PRERELEASE.search(version):
+                released.append((min(uploads), version.removeprefix("v")))
+    else:
+        for release in data:
+            tag = str(release.get("tag_name", ""))
+            when = release.get("published_at")
+            if (
+                release.get("prerelease")
+                or release.get("draft")
+                or _PRERELEASE.search(tag)
+            ):
+                continue
+            if when:
+                released.append((_parse_time(str(when)), tag.removeprefix("v")))
+    if not released:
+        return None, None
+    cutoff = datetime.now(UTC) - COOLDOWN
+    out = [version for when, version in released if when <= cutoff]
+    eligible = max(out, key=version_key) if out else None
+    return eligible, max((v for _, v in released), key=version_key)
 
 
 def main(root: Path, *, updates: bool) -> int:
@@ -187,8 +245,9 @@ def main(root: Path, *, updates: bool) -> int:
         return 0
 
     print("\n### Tool versions outside Dependabot's reach\n")
-    print("| Tool | Pinned | Upstream | |")
-    print("|---|---|---|---|")
+    print(f"Upstream = newest release at least {COOLDOWN.days} days old.\n")
+    print("| Tool | Pinned | Upstream | In cooldown | |")
+    print("|---|---|---|---|---|")
     for tool in sorted(everywhere | {t: "" for t in ("kubectl", "syft")}):
         version = (
             everywhere.get(tool) or sources[".github/workflows/ci.yml"].get(tool) or ""
@@ -201,19 +260,28 @@ def main(root: Path, *, updates: bool) -> int:
             version = f"{ci} (ci), {release} (release)"
         kind, source = SOURCES[tool]
         if kind == MANUAL:
-            print(f"| {tool} | {version} | — | check by hand: {source} |")
+            print(f"| {tool} | {version} | — | — | check by hand: {source} |")
             continue
-        upstream = latest(kind, source)
+        upstream, newest = latest(kind, source)
+        waiting = newest if newest and newest != upstream else "—"
         if upstream is None:
-            print(f"| {tool} | {version} | ? | upstream could not be reached |")
+            print(
+                f"| {tool} | {version} | ? | {waiting} | upstream could not be reached |"
+            )
         elif tool == "kubectl":
             print(
-                f"| {tool} | {version} | {upstream} | pinned to the cluster, not to latest |"
+                f"| {tool} | {version} | {upstream} | {waiting} "
+                "| pinned to the cluster, not to latest |"
             )
-        elif upstream == version:
-            print(f"| {tool} | {version} | {upstream} | current |")
+        elif version_key(version) < version_key(upstream):
+            print(f"| {tool} | {version} | {upstream} | {waiting} | **behind** |")
+        elif version_key(version) > version_key(upstream):
+            print(
+                f"| {tool} | {version} | {upstream} | {waiting} "
+                f"| ahead: pinned inside the {COOLDOWN.days}-day cooldown |"
+            )
         else:
-            print(f"| {tool} | {version} | {upstream} | **behind** |")
+            print(f"| {tool} | {version} | {upstream} | {waiting} | current |")
     print(
         "\nBumping one means editing the definition in each file the table's tool appears in; "
         "`scripts/check-tool-pins.py` fails the lint gate if they then disagree."
