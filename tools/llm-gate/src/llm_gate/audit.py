@@ -19,7 +19,7 @@ from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Annotated, Any, Final, Literal, cast
+from typing import Annotated, Any, Final, Literal, NamedTuple, cast
 
 from pydantic import (
     UUID4,
@@ -271,6 +271,43 @@ AuditRecord = Annotated[
     Field(discriminator="type"),
 ]
 _ADAPTER: TypeAdapter[AuditRecord] = TypeAdapter(AuditRecord)
+
+
+class LoadedEvents(NamedTuple):
+    records: list[dict[str, Any]]
+    rejected: int  # lines under events/ that are not a valid record of a known type
+
+
+def load_events(audit_dir: Path) -> LoadedEvents:
+    """Every record under `events/`, validated against the schema the collector writes with.
+
+    The collector's strictness protects the *write* path: a PR's artifact is parsed with
+    `extra="forbid"`, size-capped and cross-checked against the API before anything is committed.
+    It says nothing about the *read* path. The `audit-log` branch takes a push from anyone with
+    write access and from any workflow holding `contents: write` (ADR 0005 accepts that), so a
+    hand-appended line used to reach the release attestation and the metrics unchecked: both read
+    every line with `json.loads` and treated any object carrying `"type": "gate_run"` as a verdict.
+
+    Rejected lines are **counted, not skipped quietly**: the count reaches the attestation
+    predicate and the metrics report, so a malformed or planted line is visible rather than
+    absent. Records are returned as dicts because the readers index many record types loosely;
+    validation is what this adds, not a change of shape.
+    """
+    records: list[dict[str, Any]] = []
+    rejected = 0
+    for path in sorted(audit_dir.glob("events/**/*.jsonl")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+                _ADAPTER.validate_python(record)
+            except ValueError, ValidationError:
+                rejected += 1
+                continue
+            records.append(record)
+    return LoadedEvents(records, rejected)
+
 
 # What the untrusted side may write (each checked by the collector); feedback, risk overrides,
 # evals and tamper events come from trusted workflows only.

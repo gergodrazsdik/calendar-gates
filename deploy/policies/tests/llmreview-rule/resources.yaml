@@ -1,0 +1,68 @@
+# Mock llm-review predicates for the rule test. The shape is `llm-gate attest llm-review`'s
+# predicate (see tools/llm-gate/tests/test_attestations.py): `prs`, `unreviewed`, `unverified`,
+# and the commit range. Only the lists the clause reads are filled in.
+apiVersion: test.calendar-gates.local/v1
+kind: LlmReviewStatement
+metadata:
+  name: every-pr-reviewed
+predicate:
+  range: {from: v0.3.6, to: v0.3.7}
+  prs:
+    - number: 87
+      risk: high
+      checks: {code-review: pass, security-review: pass}
+  unreviewed: []
+  unverified: []
+---
+# What the real predicate for v0.3.7 looks like: reviewed, but two PRs changed the review workflow
+# so their runs cannot be verified. This must be admitted, or every release of this repository is
+# blocked -- the PRs here mostly change the gate itself.
+apiVersion: test.calendar-gates.local/v1
+kind: LlmReviewStatement
+metadata:
+  name: reviewed-but-unverifiable
+predicate:
+  range: {from: v0.3.6, to: v0.3.7}
+  prs:
+    - number: 88
+      risk: high
+      checks: {code-review: pass, security-review: pass}
+  unreviewed: []
+  unverified:
+    - number: 87
+      reason: workflow_modified
+    - number: 88
+      reason: workflow_modified
+---
+# A PR with no review record for its merged head: a failed artifact upload, a collector that gave
+# up mid-write, or a commit that never went through a pull request at all.
+apiVersion: test.calendar-gates.local/v1
+kind: LlmReviewStatement
+metadata:
+  name: one-pr-never-reviewed
+predicate:
+  range: {from: v0.3.6, to: v0.3.7}
+  prs:
+    - number: 91
+      risk: high
+      checks: {}
+  unreviewed:
+    - number: 91
+      reason: no review record for the merged head
+  unverified: []
+---
+# The case the clause exists for: an attestation that is present and correctly signed, and says
+# nothing in the release was reviewed. Admitted until 2026-10-19.
+apiVersion: test.calendar-gates.local/v1
+kind: LlmReviewStatement
+metadata:
+  name: nothing-reviewed-at-all
+predicate:
+  range: {from: v0.3.6, to: v0.3.7}
+  prs: []
+  unreviewed:
+    - number: 91
+      reason: no review record for the merged head
+    - commit: 67273946
+      reason: no pull request
+  unverified: []

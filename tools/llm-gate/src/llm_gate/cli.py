@@ -975,13 +975,15 @@ def cmd_metrics(args: argparse.Namespace, checks: Mapping[str, Check], *, root: 
         return EXIT_ERROR
     prs = json.loads(args.prs.read_text(encoding="utf-8")) if args.prs else []
     now = datetime.now(UTC)
+    loaded = metrics.load_counted(audit_dir)
     report = metrics.compute(
-        metrics.load_records(audit_dir),
+        loaded.records,
         prs,
         blocking_checks=[c.name for c in checks.values() if c.blocking],
         now=now,
         since_days=args.since_days,
         eval_runs=metrics.load_eval_runs(args.eval_reports),
+        rejected_records=loaded.rejected,
     )
     print(metrics.render(report, generated=now), end="")
     return 0

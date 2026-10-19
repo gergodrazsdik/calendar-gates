@@ -106,6 +106,16 @@ output can't simply be trusted either.
   unedited, was written by the login in the record, and asks for the same level, the way
   `find_override` checks an override's reason. A record that fails is reported and can't explain
   the run's risk, so the run is flagged instead of accepted.
+- **Amended 2026-10-19: reading the log is as strict as writing it.** The two bullets above are
+  about the collector and about triage. The release attestation and the metrics were the readers
+  nobody had revisited: both walked `events/**` with `json.loads` and accepted any object, so
+  `llm_review()` treated anything carrying `"type": "gate_run"` with a matching PR and head as a
+  verdict. One appended, well-formed line could therefore turn an unreviewed PR into a reviewed
+  one inside a *signed* predicate — the artefact most likely to be shown to someone as evidence.
+  Both now use `audit.load_events`, which validates every line against the same models the
+  collector writes with, and **counts** what it refused: the count reaches the predicate
+  (`rejected_records`) and the weekly report, so a planted or malformed line is visible instead of
+  absent. Across the 700 record files in the log today it refuses nothing.
 - **Amended 2026-10-18: `workflow_modified` covers what can steer a review**, not just the
   triggering workflow's own path: any `.github/workflows/**` or `.github/actions/**` change (a
   sibling workflow runs on the same event and shares the PR's cache scope) and `.gitattributes`

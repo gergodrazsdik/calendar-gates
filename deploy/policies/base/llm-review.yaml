@@ -46,3 +46,20 @@ spec:
         variables.allImages.map(image,
           verifyAttestationSignatures(image, attestations.llmreview, [attestors.release])).all(e, e > 0)
       message: the image has no LLM-review attestation signed by release.yml on a release tag
+    # Until 2026-10-19 the policy stopped at the clause above, so "only reviewed code runs here"
+    # actually meant "a document about reviews is attached": a release whose every PR was
+    # unreviewed was admitted. This reads the predicate, like release.yaml's vuln-scan clause.
+    #
+    # `unreviewed` only: a PR with no review record for its merged head, or one whose blocking
+    # checks never decided. `unverified` is deliberately *not* denied here. It marks a PR whose
+    # run came from a modified workflow, which in this repository is most of them -- the gate is
+    # what the PRs change -- and the predicate for v0.3.7 lists two such PRs (#87, #88) with
+    # `unreviewed` empty. Denying on it would block every legitimate release, so it is reported
+    # by `just verify-release` and in the release notes instead (ADR 0010).
+    - expression: >-
+        variables.allImages.map(image,
+          verifyAttestationSignatures(image, attestations.llmreview, [attestors.release]) > 0
+          && extractPayload(image, attestations.llmreview).predicate.unreviewed.size() == 0
+        ).all(e, e)
+      message: >-
+        the image's LLM-review attestation lists pull requests that were never reviewed

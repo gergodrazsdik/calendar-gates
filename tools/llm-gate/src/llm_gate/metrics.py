@@ -15,6 +15,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from . import audit
+
 # The check reached a decision. `not_needed` is one of them (F083): the triage plan decided the
 # check wasn't needed at that risk level, which is an answer, and counting it as a gap made every
 # merged low-risk PR look uncovered.
@@ -23,16 +25,18 @@ NO_DATA = "_no data yet_"
 
 
 def load_records(audit_dir: Path) -> list[dict[str, Any]]:
-    """Every record under events/, as plain dicts (the schema checked them on the way in)."""
-    records: list[dict[str, Any]] = []
-    for path in sorted(audit_dir.glob("events/**/*.jsonl")):
-        for line in path.read_text(encoding="utf-8").splitlines():
-            if line.strip():
-                try:
-                    records.append(json.loads(line))
-                except ValueError:
-                    continue
-    return records
+    """Every valid record under events/, as plain dicts.
+
+    `audit.load_events` validates each line against the schema: "the schema checked them on the
+    way in" was true of the collector's write path and not of this one, since the branch takes a
+    push from anyone with write access. `load_counted` is the same thing with the reject count,
+    which the report shows.
+    """
+    return load_counted(audit_dir).records
+
+
+def load_counted(audit_dir: Path) -> audit.LoadedEvents:
+    return audit.load_events(audit_dir)
 
 
 def _when(value: object) -> datetime | None:
@@ -79,6 +83,9 @@ class Report:
     tamper: int = 0
     unverified: int = 0
     rejected_feedback: int = 0
+    # Lines under events/ that are not valid records. The branch takes a push from anyone with
+    # write access, so this is not always zero by construction.
+    rejected_records: int = 0
     evals: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -90,6 +97,7 @@ def compute(
     now: datetime,
     since_days: int = 30,
     eval_runs: Sequence[Mapping[str, Any]] = (),
+    rejected_records: int = 0,
 ) -> Report:
     records = list(records)
     stamps = [ts for r in records if (ts := _when(r.get("ts"))) is not None]
@@ -220,6 +228,7 @@ def compute(
     report.tamper = sum(1 for r in recent if r.get("type") == "tamper_suspected")
     report.unverified = sum(1 for r in runs if r.get("workflow_modified"))
     report.rejected_feedback = sum(1 for r in recent if r.get("type") == "feedback_rejected")
+    report.rejected_records = rejected_records
     report.evals = [dict(e) for e in eval_runs]
     return report
 
@@ -356,6 +365,7 @@ def render(report: Report, *, generated: datetime) -> str:
         "",
         f"Tamper-suspected artifacts: {report.tamper}; reviews from PRs that changed the review "
         f"workflow (unverified): {report.unverified}; rejected `/llm-*` commands: "
-        f"{report.rejected_feedback}.",
+        f"{report.rejected_feedback}; lines on the branch that are not valid records: "
+        f"{report.rejected_records}.",
     ]
     return "\n".join(lines) + "\n"

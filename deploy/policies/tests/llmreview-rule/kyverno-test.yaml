@@ -1,0 +1,25 @@
+# What the "every PR was reviewed" clause of base/llm-review.yaml admits and refuses. See
+# policy.yaml for why the clause is tested through a stand-in resource.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: calendar-gates-llmreview-rule
+policies:
+  - policy.yaml
+resources:
+  - resources.yaml
+results:
+  - policy: calendar-gates-llmreview-rule
+    kind: LlmReviewStatement
+    resources:
+      - every-pr-reviewed
+      # Admitted on purpose: `unverified` is not what this clause denies on, because in this
+      # repository most PRs change the review workflow and would block every release.
+      - reviewed-but-unverifiable
+    result: pass
+  - policy: calendar-gates-llmreview-rule
+    kind: LlmReviewStatement
+    resources:
+      - one-pr-never-reviewed
+      - nothing-reviewed-at-all
+    result: fail
