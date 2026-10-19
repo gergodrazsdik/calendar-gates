@@ -6,4 +6,4 @@
 #
 # Bumping it is a deliberate PR, as with the other pinned tools. A local `uv` of another version
 # fails loudly ("project requires uv ==...") rather than drifting, which is the point.
-required-version = "==0.13.0"
+required-version = "==0.13.1"

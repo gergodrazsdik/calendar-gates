@@ -48,6 +48,10 @@ jobs:
           fi
 
       - name: Report
+        env:
+          # Only to read public release lists: scripts/check-tool-pins.py asks GitHub for each
+          # tool's releases, and unauthenticated requests are rate-limited per runner IP.
+          GH_TOKEN: ${{ github.token }}
         run: |
           # The artifact keeps the common parent of its paths (the runner's temp dir and the
           # workspace), so the reports sit a few levels down: find them.

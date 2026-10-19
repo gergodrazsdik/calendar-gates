@@ -45,9 +45,14 @@ top of the `justfile`, used through `${{ env.* }}` and `{{ … }}`. Two things k
   disagree. (`kubectl` is deliberately exempt: `ci.yml` tracks the current release while
   `release.yml` pins 1.35 for the project cluster's Kyverno, [ADR 0010](adr/0010-admission-control.md).)
 - the weekly **Gate health** issue (`metrics.yml`) ends with a table of every such pin and the
-  current upstream version, marking what is behind. Pre-releases don't count as upstream — Kyverno
-  tags release candidates as releases — and ijhttp has no release feed worth trusting from CI, so
-  it says "check by hand" with the URL.
+  upstream version, marking what is behind. "Upstream" is the newest release **at least 14 days
+  old**, not the newest release: that is the same cooldown Dependabot (`cooldown: 14`) and uv's
+  `exclude-newer` apply, and a table pointing at yesterday's release would be asking for a bump the
+  project's own policy says to wait on. Anything newer than that sits in an *In cooldown* column, so
+  the wait is visible; a pin above the eligible version is reported as such rather than as "behind"
+  (grype and syft are there, pinned before this rule was written down). Pre-releases don't count —
+  Kyverno tags release candidates as releases — and ijhttp has no release feed worth trusting from
+  CI, so it says "check by hand" with the URL.
 
 Updating one is still a human edit, which is the honest state of affairs: nothing here can open a
 PR that bumps a digest and knows it is the right one. What has changed is that nobody has to

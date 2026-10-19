@@ -12,7 +12,14 @@
 # logins) through env. GH_TOKEN is set only for the steps that call the API.
 name: llm-feedback
 
-on:
+# zizmor 1.31 raises `dangerous-triggers` here (new in that version, and right about the class of
+# trigger): an issue_comment run has write access and secrets, and anyone can comment. What makes it
+# safe is above — this file and the gate code come from the default branch, the PR is never checked
+# out, the job doesn't start for non-collaborators, only write/maintain/admin roles are heard inside
+# it, and the comment is read from the event file rather than interpolated into a shell.
+# ZIZMOR_VERSION is still 1.30.1 (1.31.1 is inside the 14-day cooldown), so this suppression is
+# inert until that pin moves; it is here because the finding is what the next bump will raise.
+on: # zizmor: ignore[dangerous-triggers]
   issue_comment:
     types: [created]
 
