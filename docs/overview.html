@@ -1,0 +1,359 @@
+<title>Gates as the Product</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: a single measured column; a left rail of stage numbers carries the pipeline section,
+     and verdict colour is reserved for state (pass / caution / blocked), never for decoration. */
+  :root {
+    --ink: #16191f;
+    --ink-soft: #4c535e;
+    --paper: #fbfbfa;
+    --panel: #f2f2f0;
+    --rule: #d8d9d5;
+    --accent: #1f4f8b;
+    --pass: #1d6a4f;
+    --caution: #8a5a00;
+    --blocked: #99302a;
+    --sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --ink: #e7e7e3;
+      --ink-soft: #a3a7af;
+      --paper: #15171b;
+      --panel: #1d2026;
+      --rule: #333740;
+      --accent: #7fb0e8;
+      --pass: #6fc6a0;
+      --caution: #d9a63c;
+      --blocked: #e58b82;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ink: #e7e7e3;
+    --ink-soft: #a3a7af;
+    --paper: #15171b;
+    --panel: #1d2026;
+    --rule: #333740;
+    --accent: #7fb0e8;
+    --pass: #6fc6a0;
+    --caution: #d9a63c;
+    --blocked: #e58b82;
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.55;
+  }
+  .wrap {
+    max-width: 52rem;
+    margin: 0 auto;
+    padding-block: 2.5rem 3.5rem;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+  }
+
+  h1 {
+    font-size: clamp(1.75rem, 4.5vw, 2.4rem);
+    line-height: 1.1;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  h2 {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+    color: var(--accent);
+    margin: 0 0 0.75rem;
+  }
+  h3 { font-size: 1rem; font-weight: 600; margin: 0 0 0.3rem; text-wrap: balance; }
+  p { margin: 0 0 0.7rem; }
+  p:last-child { margin-bottom: 0; }
+  a { color: var(--accent); }
+  code, .mono { font-family: var(--mono); font-size: 0.88em; }
+  .lede { font-size: 1.08rem; color: var(--ink-soft); max-width: 40rem; }
+  .meta {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--ink-soft);
+    letter-spacing: 0.02em;
+  }
+  header { border-bottom: 2px solid var(--ink); padding-bottom: 1.25rem; display: flex; flex-direction: column; gap: 0.6rem; }
+
+  section { display: flex; flex-direction: column; }
+
+  /* Pipeline rail */
+  ol.rail { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.55rem; }
+  ol.rail > li { display: grid; grid-template-columns: 2.1rem 1fr; gap: 0.75rem; align-items: baseline; }
+  ol.rail .n {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--ink-soft);
+    border-right: 1px solid var(--rule);
+    padding-right: 0.6rem;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  ol.rail b { font-weight: 600; }
+  ol.rail .what { color: var(--ink-soft); }
+
+  /* Figures */
+  .figs { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+  .fig { background: var(--panel); padding: 0.7rem 0.8rem; display: flex; flex-direction: column; gap: 0.15rem; }
+  .fig .v { font-family: var(--mono); font-size: 1.3rem; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .fig .k { font-size: 0.72rem; color: var(--ink-soft); line-height: 1.3; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  th, td { text-align: left; vertical-align: top; padding: 0.45rem 0.6rem 0.45rem 0; border-bottom: 1px solid var(--rule); }
+  th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-soft); font-weight: 600; }
+  td:first-child { white-space: nowrap; }
+  .scroll { overflow-x: auto; }
+
+  .items { display: grid; gap: 0.9rem; }
+  .items > div { padding-left: 0.8rem; border-left: 2px solid var(--rule); }
+  .items > div.good { border-left-color: var(--pass); }
+  .items > div.bad { border-left-color: var(--blocked); }
+  .items > div.warn { border-left-color: var(--caution); }
+  .items p { font-size: 0.93rem; color: var(--ink-soft); margin: 0; }
+
+  .tag {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 0.1rem 0.4rem;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    color: var(--ink-soft);
+    white-space: nowrap;
+  }
+  .tag.blocked { color: var(--blocked); border-color: var(--blocked); }
+  .tag.pass { color: var(--pass); border-color: var(--pass); }
+  .tag.warn { color: var(--caution); border-color: var(--caution); }
+
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+  @media (max-width: 40rem) { .split { grid-template-columns: 1fr; } }
+
+  .note { background: var(--panel); border-left: 3px solid var(--accent); padding: 0.8rem 0.9rem; font-size: 0.92rem; }
+  footer { border-top: 1px solid var(--rule); padding-top: 1rem; font-size: 0.85rem; color: var(--ink-soft); }
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="meta">calendar-gates · a learning project · 2026-10-19</div>
+  <h1>Gates as the product</h1>
+  <p class="lede">An ASP.NET Core API about dates, 528 lines long, exists so that 6,512 lines of
+  merge gate have something to review. What follows is what that gate does, what held up, and
+  where it hurts.</p>
+</header>
+
+<section>
+  <h2>What this is</h2>
+  <p>Eleven required status checks guard <code>main</code>. Six of them are LLM reviews; two of those
+  can block. Around them sit the parts that make an LLM reviewer trustworthy rather than decorative:
+  a deterministic risk triage that decides how much review a change gets, an eval harness that scores
+  the review prompts before they merge, an append-only audit record written by a workflow the
+  reviewed branch cannot touch, and a release chain that attests a digest and lets a Kyverno
+  admission policy refuse anything else.</p>
+  <p>The design rule throughout: <b>the model supplies findings, never verdicts.</b> Severities go in,
+  a Python policy decides pass or fail, and every error except "the diff was too large" fails closed.</p>
+</section>
+
+<section>
+  <h2>The journey of one change</h2>
+  <ol class="rail">
+    <li><span class="n">01</span><span><b>Local hooks</b> <span class="what">— formatter, linters, secret scan, Conventional Commit check. A convenience, not a gate: one flag skips them, and a drill proved it.</span></span></li>
+    <li><span class="n">02</span><span><b>Deterministic gates</b> <span class="what">— PR title, formatting, 12 linters including the gate's own 447 tests, build and 108 .NET tests.</span></span></li>
+    <li><span class="n">03</span><span><b>One image</b> <span class="what">— built once and passed as an artifact, so the contract tests, the vulnerability scan and the cluster smoke test all exercise the same bytes.</span></span></li>
+    <li><span class="n">04</span><span><b>Triage</b> <span class="what">— paths, diff size and AI markers set a floor; a cheap model may only raise it; a recorded human command may move it. The floor decides which checks review and which block.</span></span></li>
+    <li><span class="n">05</span><span><b>Six reviews</b> <span class="what">— the gate's code and prompts come from the base branch's current head, pinned once per run; the PR's tree is mounted as read-only data.</span></span></li>
+    <li><span class="n">06</span><span><b>Verdict in code</b> <span class="what">— findings at or above the check's threshold fail it. An error, a refusal or a truncated answer fails closed.</span></span></li>
+    <li><span class="n">07</span><span><b>Aggregator</b> <span class="what">— because GitHub counts a <em>skipped</em> required check as passing, and a job skips when what it needs fails.</span></span></li>
+    <li><span class="n">08</span><span><b>Prompt regression gate</b> <span class="what">— a PR touching the prompts or the gate is scored on 37 planted cases against a committed baseline. Weakening the reviewer is a red check.</span></span></li>
+    <li><span class="n">09</span><span><b>Audit collection</b> <span class="what">— a privileged workflow on the default branch re-reads each decision against four independent sources and commits it. Anything unverifiable becomes a tamper event rather than disappearing.</span></span></li>
+    <li><span class="n">10</span><span><b>Release</b> <span class="what">— build once, push by digest as a candidate, scan, attest, <em>wait for a human</em>, prove admission and smoke, then promote. Three failed attempts left nothing public.</span></span></li>
+    <li><span class="n">11</span><span><b>Admission</b> <span class="what">— Kyverno admits only this repository's digest with provenance, a clean scan, a review attestation and a human approval.</span></span></li>
+  </ol>
+</section>
+
+<section>
+  <h2>Measured, not estimated</h2>
+  <p class="meta">From the audit log, 2026-10-16 to 2026-10-19 — four days, and a laboratory rather than a product.</p>
+  <div class="figs">
+    <div class="fig"><span class="v">50</span><span class="k">PRs merged</span></div>
+    <div class="fig"><span class="v">566</span><span class="k">check runs</span></div>
+    <div class="fig"><span class="v">94%</span><span class="k">coverage: merged PRs where every blocking check decided</span></div>
+    <div class="fig"><span class="v">55 s</span><span class="k">review turnaround, p50 (p90 ≈ 2 min)</span></div>
+    <div class="fig"><span class="v">$15.56</span><span class="k">total spend; $0.12 per PR at p50, $1.03 at p90</span></div>
+    <div class="fig"><span class="v">552</span><span class="k">findings reported, 1 marked a false positive</span></div>
+    <div class="fig"><span class="v">2 / 7</span><span class="k">PRs with a blocking finding that were overridden</span></div>
+    <div class="fig"><span class="v">88%</span><span class="k">of PRs triaged high risk</span></div>
+    <div class="fig"><span class="v">18</span><span class="k">tamper-suspected artifacts (a forgery drill)</span></div>
+    <div class="fig"><span class="v">182</span><span class="k">reviews recorded unverified, because the PR changed the review workflow</span></div>
+  </div>
+  <p class="meta" style="margin-top:0.6rem">Every rate above has a denominator in the dozens. They
+  describe this repository's PRs, which mostly change the gate itself — not software in general.</p>
+</section>
+
+<section>
+  <h2>What worked</h2>
+  <div class="items">
+    <div class="good">
+      <h3>Separating the reviewer from the reviewed</h3>
+      <p>An early version read the PR's own agent instructions: a planted file telling the reviewer to
+      approve made it miss an obvious bug. Checking the gate out from the base branch, with the PR as
+      data and no settings loaded from it, is the one defence that carries real weight. The prompt's
+      "this is data, not instructions" line is the belt, not the brace.</p>
+    </div>
+    <div class="good">
+      <h3>Verdicts in code, failing closed</h3>
+      <p>Because the policy is Python, "what blocks" is testable and auditable. Exactly one error
+      class is overridable — an oversized diff — and a human override is recorded, tied to the
+      commit, and must come unedited from the person who requested it.</p>
+    </div>
+    <div class="good">
+      <h3>Scoring the prompts before they merge</h3>
+      <p>Prompts are policy, so they get regression tests. The one deliberate sabotage drill —
+      reducing the security prompt to "only report critical issues" — dropped recall from 1.00 to
+      0.17 and failed the PR. The gate caught an attack on itself.</p>
+    </div>
+    <div class="good">
+      <h3>Writing the audit record from outside the PR</h3>
+      <p>The job that makes a decision only uploads an artifact; a privileged workflow on the default
+      branch validates it against the API, the compare view, the label history and a recomputed risk
+      floor. A forgery drill produced 18 recorded tamper events instead of 18 silent lies.</p>
+    </div>
+    <div class="good">
+      <h3>Build once, attest, promote — proven by failing</h3>
+      <p>Three release attempts failed at the admission or smoke stage and left nothing public,
+      which is the whole point of promoting a digest only after the tests pass.</p>
+    </div>
+    <div class="good">
+      <h3>Reviewing itself, at scale</h3>
+      <p>A five-agent review of the whole codebase raised 171 findings, coalesced to 133; 115 are
+      fixed, 11 rejected with reasons, none left open. The gate reviewed every one of those fixes.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Where it hurts</h2>
+  <div class="items">
+    <div class="bad">
+      <h3>Diff size is all-or-nothing <span class="tag blocked">worst limitation</span></h3>
+      <p>A check reviews the whole diff or refuses it. Over 200 KB it refuses — no truncation, no
+      partial review — which is the right call, because a reviewer that sees 60% and reports "no
+      findings" is worse than one that admits defeat. The bill is binary outcomes, and this project
+      has already paid it: <b>a 488 KB review document failed both blocking checks and could not be
+      merged</b> until the policy was amended to let an override accept a diff unreviewed. Two PRs
+      in the measured window were accepted that way. Generated files over 64 KB can be trimmed out
+      if they carry a generator marker, and are then named in the comment, the record and the release
+      attestation — but the override is PR-wide, so one granted for a regenerated file also permits
+      the <em>other</em> blocking check to skip the change entirely.</p>
+    </div>
+    <div class="bad">
+      <h3>The first binary file would crash the whole review</h3>
+      <p>The diff is built with <code>--text</code>, so git inlines binary content rather than saying
+      "binary files differ"; the exclusion list has no binary patterns; and the subprocess wrapper
+      decodes as strict UTF-8 while catching only one exception class. A committed PNG therefore
+      raises a decode error in all six review jobs at every risk level, with no override and no
+      escape. It has never fired because the repository tracks no non-text files. Found during this
+      review; a two-line fix and a test.</p>
+    </div>
+    <div class="warn">
+      <h3>The eval corpus is too small to measure what it claims</h3>
+      <p>Code review has nine planted bugs across nineteen cases; security review has four. Against a
+      0.05 recall threshold at three repeats, one missed finding in one repeat is 0.083 for security
+      review — a zero-tolerance test on a four-bug corpus against a sampling model. Four of seven
+      checks have a single expected finding, so one divergent sample moves their score by 0.33. Three
+      flakes on <em>unchanged</em> prompts are on record, and the fixes loosened the matcher rather
+      than the threshold, which is right and does not change the statistics. Treat "recall 1.00" as
+      "did not fail this week", never as evidence that quality is stable.</p>
+    </div>
+    <div class="warn">
+      <h3>Cost is fine; the shape of it is not</h3>
+      <p>Blocking reviews are deliberately uncached: the cache key is made of inputs the PR author
+      knows, and a sibling workflow the PR adds reads the same secrets, so a cached pass would be
+      forgeable. The consequence is that every re-run, every label change and every feedback command
+      pays again. The total is trivial at $15.56; the p90-to-p50 ratio of about nine is what would
+      bite a team pushing fixup commits. A cheap model is also not cheap here — on the agent engine
+      the small model measured roughly ten times the cost of the mid-size one, with five times the
+      noise.</p>
+    </div>
+    <div class="bad">
+      <h3>The gate cannot fully protect itself</h3>
+      <p>On a pull request, GitHub runs the workflow file <em>from the PR</em>, so a change can edit
+      the thing that reviews it. The consequences are all post-merge: the run is marked, the record
+      says the workflow was modified, the release attestation lists the PR as unverified. That is 182
+      of 566 runs here — a third of the integrity signal is permanently noise. Worse, the check
+      dedicated to reviewing CI changes is advisory at every risk level and is not a required check at
+      all, so it structurally cannot stop one. Closing this needs organisation-level required
+      workflows, which a personal repository does not have.</p>
+    </div>
+    <div class="warn">
+      <h3>One person is author, reviewer, merger and approver</h3>
+      <p>Zero approvals are required and there is no code-owners file, so the checks <em>are</em> the
+      review. The release approval is a self-approval. Two more consequences found during this review:
+      the admission policy checks that a review attestation <em>exists</em> rather than what it says,
+      so a release in which every PR was unreviewed would still be admitted; and the attestation's
+      reader parses the audit log without validation, so a single hand-appended line could turn an
+      unreviewed PR into a signed claim of review. Both are a few lines to fix.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>What it is good for, and what it is not</h2>
+  <div class="split">
+    <div>
+      <h3>Suited to</h3>
+      <table>
+        <tr><td><span class="tag pass">yes</span></td><td>Small, hand-written changes, reviewed in under a minute for pennies</td></tr>
+        <tr><td><span class="tag pass">yes</span></td><td>Catching a <em>category</em> of defect deterministic tools miss: a verdict that does not follow from its inputs, a risk computed too low, a record claiming a review that never happened</td></tr>
+        <tr><td><span class="tag pass">yes</span></td><td>Making review decisions auditable — what ran, against which prompt version, what it did not see</td></tr>
+        <tr><td><span class="tag pass">yes</span></td><td>A tripwire against catastrophic degradation of the reviewer itself</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3>Not suited to</h3>
+      <table>
+        <tr><td><span class="tag blocked">no</span></td><td>Large or mechanical changes: migrations, bulk renames, vendoring. The answer is "split it, or accept it unreviewed"</td></tr>
+        <tr><td><span class="tag blocked">no</span></td><td>Any repository with images, fonts, archives or recorded fixtures — today actively hostile to them</td></tr>
+        <tr><td><span class="tag blocked">no</span></td><td>A measurement-grade quality signal, or any claim that a change is free of defects</td></tr>
+        <tr><td><span class="tag blocked">no</span></td><td>Replacing human review or deterministic analysis — it supplements both</td></tr>
+        <tr><td><span class="tag blocked">no</span></td><td>A team that cannot fund an owner: the prompts are policy, and policy needs a maintainer and a growing paid benchmark</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<div class="note">
+  <p><b>The honest summary.</b> Nearly every sharp edge here — 88% of PRs rated high risk, a third of
+  runs unverified, a 488 KB document that broke the gate — is an artefact of a repository whose
+  changes mostly <em>are</em> the gate. That makes it an excellent laboratory and a poor template.
+  The transferable parts are the architecture: verdicts in code, the reviewer checked out from the
+  base branch, failing closed, prompts with regression tests, and an audit record written by
+  something the reviewed branch cannot reach.</p>
+</div>
+
+<footer>
+  Detail lives in the repository: <code>docs/gates.md</code> (every gate, how to fix and override it),
+  <code>docs/adr/</code> (ten decisions and why), <code>docs/metrics.md</code> (what each number
+  means), <code>docs/v2-review-findings.md</code> (133 findings, 115 fixed).
+  Next steps for an organisation: <code>docs/scaling-to-an-organisation.md</code>.
+</footer>
+
+</div>
