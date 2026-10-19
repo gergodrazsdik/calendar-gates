@@ -39,7 +39,6 @@ jobs:
       contents: read
       pull-requests: write # the risk:<level> and ai-assisted labels
     outputs:
-      checks: ${{ steps.list.outputs.checks }}
       gate_sha: ${{ steps.gate.outputs.sha }}
       risk: ${{ steps.triage.outputs.risk }}
     env:
@@ -66,12 +65,6 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           cache-dependency-glob: gate/tools/llm-gate/uv.lock
-      - name: Checks from the base commit's checks.yaml (the matrix below)
-        id: list
-        run: >-
-          echo "checks=$(uv run --project gate/tools/llm-gate --locked llm-gate --repo gate
-          --config gate/tools/llm-gate/checks.yaml list --json)" >> "$GITHUB_OUTPUT"
-
       # The description from the API, not the event: a re-run (after /llm-risk) keeps the
       # original payload. The commits from the checkout, as the collector gets them from the
       # compare API for this head: a later push can't change what this run is checked against.
@@ -183,8 +176,21 @@ jobs:
       issues: read # who added llm-override, and their /llm-override reason
     strategy:
       fail-fast: false
+      # A literal list, not `fromJSON(needs.triage.outputs.checks)`: a matrix built from a
+      # dependency's output can't expand until that job finishes, so a run cancelled during triage
+      # — which is what happens when two pushes land a second apart, as Dependabot does — left a
+      # check literally named `llm / ${{ matrix.check }}` behind, failed and for ever, because no
+      # later run ever reports that context. With the names known at run start, the cancelled run's
+      # checks share their names with the next run's and are superseded.
+      # scripts/check-ruleset-consistency.py keeps this list equal to checks.yaml's checks.
       matrix:
-        check: ${{ fromJSON(needs.triage.outputs.checks) }}
+        check:
+          - code-review
+          - security-review
+          - test-review
+          - api-contract
+          - docs-drift
+          - workflow-review
     env:
       CHECK: ${{ matrix.check }}
       PR: ${{ github.event.pull_request.number }}

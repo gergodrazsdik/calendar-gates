@@ -87,7 +87,10 @@ changes CI state for no convenience gain.
 - **llm / <check>**: the model returns findings; llm-gate decides from their severities
   ([ADR 0002](adr/0002-llm-gate-policy.md)). Advisory checks never fail. Results are cached per
   check, engine, model, prompt and diff, so re-runs without changes are free.
-  In CI each check is a job in `llm-review.yml` (matrix from `llm-gate list --json`) that writes the
+  In CI each check is a job in `llm-review.yml` (a matrix spelled out in the workflow, kept equal to
+  `checks.yaml` by `check-ruleset-consistency.py`: a matrix built from a job's output can't expand
+  until that job finishes, and a run cancelled before that leaves a phantom
+  `llm / ${{ matrix.check }}` check behind) that writes the
   review to the job summary and one sticky PR comment per check (updated on every run; "not
   applicable" only updates an existing one). PRs without the API key (forks, Dependabot) skip with a
   notice; set the repo variable `LLM_GATE_MISSING_KEY=fail` to make blocking checks fail closed
