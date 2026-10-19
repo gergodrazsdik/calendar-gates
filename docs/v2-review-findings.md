@@ -33,12 +33,12 @@ A second, smaller review on 2026-10-19 produced the follow-up findings F134-F140
 | accepted | 0 | 0 | 0 | 2 | 1 | 3 |
 | rejected | 0 | 0 | 0 | 0 | 11 | 11 |
 
-**Fixed so far: 115 of 119** (3 partial, 0 open, 1 unverifiable). By severity:
+**Fixed so far: 116 of 119** (2 partial, 0 open, 1 unverifiable). By severity:
 
 | Status | critical | high | medium | low | info | total |
 |---|---|---|---|---|---|---|
-| ✅ fixed | 0 | 2 | 15 | 72 | 26 | 115 |
-| 🟡 partial | 0 | 0 | 1 | 2 | 0 | 3 |
+| ✅ fixed | 0 | 2 | 16 | 72 | 26 | 116 |
+| 🟡 partial | 0 | 0 | 0 | 2 | 0 | 2 |
 | open | 0 | 0 | 0 | 0 | 0 | 0 |
 | ⚪ unverifiable | 0 | 0 | 1 | 0 | 0 | 1 |
 
@@ -222,7 +222,7 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 |---|---|---|---|---|---|---|---|
 | [F001](#f001) | ✅ fixed | high | high | A | A PR's own .gitattributes can hide its changes from every LLM reviewer and from triage's size rule | small | S:C/high M:C/high I:C/medium |
 | [F002](#f002) | ✅ fixed | high | high | A | Review results restored from the Actions cache are trusted unverified, and other workflows of the same PR can write that cache | medium | S:C/high M:C/high I:C/medium |
-| [F012](#f012) | 🟡 partial | medium | medium | A | Cache keys ignore llm-gate's request code and engine settings, so llm-eval scores engine changes from main's cached reviews | small | S:C/medium M:C/medium I:C/medium |
+| [F012](#f012) | ✅ fixed | medium | medium | A | Cache keys ignore llm-gate's request code and engine settings, so llm-eval scores engine changes from main's cached reviews | small | S:C/medium M:C/medium I:C/medium |
 | [F004](#f004) | ✅ fixed | medium | high | A | The collector's triage recomputation (_triage_expected) has no test at all | small | S:C/medium M:C/medium I:C/low |
 | [F005](#f005) | ✅ fixed | medium | medium | A | Triage and the collector accept any risk_override record on audit-log, so a hand-pushed record can lower the risk with a forged author and an unbeatable timestamp | medium | S:C/medium M:C/medium I:C/medium |
 | [F006](#f006) | ✅ fixed | medium | medium | A | Re-running only the failed llm jobs turns their records into tamper_suspected, because the new attempt has no triage artifact | small | S:C/medium M:C/medium I:C/medium |
@@ -457,7 +457,7 @@ The Review step exports ANTHROPIC_API_KEY, and the Agent SDK passes os.environ o
 
 **Cache keys ignore llm-gate's request code and engine settings, so llm-eval scores engine changes from main's cached reviews**
 
-- **Status:** 🟡 partial — #68: moot for llm-review, which no longer caches reviews; llm-eval's own cache still ignores engine settings
+- **Status:** ✅ fixed — #68: moot for llm-review, which no longer caches reviews; #93: each engine declares its `request_shape` and that joins llm-eval's cache key too (see [F139](#f139))
 - **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `tools/llm-gate/src/llm_gate/cache.py:15` · **area:** llm-gate and review prompts
 - **Reported by:** `cr-gate-07` (medium, high confidence)
@@ -3740,7 +3740,7 @@ changes behaviour and two of them produced wrong statements in the session that 
 | [F136](#f136) | ✅ fixed — #91 | medium | Admission and `verify-release` check that the LLM-review attestation exists, not what it says |
 | [F137](#f137) | ✅ fixed — #91 | medium | The attestation and metrics readers parse the audit log without validation, so one appended line can claim a review |
 | [F138](#f138) | ✅ fixed — #91 | low | A `/llm-risk` lowering never appears in the per-PR attestation entry |
-| [F139](#f139) | 🟡 partial | low | `llm-eval`'s cache key ignores engine settings (the live half of [F012](#f012)) |
+| [F139](#f139) | ✅ fixed — #93 | low | `llm-eval`'s cache key ignores engine settings (the live half of [F012](#f012)) |
 | [F140](#f140) | ✅ fixed — #92 | low | Seven places where a document contradicts the code |
 
 ### F134
@@ -3828,7 +3828,12 @@ showed `risk: low` with no indication a person put it there or why.
 
 **`llm-eval`'s cache key ignores engine settings**
 
-- **Status:** 🟡 partial — the live half of [F012](#f012); fixing it costs a full paid eval run
+- **Status:** ✅ fixed — #93: each engine declares its `request_shape` and that joins the cache key.
+  Removing the cache that had been replaying the baseline's own samples immediately surfaced a
+  false block on a clean case (1 repeat in 30, where the baseline said 0.00); re-sampled twice, 90
+  clean repeats produced one, about 1%. #94 therefore sets `max_false_block_increase` to 0.05 --
+  one divergent sample per check, not two -- with the reasoning in ADR 0006. What is still not in
+  the key is the rest of the gate's code, so `CACHE_VERSION` remains hand-bumped
 - **Severity:** low · **outcome:** confirmed · **fix cost:** trivial (the change) plus about $4 (the re-score)
 - **Where:** `tools/llm-gate/src/llm_gate/cache.py:17-19` · **area:** gate, evals
 

@@ -326,10 +326,10 @@ Results are cached like gate runs, so re-running unchanged cases is free.
 - Relevant → run the eval with the **PR's** prompts and code (the opposite of Phase 13: here the change
   is what's being tested), compare with `baseline.json` using `evals/thresholds.yaml`:
   ```yaml
-  max_recall_drop: 0.05        # absolute
-  max_false_block_increase: 0  # no new false blocks
+  max_recall_drop: 0.05           # absolute
+  max_false_block_increase: 0.05  # one divergent sample per check, not two (amended 2026-10-19)
   max_flip_rate: 0.10
-  max_cost_increase: 0.25      # relative
+  max_cost_increase: 0.25         # relative
   ```
 - Posts the comparison table as a sticky comment and job summary; writes an `eval_run` record.
 - Cost control: a per-run budget (`budget_usd` summed over cases), cheap model for advisory checks,
