@@ -5,6 +5,14 @@ image := "localhost/calendar-gates:dev"
 chart := "deploy/helm/calendar-gates"
 k8s_ns := "calendar-gates"
 
+# Tool versions Dependabot cannot see (F080), defined once here and once in each workflow's `env:`.
+# scripts/check-tool-pins.py fails the lint gate when the two disagree, and the weekly Gate health
+# job reports which of them upstream has moved past.
+zizmor_version := "1.30.1"
+yamllint_version := "1.38.0"
+ruff_version := "0.16.10"
+kyverno_cli_version := "1.19.1"
+
 # Kubernetes (docs/adr/0010-admission-control.md): the project's own kind cluster, with Kyverno, is
 # the default; `just cluster=local <recipe>` targets kind-local as in v1. The project cluster's
 # kubeconfig lives in the state dir, so ~/.kube/config is never touched. `cluster=local` names
@@ -75,18 +83,19 @@ lint:
     # SSL_CERT_DIR here lists two dirs (the .NET dev cert); zizmor's TLS stack only reads one.
     # No GH_TOKEN: the offline audits are the ones this gate runs, and a full-scope OAuth token has
     # no business in a tool fetched from PyPI on every run (--offline matches ci.yml).
-    env -u SSL_CERT_DIR uvx zizmor@1.30.1 --offline .github/
+    env -u SSL_CERT_DIR uvx zizmor@{{ zizmor_version }} --offline .github/
     hadolint Dockerfile
-    uvx yamllint@1.38.0 --strict .
+    uvx yamllint@{{ yamllint_version }} --strict .
     shellcheck scripts/*.sh .claude/hooks/*.sh
-    uvx ruff@0.16.10 check scripts/
-    uvx ruff@0.16.10 format --check scripts/
+    uvx ruff@{{ ruff_version }} check scripts/
+    uvx ruff@{{ ruff_version }} format --check scripts/
     uv run --directory tools/llm-gate --locked ruff check .
     uv run --directory tools/llm-gate --locked ruff format --check .
     uv run --directory tools/llm-gate --locked mypy
     uv run --directory tools/llm-gate --locked pytest -q
     uv run --locked --script scripts/check-ruleset-consistency.py
     uv run --locked --script scripts/check-cooldown-date.py
+    uv run --locked --script scripts/check-tool-pins.py
 
 # Fetch the audit-log branch into .audit-log/ for local queries (jq over events/**/*.jsonl)
 [group('llm')]
@@ -306,7 +315,7 @@ lint-chart:
 lint-policies:
     #!/usr/bin/env bash
     set -euo pipefail
-    want=1.19.1 # as deploy/kyverno and ci.yml's kyverno-cli image
+    want={{ kyverno_cli_version }} # as deploy/kyverno and ci.yml's kyverno-cli image
     got=$(kyverno version 2> /dev/null | awk '/^Version:/ {print $2}')
     [ "$got" = "$want" ] || { echo "kyverno CLI $want needed, found ${got:-none}" >&2; exit 1; }
     kubectl --context {{ kube_context }} kustomize deploy/policies > /dev/null

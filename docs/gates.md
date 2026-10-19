@@ -30,6 +30,29 @@ is required too (see below).
 | `llm-eval` (`llm-eval.yml`) | `just eval` | The PR changes a review prompt or `tools/llm-gate/` and scores worse than `evals/baseline.json` beyond `evals/thresholds.yaml` (recall, false blocks, flips, cost), or a `forbid` rule of an fp-regression case matches again (`fp_regressions`, which updating the baseline cannot clear), or **a check's engine/model has no baseline entry** (change one and the entry comes with it), or the eval doesn't finish within its budget | Fix the prompt or code; or, if the new scores are the intended trade-off, update the baseline in the same PR (`just eval-baseline`) and say why | `evals/thresholds.yaml` (changing it weakens the gate: say so) |
 | `gates` | n/a | Any gate it needs did not succeed (failed, cancelled or skipped) | Fix that gate | none |
 
+## Tool versions
+
+Dependabot watches the action SHAs in `uses:`, NuGet packages, the Dockerfile's base images and
+`tools/llm-gate`'s uv lock. It does **not** watch a version passed as a `with:` input (grype, syft,
+helm, kind, kubectl, just), a container image run inside a `run:` step (actionlint, hadolint,
+kubeconform, the Kyverno CLI, ijhttp) or a `uvx tool@version` (zizmor, yamllint, ruff) — thirteen
+tools whose updates nothing announced (F080).
+
+They are now defined **once per file**: each workflow's `env:` block and the `just` variables at the
+top of the `justfile`, used through `${{ env.* }}` and `{{ … }}`. Two things keep that honest:
+
+- `scripts/check-tool-pins.py` runs in `lint` and fails when two definitions of the same tool
+  disagree. (`kubectl` is deliberately exempt: `ci.yml` tracks the current release while
+  `release.yml` pins 1.35 for the project cluster's Kyverno, [ADR 0010](adr/0010-admission-control.md).)
+- the weekly **Gate health** issue (`metrics.yml`) ends with a table of every such pin and the
+  current upstream version, marking what is behind. Pre-releases don't count as upstream — Kyverno
+  tags release candidates as releases — and ijhttp has no release feed worth trusting from CI, so
+  it says "check by hand" with the URL.
+
+Updating one is still a human edit, which is the honest state of affairs: nothing here can open a
+PR that bumps a digest and knows it is the right one. What has changed is that nobody has to
+remember to look.
+
 ## What the agent's permissions do and don't buy you
 
 `.claude/settings.json` pre-approves `just`, `dotnet`, `uv run` and read-only `gh run` commands and

@@ -56,6 +56,11 @@ jobs:
           [ -n "$last" ] && eval_reports=(--eval-reports "$(dirname "$last")")
           uv run --project tools/llm-gate --locked llm-gate metrics --audit-dir .audit-log \
             --prs "$RUNNER_TEMP/prs.json" "${eval_reports[@]}" > "$RUNNER_TEMP/report.md"
+          # The pins Dependabot can't see (F080): it cannot open PRs for them, so the one thing
+          # that helps is saying every week which of them upstream has moved past. Report-only —
+          # a new upstream release is news, not a failure.
+          uv run --locked --script scripts/check-tool-pins.py --updates >> "$RUNNER_TEMP/report.md" \
+            || echo "the tool-pin report failed; see the log" >> "$RUNNER_TEMP/report.md"
           cat "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Update the Gate health issue

@@ -16,6 +16,25 @@ concurrency:
 
 env:
   IMAGE: calendar-gates:ci
+  # Tool versions Dependabot cannot see (F080): one definition each, used through ${{ env.* }}
+  # below. scripts/check-tool-pins.py keeps these equal to the justfile's and, in the weekly
+  # Gate health job, reports which of them upstream has moved past. The image refs are longer
+  # than the line limit and cannot be wrapped.
+  # yamllint disable rule:line-length
+  JUST_VERSION: 1.57.0
+  HELM_VERSION: v4.2.2
+  KIND_VERSION: v0.33.0
+  KUBECTL_VERSION: v1.37.0
+  GRYPE_VERSION: v0.120.1
+  ZIZMOR_VERSION: 1.30.1
+  YAMLLINT_VERSION: 1.38.0
+  RUFF_VERSION: 0.16.10
+  ACTIONLINT_IMAGE: docker.io/rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+  HADOLINT_IMAGE: docker.io/hadolint/hadolint:v2.14.0@sha256:27086352fd5e1907ea2b934eb1023f217c5ae087992eb59fde121dce9c9ff21e
+  KUBECONFORM_IMAGE: ghcr.io/yannh/kubeconform:v0.8.0@sha256:faffaf43f95aa6425306e1ab8d6fcad72acb9049158f38e574c085ea1ec0f64e
+  KYVERNO_CLI_IMAGE: ghcr.io/kyverno/kyverno-cli:v1.19.1@sha256:ced7b2be0b04250cabfe695f15307f69eb715fe23234816388af4f3812915b2a
+  IJHTTP_IMAGE: docker.io/jetbrains/intellij-http-client:261.25134.95@sha256:1fdeab28e7eacac2ec8e0564499248452e29c55c380497eb92088bd49cfc3096
+  # yamllint enable rule:line-length
 
 jobs:
 
@@ -32,7 +51,9 @@ jobs:
       - uses: ./.github/actions/setup-dotnet-env
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
         with:
-          just-version: 1.57.0
+          # The version is pinned in `env:` at the top; zizmor can't resolve the expression, and a
+          # literal here would be a second definition to drift from it (F080).
+          just-version: ${{ env.JUST_VERSION }} # zizmor: ignore[unpinned-tools]
       - run: dotnet restore --locked-mode
       - name: CSharpier check + dotnet format style/analyzers
         run: just fmt-check
@@ -57,25 +78,25 @@ jobs:
       - name: actionlint
         run: >-
           docker run --rm -v "$PWD:/repo" --workdir /repo
-          docker.io/rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+          "$ACTIONLINT_IMAGE"
           -color
       - name: zizmor
         env:
           GH_TOKEN: ${{ github.token }}
-        run: uvx zizmor@1.30.1 --format=github .github/
+        run: uvx zizmor@"$ZIZMOR_VERSION" --format=github .github/
       - name: hadolint
         run: >-
           docker run --rm -i
-          docker.io/hadolint/hadolint:v2.14.0@sha256:27086352fd5e1907ea2b934eb1023f217c5ae087992eb59fde121dce9c9ff21e
+          "$HADOLINT_IMAGE"
           < Dockerfile
       - name: yamllint
-        run: uvx yamllint@1.38.0 --strict .
+        run: uvx yamllint@"$YAMLLINT_VERSION" --strict .
       - name: shellcheck
         run: shellcheck scripts/*.sh .claude/hooks/*.sh
       - name: ruff (scripts)
         run: |
-          uvx ruff@0.16.10 check scripts/
-          uvx ruff@0.16.10 format --check scripts/
+          uvx ruff@"$RUFF_VERSION" check scripts/
+          uvx ruff@"$RUFF_VERSION" format --check scripts/
       - name: llm-gate (ruff, mypy, pytest)
         working-directory: tools/llm-gate
         run: |
@@ -87,13 +108,15 @@ jobs:
         run: uv run --locked --script scripts/check-ruleset-consistency.py
       - name: The uv cooldown date hasn't gone stale
         run: uv run --locked --script scripts/check-cooldown-date.py
+      - name: Tool pins Dependabot can't see agree with each other
+        run: uv run --locked --script scripts/check-tool-pins.py
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
-          version: v4.2.2
+          version: ${{ env.HELM_VERSION }}
       - name: helm lint + kubeconform (rendered manifests vs Kubernetes 1.37 schemas)
         run: |
           chart=deploy/helm/calendar-gates
-          kubeconform=ghcr.io/yannh/kubeconform:v0.8.0@sha256:faffaf43f95aa6425306e1ab8d6fcad72acb9049158f38e574c085ea1ec0f64e
+          kubeconform="$KUBECONFORM_IMAGE"
           helm lint --strict "$chart"
           helm lint --strict "$chart" -f "$chart/values-kind.yaml"
           helm template calendar-gates "$chart" --set ingress.enabled=true |
@@ -109,7 +132,7 @@ jobs:
         run: |
           kubectl kustomize deploy/policies > /dev/null
           uv run --locked --script scripts/check-vulnscan-rule.py
-          kyverno=ghcr.io/kyverno/kyverno-cli:v1.19.1@sha256:ced7b2be0b04250cabfe695f15307f69eb715fe23234816388af4f3812915b2a
+          kyverno="$KYVERNO_CLI_IMAGE"
           docker run --rm -v "$PWD:/repo:ro" --workdir /repo "$kyverno" test deploy/policies/tests --remove-color
 
   build-test:
@@ -190,7 +213,7 @@ jobs:
       - name: Contract tests (ijhttp)
         run: >-
           docker run --rm --network host -v "$PWD:/workdir"
-          docker.io/jetbrains/intellij-http-client:261.25134.95@sha256:1fdeab28e7eacac2ec8e0564499248452e29c55c380497eb92088bd49cfc3096
+          "$IJHTTP_IMAGE"
           --no-progress -v http/http-client.env.json -e docker -r reports http/calendar.http
       - name: Container logs
         if: failure()
@@ -223,7 +246,7 @@ jobs:
       - uses: anchore/scan-action/download-grype@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
         id: grype
         with:
-          grype-version: v0.120.1
+          grype-version: ${{ env.GRYPE_VERSION }}
       - name: Scan (fails on high, see .grype.yaml)
         env:
           GRYPE: ${{ steps.grype.outputs.cmd }}
@@ -263,11 +286,11 @@ jobs:
           path: ${{ runner.temp }}
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
-          version: v4.2.2
+          version: ${{ env.HELM_VERSION }}
       - uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
         with:
-          version: v0.33.0
-          kubectl_version: v1.37.0
+          version: ${{ env.KIND_VERSION }}
+          kubectl_version: ${{ env.KUBECTL_VERSION }}
           cluster_name: smoke
       - name: Load the tested image into kind
         run: kind load image-archive "$RUNNER_TEMP/image.tar" --name smoke
@@ -281,7 +304,7 @@ jobs:
         run: |
           kubectl -n "$NAMESPACE" port-forward svc/calendar-gates 18080:80 > /dev/null &
           scripts/wait-for-health.sh http://localhost:18080/health 30
-          ijhttp=docker.io/jetbrains/intellij-http-client:261.25134.95@sha256:1fdeab28e7eacac2ec8e0564499248452e29c55c380497eb92088bd49cfc3096
+          ijhttp="$IJHTTP_IMAGE"
           docker run --rm --network host -v "$PWD:/workdir" "$ijhttp" \
             --no-progress -v http/http-client.env.json -e forward -r reports http/calendar.http
       - name: HTTP test report
