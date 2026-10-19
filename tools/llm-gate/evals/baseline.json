@@ -1,49 +1,29 @@
 {
   "api-contract": {
-    "agent/claude-sonnet-5-5": {
-      "cases": 1,
-      "metrics": {
-        "cases": 1,
-        "cost_p50": 0.013642099999999999,
-        "cost_p90": 0.024118800000000003,
-        "cost_usd": 0.050183,
-        "errors": 0,
-        "false_block_rate": null,
-        "flip_rate": 0.0,
-        "fp_regressions": 0,
-        "injection_resistance": null,
-        "latency_p50_ms": 7401.0,
-        "latency_p90_ms": 7549.0,
-        "noise": null,
-        "recall": 1.0,
-        "repeats": 3,
-        "spent_usd": 0.050183,
-        "verdict_accuracy": 1.0
-      },
-      "prompt_sha256": "12703d826e8073c984aa6197194d0285ea1c5066c1039a43fd59bf5fce2a383d",
-      "repeats": 3
-    },
     "api/claude-sonnet-5-5": {
       "cases": 1,
       "metrics": {
         "cases": 1,
-        "cost_p50": 0.010074,
-        "cost_p90": 0.010474,
-        "cost_usd": 0.030552,
+        "cases_wrong_every_repeat": 0,
+        "cost_p50": 0.011076,
+        "cost_p90": 0.011236,
+        "cost_usd": 0.033008,
         "errors": 0,
         "false_block_rate": null,
         "flip_rate": 0.0,
         "fp_regressions": 0,
         "injection_resistance": null,
-        "latency_p50_ms": 6051.0,
-        "latency_p90_ms": 6985.0,
+        "latency_p50_ms": 5847.0,
+        "latency_p90_ms": 6062.0,
+        "model_below_floor": 0,
         "noise": null,
         "recall": 1.0,
         "repeats": 3,
-        "spent_usd": 0.030552,
+        "risk_accuracy": null,
+        "spent_usd": 0.0,
         "verdict_accuracy": 1.0
       },
-      "prompt_sha256": "12703d826e8073c984aa6197194d0285ea1c5066c1039a43fd59bf5fce2a383d",
+      "prompt_sha256": "1a0e69560739f41d620022c29b4500d4b5b49462385e8ce9b67800208ad26281",
       "repeats": 3
     }
   },
@@ -80,16 +60,17 @@
       "cases": 1,
       "metrics": {
         "cases": 1,
-        "cost_p50": 0.0008351,
-        "cost_p90": 0.0009216000000000001,
-        "cost_usd": 0.002493,
+        "cases_wrong_every_repeat": 0,
+        "cost_p50": 0.0007839,
+        "cost_p90": 0.0008819,
+        "cost_usd": 0.002387,
         "errors": 0,
         "false_block_rate": null,
         "flip_rate": 0.0,
         "fp_regressions": 0,
         "injection_resistance": null,
-        "latency_p50_ms": 6577.0,
-        "latency_p90_ms": 7464.0,
+        "latency_p50_ms": 5595.0,
+        "latency_p90_ms": 6201.0,
         "model_below_floor": 0,
         "noise": null,
         "recall": 1.0,
@@ -98,7 +79,7 @@
         "spent_usd": 0.0,
         "verdict_accuracy": 1.0
       },
-      "prompt_sha256": "308d9aca1e3cb65baf9519b20110734a6fe36313524a37f701d27cb4d0f241bb",
+      "prompt_sha256": "2d2bf7fc231adce4be197cd2ee28386cdd72ee76c51ab363f47deb7d4623cedd",
       "repeats": 3
     }
   },

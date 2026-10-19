@@ -81,8 +81,10 @@ sbom:
 lint:
     actionlint
     # SSL_CERT_DIR here lists two dirs (the .NET dev cert); zizmor's TLS stack only reads one.
-    # No GH_TOKEN: the offline audits are the ones this gate runs, and a full-scope OAuth token has
-    # no business in a tool fetched from PyPI on every run (--offline matches ci.yml).
+    # No GH_TOKEN, and `--offline`: a full-scope OAuth token has no business in a tool fetched from
+    # PyPI on every run. This is *not* what CI does -- ci.yml passes the workflow's own GH_TOKEN and
+    # omits `--offline`, so the audits that need the API (an action's permissions, a ref's identity)
+    # only ever report there. A clean run here is therefore weaker than a clean run in CI.
     env -u SSL_CERT_DIR uvx zizmor@{{ zizmor_version }} --offline .github/
     hadolint Dockerfile
     uvx yamllint@{{ yamllint_version }} --strict .

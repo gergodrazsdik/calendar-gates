@@ -1,6 +1,8 @@
 # v2 review findings
 
-A review of the whole repository at `43ec3c2` (2026-10-17), after PLAN-v2 was wrapped up. **Nothing has been fixed**: this is the input for deciding what to fix. Generated from the reviewers' and the council's JSON; the scratch files are not kept.
+A review of the whole repository at `43ec3c2` (2026-10-17), after PLAN-v2 was wrapped up. Written as the input for deciding what to fix; the Status section below records what has happened to each item since (115 of 119 actionable items fixed, none open). Generated from the reviewers' and the council's JSON; the scratch files are not kept.
+
+A second, smaller review on 2026-10-19 produced the follow-up findings F134-F140 at the end of this document.
 
 ## How it was made
 
@@ -3717,3 +3719,146 @@ Kept for the record: the finding, and why the council turned it down.
 - **impact** (CONFIRMED, info, trivial): The /api/week and /api/friday13/next requests assert format and invariants but not closeness to the client's date, which follows the deliberate convention in calendar.http's header and PLAN.md §3.4 ('never today's values'). Program.cs registers TimeProvider.System and FakeTimeProvider is referenced only by the test projects, so a fixed clock in the image needs a deliberate change; a one-day-tolerance check would be cheap insurance.
 
 </details>
+
+---
+
+# Follow-up review, 2026-10-19
+
+A second review at `4f327cd`, run while assembling `docs/overview.html` and
+`docs/scaling-to-an-organisation.md` (#89): five agents with different briefs (platform mapping,
+security architecture, cost and flakiness, enterprise compliance, developer experience) read the
+whole repository read-only. The first review's 133 items were closed out, so everything below is
+new. Each was verified by hand before being written down.
+
+Four defects and seven documentation drifts. The drifts are listed together because none of them
+changes behaviour and two of them produced wrong statements in the session that found them.
+
+| | Status | Severity | Finding |
+|---|---|---|---|
+| [F134](#f134) | ✅ fixed — #90 | high | A committed binary file raises `UnicodeDecodeError` in every review job at every risk level |
+| [F135](#f135) | ✅ fixed — #90 | high | `workflow-review` is advisory at every risk level and absent from the ruleset, so the check ADR 0004 names as its own mitigation cannot block a CI change |
+| [F136](#f136) | ✅ fixed — #91 | medium | Admission and `verify-release` check that the LLM-review attestation exists, not what it says |
+| [F137](#f137) | ✅ fixed — #91 | medium | The attestation and metrics readers parse the audit log without validation, so one appended line can claim a review |
+| [F138](#f138) | ✅ fixed — #91 | low | A `/llm-risk` lowering never appears in the per-PR attestation entry |
+| [F139](#f139) | 🟡 partial | low | `llm-eval`'s cache key ignores engine settings (the live half of [F012](#f012)) |
+| [F140](#f140) | ✅ fixed — #92 | low | Seven places where a document contradicts the code |
+
+### F134
+
+**A committed binary file raises `UnicodeDecodeError` in every review job at every risk level**
+
+- **Status:** ✅ fixed — #90: binaries are omitted and named, like a generated file over the cap
+- **Severity:** high · **outcome:** confirmed (reproduced) · **fix cost:** small
+- **Where:** `tools/llm-gate/src/llm_gate/diff.py:83-89` · **area:** gate, tests
+
+The diff is built with `--text` so the PR's own `.gitattributes` cannot hide its code (F001), which
+means git inlines a binary blob instead of reporting "Binary files … differ". `diff.git()` decoded
+that as strict UTF-8 and caught only `CalledProcessError`, while `EXCLUDES` holds lock files and
+this repository's own fixtures and no binary pattern. `merge_base_diff` runs before `not_needed` is
+consulted and `main` does not catch the error, so the first PR adding an image, an icon, a PDF, a
+test archive or a signing key fails all six `llm / <check>` jobs with a traceback — no result, no
+audit record, no override, no `/llm-risk` escape — until `EXCLUDES` changed on `main`. It had never
+fired because the repository tracks no non-text files.
+
+*Reproduced before fixing:* `git diff --text` of a PNG through `subprocess.run(text=True)` raises
+`'utf-8' codec can't decode byte 0x89 in position 114`.
+
+### F135
+
+**`workflow-review` is advisory at every risk level and absent from the ruleset**
+
+- **Status:** ✅ fixed — #90: blocking at high risk, and a required check
+- **Severity:** high · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `tools/llm-gate/checks.yaml:48`, `.github/rulesets/main.json` · **area:** gates, policy
+
+[ADR 0004](adr/0004-gate-tooling-from-base-branch.md) names "`workflow-review` runs" as a mitigation
+for its own remaining hole — on `pull_request` the workflow file comes from the PR, so a PR can edit
+the thing that reviews it. But the check was `mode: advisory` with no level promoting it, and
+`grep -c "workflow-review" .github/rulesets/main.json` returned 0: the check dedicated to CI changes
+was structurally incapable of stopping one. 182 of 566 recorded runs are `workflow_modified`.
+
+Fixed at `fail_on: high` rather than medium, because this prompt has one eval case and no clean
+cases, so its false-positive behaviour is unmeasured.
+
+### F136
+
+**Admission and `verify-release` check that the attestation exists, not what it says**
+
+- **Status:** ✅ fixed — #91: the policy reads `predicate.unreviewed`, and so does `verify-release`
+- **Severity:** medium · **outcome:** confirmed · **fix cost:** small
+- **Where:** `deploy/policies/base/llm-review.yaml:44-48`, `justfile` `verify-release` · **area:** deploy, release
+
+The policy stopped at `verifyAttestationSignatures(...) > 0`, so "only reviewed code runs here" meant
+"a document about reviews is attached": a release in which every PR was unreviewed was admitted, and
+`verify-release` printed the lists without asserting on them. `base/release.yaml` already showed the
+stronger pattern for the vulnerability scan.
+
+`unreviewed` is denied; **`unverified` deliberately is not**. The predicate computed for the v0.3.7
+range has `unreviewed` empty and lists two `workflow_modified` PRs, so denying on `unverified` would
+block every legitimate release of this repository. That limit is recorded in ADR 0010.
+
+### F137
+
+**The attestation and metrics readers parse the audit log without validation**
+
+- **Status:** ✅ fixed — #91: both use `audit.load_events`, which validates and counts refusals
+- **Severity:** medium · **outcome:** confirmed · **fix cost:** small
+- **Where:** `tools/llm-gate/src/llm_gate/attestations.py:95-105`, `metrics.py:25-36` · **area:** gate, release
+
+The collector parses a PR's artifact with `extra="forbid"`, size caps and four cross-checks. Both
+readers then walked `events/**` with `json.loads` and accepted any object, so `llm_review()` treated
+anything carrying `"type": "gate_run"` with a matching PR and head as a verdict. The branch takes a
+push from anyone with write access ([ADR 0005](adr/0005-audit-trail.md) accepts that for writing),
+so one appended well-formed line could turn an unreviewed PR into a reviewed one inside a *signed*
+predicate. Against the real log — 700 record files — the strict reader refuses nothing.
+
+### F138
+
+**A `/llm-risk` lowering never appears in the per-PR attestation entry**
+
+- **Status:** ✅ fixed — #91: the entry carries `risk_overrides`
+- **Severity:** low · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `tools/llm-gate/src/llm_gate/attestations.py:166-174` · **area:** release
+
+At `low` nothing blocks, so `/llm-risk low` is a full pass of both blocking checks. It is a
+`risk_override` record rather than an `override`, and only the latter was collected, so the entry
+showed `risk: low` with no indication a person put it there or why.
+
+### F139
+
+**`llm-eval`'s cache key ignores engine settings**
+
+- **Status:** 🟡 partial — the live half of [F012](#f012); fixing it costs a full paid eval run
+- **Severity:** low · **outcome:** confirmed · **fix cost:** trivial (the change) plus about $4 (the re-score)
+- **Where:** `tools/llm-gate/src/llm_gate/cache.py:17-19` · **area:** gate, evals
+
+The key is `[CACHE_VERSION, check, engine, model, prompt, diff]`. `max_turns`, `budget_usd` and the
+API engine's `MAX_TOKENS` are absent, so a PR that halves `max_turns`, empties the read-only tool
+list or breaks the diff escaping — and changes no prompt — gets 100% cache hits and reproduces the
+baseline exactly. The eval gate is weakest for precisely the changes most worth scoring. The fix is
+to add those settings and bump `CACHE_VERSION`, which misses every entry and makes the next
+`llm-eval` pay for a full scoring run.
+
+### F140
+
+**Seven places where a document contradicts the code**
+
+- **Status:** ✅ fixed — #92
+- **Severity:** low · **outcome:** confirmed · **fix cost:** trivial
+- **Where:** `docs/gates.md`, `docs/metrics.md`, `docs/WRITEUP.md`, `docs/adr/0002`, `justfile`, this document · **area:** docs
+
+| | Said | Actually |
+|---|---|---|
+| 1 | `just ci` runs `pr-title` | It does not; the title is checked by lefthook's `commit-msg` hook, or in CI by `pr-title.yml` |
+| 2 | Admission "enforces three policies" | Four, and both documents then listed four |
+| 3 | "Results are cached … re-runs without changes are free", and labels re-run "from the cache" | Blocking reviews are **not** cached in CI (ADR 0002), so every re-run and every `/llm-override` or `/llm-risk` comment pays again — which `gates.md` already said 35 lines earlier |
+| 4 | "a vendored binary is excluded by `diff.EXCLUDES`" | `EXCLUDES` has no binary pattern; that was F134, and a binary is now *omitted* rather than excluded |
+| 5 | "code-review (16 cases)", "today's 30-odd cases" | 19 and 37 |
+| 6 | "**Nothing has been fixed**" | Its own scoreboard said 115 of 119 |
+| 7 | `--offline` "matches ci.yml" | CI passes a token and omits `--offline`, so the audits needing the API only ever report there |
+
+Also fixed with them: a blank line inside `docs/metrics.md`'s table, which split it in two when
+rendered, and three stale `prompt_sha256` values in `evals/baseline.json` (the hash is recorded and
+never compared, so nothing failed; `workflow-review` was refreshed in #90, `api-contract` and
+`docs-drift` here, and `api-contract`'s never-scored `agent` entry was removed as #85 did for
+code-review's `api` entry).
