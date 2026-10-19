@@ -78,5 +78,11 @@ def test_invalid_configs_are_rejected(tmp_path: Path, checks: str, message: str)
 def test_the_repository_config_loads() -> None:
     checks = load_config(REPO_ROOT / "tools" / "llm-gate" / "checks.yaml", REPO_ROOT, env={})
 
-    assert {name for name, c in checks.items() if c.blocking} == {"code-review", "security-review"}
+    assert {name for name, c in checks.items() if c.blocking} == {
+        "code-review",
+        "security-review",
+        # Blocking since 2026-10-19: advisory everywhere meant the check ADR 0004 names as the
+        # mitigation for its own remaining hole could only comment on a CI change.
+        "workflow-review",
+    }
     assert all(c.prompt_path.is_file() for c in checks.values())

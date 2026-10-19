@@ -114,10 +114,12 @@ def render_markdown(record: RunRecord) -> str:
         # Say what the review never saw, every time, so a trimmed diff is never a silent one.
         lines += [
             "",
-            f"**Not reviewed** ({len(record.omitted)} file(s) over the check's size cap "
-            "for a single file):",
+            f"**Not reviewed** ({len(record.omitted)} file(s) left out of the diff):",
             "",
-            *(f"- `{plain_path(o.path)}` ({o.bytes // 1024} KB)" for o in record.omitted),
+            *(
+                f"- `{plain_path(o.path)}` ({o.bytes // 1024} KB — {o.reason})"
+                for o in record.omitted
+            ),
         ]
     if record.result and record.result.denied_reads:
         # The reviewer tried to read outside the checkout; a blinded review is never a silent one.

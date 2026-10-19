@@ -81,10 +81,12 @@ def run_check(
         # Trimming is a hole in a blocking review, so a human has to accept it with a reason: the
         # size cap decides what *may* be left out, never that it passes unseen (ADR 0002).
         error_kind = ErrorKind.TOO_LARGE
-        names = ", ".join(o.path for o in diff.omitted)
+        # Each file's own reason, because "over max_file_kb" would be wrong for a binary: naming a
+        # size cap that was not the cause sends whoever reads it to the wrong setting.
+        names = ", ".join(f"{o.path} ({o.reason})" for o in diff.omitted)
         error = (
-            f"{len(diff.omitted)} file(s) over max_file_kb {check.max_file_kb} "
-            f"({names}); a blocking check needs an llm-override to review the rest"
+            f"{len(diff.omitted)} file(s) left out of the review: {names}; "
+            "a blocking check needs an llm-override to review the rest"
         )
     elif diff.size_bytes > check.max_diff_kb * 1024:
         # Reported per policy instead of spending tokens (gate drill 10). Overridable, unlike an

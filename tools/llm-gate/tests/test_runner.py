@@ -622,3 +622,40 @@ def test_a_diff_of_nothing_but_excluded_files_says_so(gate: Repo) -> None:
     reason = str(record(gate, "code-review", "api")["reason"])
     assert "1 changed file(s) are excluded" in reason
     assert "tools/x/uv.lock" in reason
+
+
+def test_a_blocking_check_will_not_review_a_change_with_a_binary_in_it(gate: Repo) -> None:
+    """A binary reaches the same door as a trimmed generated file: the review is partial, so a
+    human has to accept it with a reason. Before the fix the whole run raised instead."""
+    gate.write("src/Api/Domain/Small.cs", "class Small {}\n")
+    gate.write_bytes("src/Api/wwwroot/logo.png", b"\x89PNG\r\n\x1a\n" + bytes(range(256)))
+    gate.commit("a feature and its icon")
+    api = FakeEngine("api")
+
+    assert run({"api": api}, "--check", "code-review") == 2
+
+    assert api.requests == []
+    reason = str(record(gate, "code-review", "api")["reason"])
+    assert "src/Api/wwwroot/logo.png (not text" in reason
+    assert "needs an llm-override" in reason
+
+
+def test_an_override_reviews_the_rest_of_a_change_that_carries_a_binary(
+    gate: Repo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gate.write("src/Api/Domain/Small.cs", "class Small {}\n")
+    gate.write_bytes("src/Api/wwwroot/logo.png", b"\x89PNG\r\n\x1a\n" + bytes(range(256)))
+    gate.commit("a feature and its icon")
+    monkeypatch.setenv("LLM_GATE_OVERRIDE", "true")
+    monkeypatch.setenv("LLM_GATE_OVERRIDE_REASON", "an icon; the C# beside it is the change")
+    monkeypatch.setenv("LLM_GATE_OVERRIDE_BY", "maintainer")
+    api = FakeEngine("api")
+
+    assert run({"api": api}, "--check", "code-review") == 0
+
+    assert "class Small {}" in api.requests[0].diff.text
+    data = record(gate, "code-review", "api")
+    assert data["verdict"] == "pass"
+    # The binary is on the record as an omission, so the release attestation lists this PR as
+    # partially reviewed rather than reviewed.
+    assert omitted_paths(data["omitted"]) == ["src/Api/wwwroot/logo.png"]
