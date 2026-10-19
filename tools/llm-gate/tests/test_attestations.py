@@ -97,16 +97,49 @@ def write_log(audit_dir: Path, *records: dict[str, Any]) -> Path:
 def gate_run(
     pr: int, check: str, verdict: str, *, head: str = HEAD, run: int = 1, **extra: Any
 ) -> dict[str, Any]:
+    """A gate_run as the collector writes it, provenance fields included: `llm_review` validates
+    what it reads from the branch now, and a record that is merely shaped like a verdict is
+    exactly what must be refused."""
     return {
         "type": "gate_run",
         "ts": "2026-10-17T10:00:00Z",
         "pr": pr,
         "head_sha": head,
         "check": check,
+        "engine": "agent",
+        "model": "claude-sonnet-5-5",
+        "prompt_file": f".claude/commands/llm-{check}.md",
+        "prompt_sha256": "a" * 64,
+        "config_sha256": "b" * 64,
+        "gate_sha": "c" * 40,
+        "diff_sha256": "d" * 64,
+        "diff_bytes": 2048,
+        "cache_hit": False,
+        "exit_code": 0 if verdict in ("pass", "not_needed", "not_applicable") else 1,
+        "started_at": "2026-10-17T09:59:00Z",
+        "finished_at": "2026-10-17T10:00:00Z",
         "verdict": verdict,
         "blocking": check in ("code-review", "security-review"),
         "workflow_run_id": run,
         "run_attempt": 1,
+        **extra,
+    }
+
+
+def triage_record(pr: int, *, head: str = HEAD, **extra: Any) -> dict[str, Any]:
+    """A triage record as the collector writes it. The risk fields are required by the schema,
+    which `llm_review` now applies to what it reads."""
+    return {
+        "type": "triage",
+        "ts": "2026-10-17T09:58:00Z",
+        "pr": pr,
+        "head_sha": head,
+        "rules_risk": "medium",
+        "model_risk": "high",
+        "reasons": ["changes CI or the gates"],
+        "final_risk": "high",
+        "ai_assisted": True,
+        "checks_plan": ["code-review", "security-review"],
         **extra,
     }
 
@@ -132,14 +165,7 @@ def test_the_latest_run_on_the_merged_head_counts(tmp_path: Path) -> None:
             "checks": ["security-review"],
             "reason": "hotfix, token ghp_abcdefghijklmnopqrstuvwxyz0123456789",
         },
-        {
-            "type": "triage",
-            "pr": 1,
-            "head_sha": HEAD,
-            "workflow_run_id": 2,
-            "final_risk": "high",
-            "ai_assisted": True,
-        },
+        triage_record(1, workflow_run_id=2),
     )
 
     predicate = attestations.llm_review([commit(1)], log, range_from="v0.2.0", range_to="v0.3.0")
@@ -161,7 +187,14 @@ def test_unreviewed_and_unverified(tmp_path: Path) -> None:
         gate_run(2, "docs-drift", "skipped_no_key"),  # advisory: not a gap
         gate_run(3, "code-review", "pass", head=OLD),
         gate_run(4, "code-review", "pass", workflow_modified=True),
-        {"type": "tamper_suspected", "pr": 4, "head_sha": HEAD, "ts": "2026-10-17T10:00:00Z"},
+        {
+            "type": "tamper_suspected",
+            "pr": 4,
+            "head_sha": HEAD,
+            "ts": "2026-10-17T10:00:00Z",
+            "artifact": "audit-9-1-code-review",
+            "problems": ["unexpected field"],
+        },
     )
     commits = [
         commit(None, None),
@@ -325,14 +358,11 @@ def test_a_planned_blocking_check_with_no_record_is_unreviewed(tmp_path: Path) -
     release: the check was simply absent from the predicate (F027)."""
     log = write_log(
         tmp_path,
-        {
-            "type": "triage",
-            "ts": "2026-10-17T09:00:00Z",
-            "pr": 1,
-            "head_sha": HEAD,
-            "final_risk": "high",
-            "checks_plan": ["code-review", "security-review", "docs-drift"],
-        },
+        triage_record(
+            1,
+            ts="2026-10-17T09:00:00Z",
+            checks_plan=["code-review", "security-review", "docs-drift"],
+        ),
         gate_run(1, "code-review", "pass"),
         gate_run(1, "docs-drift", "pass"),
     )
@@ -352,3 +382,50 @@ def test_a_planned_blocking_check_with_no_record_is_unreviewed(tmp_path: Path) -
     assert without["unreviewed"] == []
     # An advisory check the plan named is not a gap.
     assert "docs-drift" in predicate["prs"][0]["checks"]
+
+
+def test_a_line_pushed_to_the_branch_cannot_claim_a_review(tmp_path: Path) -> None:
+    """The collector validates a PR's artifact before committing it; nothing validated what this
+    reader found on the branch, which takes a push from anyone with write access and from any
+    workflow holding contents: write. A bare {"type": "gate_run", pr, head_sha, verdict} used to
+    count as a verdict, so one appended line turned an unreviewed PR into a reviewed one inside a
+    signed predicate."""
+    log = write_log(
+        tmp_path,
+        triage_record(1),
+        {"type": "gate_run", "pr": 1, "head_sha": HEAD, "check": "code-review", "verdict": "pass"},
+        {"type": "gate_run", "pr": 1, "head_sha": HEAD, "check": "security-review",
+         "verdict": "pass", "blocking": True},
+    )  # fmt: skip
+
+    predicate = attestations.llm_review([commit(1)], log, range_from=None, range_to="v1.0.0")
+
+    # Neither line is a record, so the PR is reported as what it is: unreviewed.
+    assert predicate["unreviewed"] == [
+        {"number": 1, "reason": "no review record for the merged head"}
+    ]
+    # And the refusal is visible rather than silent.
+    assert predicate["rejected_records"] == 2
+
+
+def test_a_lowered_risk_is_named_in_the_pull_requests_entry(tmp_path: Path) -> None:
+    """At low risk nothing blocks, so `/llm-risk low` is a full pass of both blocking checks. The
+    entry showed `risk: low` with no sign that a person put it there, because a risk_override is a
+    different record type from an override and only the latter was collected."""
+    log = write_log(
+        tmp_path,
+        triage_record(1, final_risk="low", checks_plan=["code-review"]),
+        gate_run(1, "code-review", "pass"),
+        {"type": "risk_override", "ts": "2026-10-17T09:59:00Z", "pr": 1, "head_sha": HEAD,
+         "by": "alice", "from": "high", "to": "low",
+         "reason": "docs only, token ghp_abcdefghijklmnopqrstuvwxyz0123456789"},
+    )  # fmt: skip
+
+    (pr,) = attestations.llm_review([commit(1)], log, range_from=None, range_to="v1.0.0")["prs"]
+
+    assert pr["risk"] == "low"
+    (lowered,) = pr["risk_overrides"]
+    assert (lowered["by"], lowered["from"], lowered["to"]) == ("alice", "high", "low")
+    # The reason is a person's text in a signed predicate, so it is redacted like every other.
+    assert REDACTED in lowered["reason"]
+    assert "ghp_" not in lowered["reason"]

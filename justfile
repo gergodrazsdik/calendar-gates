@@ -319,7 +319,7 @@ lint-policies:
     got=$(kyverno version 2> /dev/null | awk '/^Version:/ {print $2}')
     [ "$got" = "$want" ] || { echo "kyverno CLI $want needed, found ${got:-none}" >&2; exit 1; }
     kubectl --context {{ kube_context }} kustomize deploy/policies > /dev/null
-    uv run --locked --script scripts/check-vulnscan-rule.py
+    uv run --locked --script scripts/check-policy-clauses.py
     kyverno test deploy/policies/tests --remove-color
 
 # Tag main as vX.Y.Z (signed) and push the tag; release.yml then waits for your approval
@@ -415,6 +415,18 @@ verify-release version:
           "  unreviewed: \(.unreviewed | map("#\(.number // .commit): \(.reason)") | join("; ") | if . == "" then "none" else . end)",
           "  unverified: \(.unverified | map("#\(.number): \(.reason)") | join("; ") | if . == "" then "none" else . end)"' \
         "$tmp/llm-review.json"
+    # Printing those lists was all this did, so "verified" said nothing about what they contained.
+    # `unreviewed` is now an assertion, the same one base/llm-review.yaml denies on; `unverified`
+    # stays a warning, because a PR that changed the review workflow is most PRs here and failing
+    # on it would mean no release of this repository could ever be called verified.
+    unreviewed=$(jq -r '.[0].verificationResult.statement.predicate.unreviewed | length' "$tmp/llm-review.json")
+    [ "$unreviewed" = "0" ] || {
+        echo "v$version attests $unreviewed pull request(s) that were never reviewed" >&2
+        echo "admission denies this image in the calendar-gates namespace" >&2
+        exit 1; }
+    unverified=$(jq -r '.[0].verificationResult.statement.predicate.unverified | length' "$tmp/llm-review.json")
+    [ "$unverified" = "0" ] || echo "  warning: $unverified PR(s) have a review nothing could verify"
+    echo "LLM review: every PR in the range has a review record"
 
 # Local equivalent of the deterministic CI gates; run before calling a change done
 [group('test')]

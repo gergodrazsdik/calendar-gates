@@ -9,6 +9,9 @@ NOW = datetime(2026, 10, 20, tzinfo=UTC)
 
 
 def run(pr: int, check: str = "code-review", **fields: Any) -> dict[str, Any]:
+    """A gate_run as the collector writes it. Complete, including the provenance fields, because
+    `load_records` validates what it reads now and a half-filled stub is exactly what should be
+    rejected."""
     return {
         "type": "gate_run",
         "ts": "2026-10-16T10:05:00Z",
@@ -16,9 +19,18 @@ def run(pr: int, check: str = "code-review", **fields: Any) -> dict[str, Any]:
         "check": check,
         "engine": "agent",
         "model": "claude-sonnet-5-5",
+        "prompt_file": f".claude/commands/llm-{check}.md",
+        "prompt_sha256": "a" * 64,
+        "config_sha256": "b" * 64,
+        "gate_sha": "c" * 40,
+        "diff_sha256": "d" * 64,
+        "diff_bytes": 2048,
         "blocking": True,
+        "cache_hit": False,
         "verdict": "pass",
+        "exit_code": 0,
         "pr_event_at": "2026-10-16T10:00:00Z",
+        "started_at": "2026-10-16T10:01:00Z",
         "finished_at": "2026-10-16T10:02:00Z",
         "cost_usd": 0.05,
         "findings": [],
@@ -249,6 +261,24 @@ def test_load_records_skips_broken_lines(tmp_path: Path) -> None:
     events.mkdir(parents=True)
     (events / "a.jsonl").write_text(json.dumps(run(1)) + "\nnot json\n\n")
     assert len(metrics.load_records(tmp_path)) == 1
+
+
+def test_a_line_pushed_to_the_branch_is_rejected_and_counted(tmp_path: Path) -> None:
+    """The collector validates what a PR's artifact claims; nothing validated what this reader
+    found on the branch, which anyone with write access can push to. A record that is merely
+    shaped like a verdict used to count as one."""
+    events = tmp_path / "events" / "2026"
+    events.mkdir(parents=True)
+    planted = {"type": "gate_run", "pr": 99, "check": "code-review", "verdict": "pass"}
+    unknown = {"type": "something_else", "ts": "2026-10-16T10:05:00Z"}
+    (events / "a.jsonl").write_text(
+        "\n".join([json.dumps(run(1)), json.dumps(planted), json.dumps(unknown), "not json"])
+    )
+
+    loaded = metrics.load_counted(tmp_path)
+
+    assert [r["pr"] for r in loaded.records] == [1]
+    assert loaded.rejected == 3
 
 
 def test_an_unreviewed_override_is_counted_apart_from_overridden_findings() -> None:

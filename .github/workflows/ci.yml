@@ -131,7 +131,7 @@ jobs:
       - name: Admission policies (kustomize renders, offline kyverno tests)
         run: |
           kubectl kustomize deploy/policies > /dev/null
-          uv run --locked --script scripts/check-vulnscan-rule.py
+          uv run --locked --script scripts/check-policy-clauses.py
           kyverno="$KYVERNO_CLI_IMAGE"
           docker run --rm -v "$PWD:/repo:ro" --workdir /repo "$kyverno" test deploy/policies/tests --remove-color
 

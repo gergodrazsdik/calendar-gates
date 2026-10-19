@@ -64,11 +64,31 @@ not ready.
 
    It also sets `mutateDigest`, so what runs is the digest that was verified.
 3. **`calendar-gates-llm-review`** (`ImageValidatingPolicy`): the LLM-review attestation is
-   present. It started as Audit while no release carried the attestation yet, and **denies in
-   `calendar-gates` since #54** (2026-10-17), which merged after the v0.3.1 tag: v0.3.0 and v0.3.1
-   both carry the attestation, but the tagged trees still have the policy on Audit, so the first
-   release whose `admission-smoke` exercises Deny is the next one. The dev namespace only
-   audits.
+   present **and says every pull request in the release was reviewed**. It started as Audit while
+   no release carried the attestation yet, and **denies in `calendar-gates` since #54**
+   (2026-10-17), which merged after the v0.3.1 tag: v0.3.0 and v0.3.1 both carry the attestation,
+   but the tagged trees still have the policy on Audit, so the first release whose
+   `admission-smoke` exercises Deny is the next one. The dev namespace only audits.
+
+   **Amended 2026-10-19: the policy reads the predicate.** Until then it checked only that a
+   signed attestation existed, so "only reviewed code runs here" meant "a document about reviews
+   is attached": a release in which every PR was unreviewed was admitted, and `just verify-release`
+   printed the lists without asserting on them. The clause is now
+   `extractPayload(...).predicate.unreviewed.size() == 0`, the same shape as the vuln-scan rule
+   above, and `verify-release` fails on the same condition.
+
+   `unreviewed` only — a PR with no review record for its merged head, or whose blocking checks
+   never decided. **`unverified` is deliberately not denied.** It marks a run that came from a
+   modified review workflow, which here is most of them (the gate is what the PRs change): the
+   predicate computed for v0.3.7 lists two such PRs with `unreviewed` empty, so denying on it
+   would block every legitimate release. It is reported by `verify-release` and in the release
+   notes instead. That is a real limit on what admission proves, and it is the reason ADR 0004's
+   remaining hole matters: closing it is what would make `unverified` empty and this assertion
+   worth tightening.
+
+   The clause is exercised offline over mock predicates in
+   `deploy/policies/tests/llmreview-rule/`, and `scripts/check-policy-clauses.py` keeps that copy
+   identical to the policy — the same arrangement the vuln-scan rule has had since F069.
 
 **Proof on every release.** `release.yml`'s `admission-smoke` builds the same cluster, Kyverno
 and policies on the runner, then checks:
@@ -88,7 +108,7 @@ registry, but what they *decide* with those inputs is ordinary CEL, and the "no 
 clause had no test at all: a copy that admitted criticals would have passed every gate.
 `deploy/policies/tests/vulnscan-rule/` evaluates that clause over mock predicates (clean, highs
 without criticals, one critical, a critical on one platform of a multi-platform image), and
-`scripts/check-vulnscan-rule.py` keeps the copy identical to the clause in `release.yaml`, so
+`scripts/check-policy-clauses.py` keeps the copy identical to the clause in `release.yaml`, so
 changing the rule without changing the cases fails the lint gate instead of shipping untested.
 
 ## Consequences

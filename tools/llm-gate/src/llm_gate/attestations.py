@@ -10,12 +10,12 @@ The predicates carry ids, SHAs, logins, verdicts and counts, plus the override a
 which are scrubbed like everything else in the audit log. They hold no PR titles or bodies.
 """
 
-import json
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from . import audit
 from .redact import clip, inert, redact
 
 VULN_SCAN_TYPE = "https://github.com/gergodrazsdik/calendar-gates/attestations/vuln-scan/v1"
@@ -92,17 +92,15 @@ def vuln_scan(reports: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
 # --- llm-review --------------------------------------------------------------------------------
 
 
-def _records(audit_dir: Path) -> list[dict[str, Any]]:
-    records: list[dict[str, Any]] = []
-    for path in sorted(audit_dir.glob("events/**/*.jsonl")):
-        for line in path.read_text(encoding="utf-8").splitlines():
-            try:
-                record = json.loads(line)
-            except ValueError:
-                continue
-            if isinstance(record, dict):
-                records.append(record)
-    return records
+def _records(audit_dir: Path) -> audit.LoadedEvents:
+    """Validated records, and how many lines were not records at all.
+
+    This used to `json.loads` every line and accept any object, so one line pushed to the
+    `audit-log` branch -- which takes a push from anyone with write access -- could turn an
+    unreviewed PR into a reviewed one in a signed predicate. `audit.load_events` applies the same
+    schema the collector writes with, and counts what it refused so the refusal is visible.
+    """
+    return audit.load_events(audit_dir)
 
 
 def _parse(value: object) -> datetime | None:
@@ -141,7 +139,8 @@ def llm_review(
     whose triage record planned a blocking check that has **no record at all** is listed as
     unreviewed instead of appearing with that check quietly absent, which is what a failed artifact
     upload or a collector that gave up mid-write looks like (F027)."""
-    records = _records(audit_dir)
+    loaded = _records(audit_dir)
+    records = loaded.records
     stamps = [t for r in records if (t := _parse(r.get("ts"))) is not None]
     log_start = min(stamps, default=None)  # compared as times, not strings
     prs: list[dict[str, Any]] = []
@@ -168,6 +167,19 @@ def llm_review(
             for r in mine
             if r.get("type") == "override"
         ]
+        # A `/llm-risk low` is a full pass of both blocking checks (at low, nothing blocks), and
+        # it is a `risk_override` record rather than an `override`, so the entry used to show
+        # `risk: low` with no sign that a person put it there or why.
+        risk_overrides = [
+            {
+                "by": r.get("by"),
+                "from": r.get("from"),
+                "to": r.get("to"),
+                "reason": clip(redact(str(r.get("reason") or "")), 300),
+            }
+            for r in mine
+            if r.get("type") == "risk_override"
+        ]
         entry: dict[str, Any] = {
             "number": number,
             "head_sha": head,
@@ -176,6 +188,7 @@ def llm_review(
             "ai_assisted": (triage or {}).get("ai_assisted"),
             "checks": {check: _check_state(run) for check, run in sorted(latest.items())},
             "overrides": overrides,
+            "risk_overrides": risk_overrides,
         }
         prs.append(entry)
 
@@ -219,6 +232,9 @@ def llm_review(
         "prs": prs,
         "unreviewed": unreviewed,
         "unverified": unverified,
+        # Lines under events/ that are not valid records. Not zero means something wrote to the
+        # branch that the collector did not, so the predicate says so rather than hiding it.
+        "rejected_records": loaded.rejected,
     }
 
 
