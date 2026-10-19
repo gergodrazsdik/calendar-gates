@@ -1,0 +1,8 @@
+---
+id: clean-012-approval-attestation
+kind: clean
+checks: [code-review, security-review]
+source: 'merged 2b28755: feat(policies): the approval attestation is required, not just audited (#71)'
+description: A merged change; no finding should block it.
+base: 7aaa6cefec9581837d5362f3c8fa372ab6a02861
+expect: []

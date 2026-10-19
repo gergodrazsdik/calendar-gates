@@ -1,0 +1,84 @@
+diff --git a/deploy/policies/base/approved.yaml b/deploy/policies/base/approved.yaml
+index 0f1c85e..b9e7be7 100644
+--- a/deploy/policies/base/approved.yaml
++++ b/deploy/policies/base/approved.yaml
+@@ -5,15 +5,16 @@
+ # carried everything admission asked for, and drill 23 showed a `candidate-v…` tag being admitted.
+ # This attestation is created inside `publish`, so only an approved release has it.
+ #
+-# **Audit until a release carries it.** No release up to v0.3.1 does, and flipping to Deny now
+-# would make the current releases undeployable. The same path the LLM-review policy took: Audit
+-# first, Deny once v0.3.2 is out (then set validationActions: [Deny] here and say so in ADR 0010).
++# **Deny since v0.3.2** (2026-10-18), the first release whose `publish` job created this
++# attestation. It started as Audit because no earlier release carries one and denying would have
++# made them undeployable; v0.3.0 and v0.3.1 are now refused here, which is true to what they are.
++# The same path the LLM-review policy took in #54.
+ apiVersion: policies.kyverno.io/v1
+ kind: ImageValidatingPolicy
+ metadata:
+   name: calendar-gates-approved
+ spec:
+-  validationActions: [Audit]
++  validationActions: [Deny]
+   matchConstraints:
+     namespaceSelector:
+       matchLabels:
+diff --git a/docs/adr/0010-admission-control.md b/docs/adr/0010-admission-control.md
+index 0a63ebd..e866929 100644
+--- a/docs/adr/0010-admission-control.md
++++ b/docs/adr/0010-admission-control.md
+@@ -106,10 +106,12 @@ no registry (`just lint-policies`, ci.yml).
+   *rejected* carried everything admission asked for, and drill 23 showed a `candidate-v…` tag
+   being admitted. `publish` now also attests `release-approved/v1`, which can only exist after a
+   person approved that environment, and `calendar-gates-approved` requires it.
+-  **It starts as Audit**, because no release up to v0.3.1 carries it and denying now would make
+-  the current releases undeployable; it flips to Deny once v0.3.2 is out, the same path the
+-  LLM-review policy took. `just verify-release` already requires it, so it fails on older
+-  releases for that type, as it does for v0.1.0 and v0.2.0 on the newer ones.
++  It started as Audit, because no release up to v0.3.1 carries one, and **denies since v0.3.2**
++  (2026-10-18), the first release whose `publish` job created it: the same path the LLM-review
++  policy took. v0.3.0 and v0.3.1 are refused in `calendar-gates` from now on, which is true to
++  what they are — images nobody approved under this scheme. `just verify-release` requires the
++  type too, so it fails on older releases for it, as it does for v0.1.0 and v0.2.0 on the newer
++  ones. Deploy an older release only in `calendar-gates-dev`, which audits.
+ - **Admission trusts the signing identity, not where the commit sits** (2026-10-18). The
+   attestors accept `release.yml@refs/tags/v…`, which a tag on an unmerged commit also gets
+   (ADR 0009's amendment). The cluster can't check whether a commit is on `main`, so that check
+diff --git a/docs/gates.md b/docs/gates.md
+index dad3b07..5898bf9 100644
+--- a/docs/gates.md
++++ b/docs/gates.md
+@@ -196,9 +196,13 @@ Kyverno 1.19.1 on `kind-calendar-gates` (`just k8s-up k8s-policy-up`,
+ | `calendar-gates-images` | Deny | Audit | An image isn't `ghcr.io/gergodrazsdik/calendar-gates` by digest |
+ | `calendar-gates-release` | Deny | Audit | There's no build provenance or vulnerability scan signed by `release.yml` on a `v*` tag, or the scan lists a critical finding |
+ | `calendar-gates-llm-review` | Deny | Audit | There's no LLM-review attestation signed by `release.yml` on a `v*` tag |
++| `calendar-gates-approved` | Deny | Audit | There's no `release-approved` attestation: the image was never approved in the `release` environment, or it's a rejected candidate. Deny since v0.3.2, the first release that carries one |
++| (any policy) | Deny | Audit | The pod has an **image volume**: nothing can attestation-verify one, so they aren't allowed in `calendar-gates` |
+ 
+-- **Fix a denial:** deploy a release (`just k8s-deploy-release X.Y.Z`). A local build goes to
+-  `calendar-gates-dev` (`just k8s-deploy calendar-gates-dev`).
++- **Fix a denial:** deploy a release **from v0.3.2 on** (`just k8s-deploy-release X.Y.Z`). v0.3.0
++  and v0.3.1 have no approval attestation and are refused here; deploy those in
++  `calendar-gates-dev`, which audits. A local build goes there too
++  (`just k8s-deploy calendar-gates-dev`).
+ - **See the findings:** `just k8s-policy-report [namespace]` lists the Audit findings.
+ - **Test offline:** `just lint-policies` runs the policy tests that need no registry; it's part of
+   `just ci` and the `lint` job.
+diff --git a/justfile b/justfile
+index 56c43c0..233ed2d 100644
+--- a/justfile
++++ b/justfile
+@@ -185,8 +185,11 @@ k8s-policy-up:
+         -f deploy/kyverno/values.yaml --wait --timeout 5m
+     kubectl --context {{ kube_context }} apply -k deploy/policies
+     # Kyverno reports readiness per policy; without this wait a deploy right after this recipe can
+-    # be admitted before the webhook is live.
+-    kubectl --context {{ kube_context }} wait --for=condition=Ready --timeout=2m \
++    # be admitted before the webhook is live. The condition lives under status.conditionStatus,
++    # not status.conditions, so `--for=condition=Ready` never matches (it timed out for every
++    # policy when this was first written, while the install itself was fine).
++    kubectl --context {{ kube_context }} wait --timeout=2m \
++        --for=jsonpath='{.status.conditionStatus.ready}'=true \
+         validatingpolicies,imagevalidatingpolicies --all
+     kubectl --context {{ kube_context }} get validatingpolicies,imagevalidatingpolicies
+ 

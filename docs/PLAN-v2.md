@@ -327,7 +327,7 @@ Results are cached like gate runs, so re-running unchanged cases is free.
   is what's being tested), compare with `baseline.json` using `evals/thresholds.yaml`:
   ```yaml
   max_recall_drop: 0.05           # absolute
-  max_false_block_increase: 0.05  # one divergent sample per check, not two (amended 2026-10-19)
+  max_false_block_increase: 0.025 # one divergent sample per check, not two (amended 2026-10-19)
   max_flip_rate: 0.10
   max_cost_increase: 0.25         # relative
   ```

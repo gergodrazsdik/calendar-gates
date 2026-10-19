@@ -612,14 +612,16 @@ def failed(rows: list[evals.Comparison], metric: str) -> bool:
 def test_one_divergent_clean_sample_is_tolerated_and_two_are_not() -> None:
     """The threshold was 0 over 9 clean cases, so one repeat in 27 failed the gate. #93 removed the
     cache that replayed the baseline's own samples and the first fresh run hit exactly that; 90
-    clean repeats across three runs produced one false block, about 1%. 0.05 admits one sample per
-    check and refuses two, which is what `max_recall_drop` does for a missed finding."""
+    clean repeats across three runs produced one false block, about 1%. The rule is one divergent
+    sample per check but not two, which is what `max_recall_drop` does for a missed finding -- and
+    the number that implements it follows the corpus: 17 clean cases for security-review means 51
+    repeats, so one is 0.020 and two are 0.039."""
     thresholds = evals.load_thresholds(
         REPO_ROOT / "tools" / "llm-gate" / "evals" / "thresholds.yaml"
     )
 
-    one = eval_run(false_block_rate=1 / 27)  # one repeat of 27 on security-review's clean cases
-    two = eval_run(false_block_rate=2 / 27)
+    one = eval_run(false_block_rate=1 / 51)  # one repeat of 51 on security-review's clean cases
+    two = eval_run(false_block_rate=2 / 51)
 
     assert not failed(evals.compare(one, baseline_for(one), thresholds), "false_block_rate")
     assert failed(evals.compare(two, baseline_for(two), thresholds), "false_block_rate")

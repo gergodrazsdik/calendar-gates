@@ -1,0 +1,9 @@
+---
+id: clean-017-override-writers
+kind: clean
+checks: [code-review, security-review]
+source: 'merged 7aaa6ce: fix(audit): the writers list covers every /llm-* command, not just overrides
+  (#70)'
+description: A merged change; no finding should block it.
+base: bee4fc7e119d08834864ba8e0ce468eb54d26741
+expect: []

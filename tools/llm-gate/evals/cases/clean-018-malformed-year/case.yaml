@@ -1,0 +1,8 @@
+---
+id: clean-018-malformed-year
+kind: clean
+checks: [code-review, security-review]
+source: 'merged 6dfa0ed: fix: pin uv itself, and answer a malformed ?year= the same way everywhere (#73)'
+description: A merged change; no finding should block it.
+base: d414dcd3a716841107d4b895abe3ca8c68b13c30
+expect: []

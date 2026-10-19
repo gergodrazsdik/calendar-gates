@@ -19,7 +19,7 @@ missed bugs or annoyed authors later.
   resistance, cost and latency.
 - `evals/baseline.json` holds the scores to beat, per check and engine/model. Updating it is a
   deliberate, reviewed change (`just eval-baseline` in a PR). `evals/thresholds.yaml` says how much
-  worse a PR may be: recall may drop by at most 0.05, the false-block rate may rise by at most 0.05,
+  worse a PR may be: recall may drop by at most 0.05, the false-block rate may rise by at most 0.025,
   the flip rate must stay at or below 0.10, and cost may rise by at most 25 %.
 - **Amended 2026-10-19: the false-block limit admits one divergent sample, not two.** It was 0 --
   "no new false blocks" -- which reads as the strictest possible setting and was in practice a
@@ -36,6 +36,17 @@ missed bugs or annoyed authors later.
   sample move the rate less; that costs a paid baseline per case added, so this is the cheap half.
   `tests/test_evals.py` pins the behaviour against the real `thresholds.yaml`, so setting the
   number back to 0 -- or raising it to admit two -- fails a test.
+- **Amended 2026-10-19 (same day): the cases arrived, so the number came back down.** Eight more
+  clean cases (`clean-011..018`, each a merged change this gate already passed, chosen across the
+  policies, the gate's own code, the workflows, the scripts and the C# API) take the clean corpus
+  from 10 to 18 cases for code-review and 9 to 17 for security-review. One divergent sample is now
+  0.019 or 0.020 and two are 0.037 or 0.039, so the limit is **0.025**: the rule is unchanged --
+  one sample tolerated, two not -- at half the previous tolerance, because the denominator doubled.
+  A bigger corpus is what buys strictness here; the number only follows it. If a 1-in-50 flake
+  ever fails this gate, the answer is more clean cases again rather than a larger limit.
+
+  What this does not buy: the clean cases are all changes from this repository's own history, so
+  they measure the reviewer against the kind of diff this project produces and nothing else.
 - **Amended 2026-10-18: a missing baseline entry fails the comparison.** It used to mean "only the
   absolute limits apply", which made the gate vacuous for the change most worth checking: switch a
   check's engine or model and recall, false blocks and verdict accuracy were each compared against

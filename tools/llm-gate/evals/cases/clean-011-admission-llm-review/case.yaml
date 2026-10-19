@@ -1,0 +1,9 @@
+---
+id: clean-011-admission-llm-review
+kind: clean
+checks: [code-review, security-review]
+source: 'merged 526e1b0: feat(policies): deny images without the LLM-review attestation in calendar-gates
+  (#54)'
+description: A merged change; no finding should block it.
+base: b8f0e01b04aeacca2dc5887c1fd4ee875d1f1222
+expect: []

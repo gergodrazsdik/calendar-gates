@@ -1,0 +1,99 @@
+diff --git a/docs/WRITEUP.md b/docs/WRITEUP.md
+index 7659fed..51ddb96 100644
+--- a/docs/WRITEUP.md
++++ b/docs/WRITEUP.md
+@@ -65,7 +65,7 @@ rate below as an anecdote with a denominator.
+ |---|---|
+ | Coverage: merged PRs where every blocking check decided | 100% |
+ | Review turnaround, p50 / p90 | 1.0 / 2.3 min (security-review 71 s / 2.2 min) |
+-| Findings marked false positive | 1 of 234 (a code-review "high", on a drill). No `/llm-ack` was used, so fp/(fp+ack) means nothing yet |
++| Findings marked false positive | 0 of 234. The one `/llm-fp` (drill 19, on a planted bug) was reversed with `/llm-ack` once it turned out to be a true positive; one acked finding is too few for an fp/(fp+ack) rate |
+ | Overrides | 2 of 6 PRs with blocking findings, both drills |
+ | Cost (paid reviews; cache hits are free) | $7.36 in total; per PR p50 $0.06, p90 $1.28 |
+ | Triage mix | high 62%, low 25%, medium 12%; AI-assisted 75% |
+diff --git a/docs/metrics.md b/docs/metrics.md
+index 2fcb593..0e32d85 100644
+--- a/docs/metrics.md
++++ b/docs/metrics.md
+@@ -13,7 +13,7 @@ PRs merged before the log existed can't be covered.
+ |---|---|---|
+ | Coverage | merged PRs where every blocking check has a `gate_run` with a real verdict (`pass`, `fail`, `not_applicable`; not `skipped_no_key` or `error`) / merged PRs | `gate_run`, merged PRs |
+ | Review turnaround | `finished_at − pr_event_at` per check, p50/p90, for reviews that ran (`pass`, `fail`, `error`) | `gate_run` |
+-| False-positive rate | per check and severity: findings marked `/llm-fp` / distinct findings (a finding counts once per PR, however often it was re-reported); also fp / (fp + ack), over the findings people looked at | `gate_run` findings, `feedback` |
++| False-positive rate | per check and severity: findings marked `/llm-fp` / distinct findings (a finding counts once per PR, however often it was re-reported; when people marked it more than once, the latest verdict by time wins); also fp / (fp + ack), over the findings people looked at | `gate_run` findings, `feedback` |
+ | Override rate | PRs with an honoured override / PRs where a blocking check failed | `gate_run` (`override_honoured`, `verdict`) |
+ | Cost | paid reviews only (cache hits record none): total, per check, per engine/model, p50/p90 per reviewed PR | `gate_run.cost_usd` |
+ | Triage mix | share of PRs per final risk; manual `/llm-risk` changes | `triage`, `risk_override` ([ADR 0008](adr/0008-risk-triage.md)) |
+diff --git a/tools/llm-gate/src/llm_gate/metrics.py b/tools/llm-gate/src/llm_gate/metrics.py
+index 41799f1..a185b93 100644
+--- a/tools/llm-gate/src/llm_gate/metrics.py
++++ b/tools/llm-gate/src/llm_gate/metrics.py
+@@ -128,10 +128,12 @@ def compute(
+     for run in runs:
+         for f in run.get("findings", []):
+             findings[(run.get("pr"), f.get("id"))] = (str(run["check"]), str(f.get("severity")))
++    # A person can change their mind (/llm-fp, then /llm-ack): the latest verdict on a finding wins,
++    # by time, not by the order the record files happen to sort in.
+     kinds: dict[tuple[Any, Any], str] = {}
+-    for r in recent:
+-        if r.get("type") == "feedback":
+-            kinds[(r.get("pr"), r.get("finding_id"))] = str(r.get("kind"))  # the latest wins
++    feedback = [r for r in recent if r.get("type") == "feedback"]
++    for r in sorted(feedback, key=lambda r: _when(r.get("ts")) or datetime.min.replace(tzinfo=UTC)):
++        kinds[(r.get("pr"), r.get("finding_id"))] = str(r.get("kind"))
+     by_check: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0])
+     by_severity: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+     for key, (check, severity) in findings.items():
+diff --git a/tools/llm-gate/tests/test_metrics.py b/tools/llm-gate/tests/test_metrics.py
+index c103f42..46cbd47 100644
+--- a/tools/llm-gate/tests/test_metrics.py
++++ b/tools/llm-gate/tests/test_metrics.py
+@@ -77,6 +77,48 @@ def test_false_positive_rates_per_check_and_severity() -> None:
+     assert report.fp_by_severity == {"high": (1, 1), "low": (0, 1)}
+ 
+ 
++def test_the_latest_feedback_on_a_finding_wins_by_time() -> None:
++    findings = [{"id": "cr-0001", "severity": "high"}]
++
++    def feedback(kind: str, ts: str) -> dict[str, Any]:
++        return {"type": "feedback", "ts": ts, "pr": 1, "finding_id": "cr-0001", "kind": kind}
++
++    # Out of time order, as record files can sort (feedback-<comment id>.jsonl).
++    acked = compute(
++        [
++            run(1, findings=findings),
++            feedback("ack", "2026-10-17T18:00:00Z"),
++            feedback("fp", "2026-10-16T19:00:00Z"),
++            feedback("fp", "2026-10-16T20:00:00Z"),
++        ],
++        [pr(1)],
++    )
++    assert acked.fp_by_check == {"code-review": (0, 1, 1)}
++    assert acked.fp_by_severity == {"high": (0, 1)}
++
++    marked = compute(
++        [
++            run(1, findings=findings),
++            feedback("fp", "2026-10-17T09:00:00Z"),
++            feedback("ack", "2026-10-16T09:00:00Z"),
++        ],
++        [pr(1)],
++    )
++    assert marked.fp_by_check == {"code-review": (1, 0, 1)}
++
++    # A record without a usable ts counts as the oldest: any dated verdict wins over it.
++    undated = compute(
++        [
++            run(1, findings=findings),
++            feedback("ack", "2026-10-16T09:00:00Z"),
++            feedback("fp", ""),
++            feedback("fp", "not a time"),
++        ],
++        [pr(1)],
++    )
++    assert undated.fp_by_check == {"code-review": (0, 1, 1)}
++
++
+ def test_overrides_turnaround_and_cost() -> None:
+     records = [
+         run(1, verdict="fail", override_honoured=True),
