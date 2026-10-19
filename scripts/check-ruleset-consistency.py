@@ -9,7 +9,14 @@
 
 A required check that no job produces never reports, so it blocks every PR; a renamed job silently
 stops being required; a blocking LLM check (at any triage risk level) that is not required can be
-ignored. This catches all three before the ruleset is applied. Usage: scripts/check-ruleset-consistency.py [repo root]
+ignored. This catches all three before the ruleset is applied.
+
+It also pins `llm-review.yml`'s matrix list to `checks.yaml`. That list is spelled out in the
+workflow on purpose — a matrix built from a job's output can't expand until that job finishes, and a
+run cancelled before that leaves a check named `${{ matrix.check }}` behind for ever — so the
+duplication is deliberate and this is what keeps it true.
+
+Usage: scripts/check-ruleset-consistency.py [repo root]
 """
 
 import json
@@ -22,6 +29,8 @@ import yaml
 GITHUB_ACTIONS_APP_ID = 15368
 WORKFLOWS = ("ci.yml", "pr-title.yml", "llm-review.yml", "llm-eval.yml")
 MATRIX_CHECK = "${{ matrix.check }}"
+# The workflow and job whose matrix must list exactly the checks in checks.yaml.
+MATRIX_JOB = ("llm-review.yml", "llm")
 
 
 def load_yaml(path: Path) -> Any:
@@ -54,6 +63,15 @@ def job_check_names(
         if condition and "always()" not in condition:
             conditional |= mine
     return names, conditional
+
+
+def matrix_checks(workflow: Path, job_id: str) -> list[str] | None:
+    """The job's literal `strategy.matrix.check` list, sorted, or None when it isn't one."""
+    job = load_yaml(workflow)["jobs"].get(job_id, {})
+    values = ((job.get("strategy") or {}).get("matrix") or {}).get("check")
+    if not isinstance(values, list) or not all(isinstance(v, str) for v in values):
+        return None
+    return sorted(values)
 
 
 def blocking_checks(config: dict[str, Any]) -> set[str]:
@@ -94,6 +112,21 @@ def main(root: Path) -> int:
         conditional |= skippable
 
     errors: list[str] = []
+    matrix = matrix_checks(
+        root / ".github" / "workflows" / MATRIX_JOB[0], MATRIX_JOB[1]
+    )
+    if matrix is None:
+        errors.append(
+            f"{MATRIX_JOB[0]}: job {MATRIX_JOB[1]!r} has no literal matrix of checks"
+        )
+    elif matrix != sorted(checks):
+        missing = sorted(set(checks) - set(matrix))
+        extra = sorted(set(matrix) - set(checks))
+        errors.append(
+            f"{MATRIX_JOB[0]}'s matrix does not match checks.yaml"
+            + (f"; missing {missing}" if missing else "")
+            + (f"; unknown {extra}" if extra else "")
+        )
     contexts = {check["context"] for check in required}
     for check in required:
         context = check["context"]
