@@ -88,7 +88,9 @@ whose only case is an `fp-regression` has no recall to lose (F037).
 
 `--compare` checks the run against `baseline.json` using `thresholds.yaml`. The report goes to
 `reports/eval/<check>-<prompt sha>.json`. Repeats are separate cache entries and reruns of unchanged
-cases are free, so changing one prompt only pays for that check's reviews.
+cases are free, so changing one prompt only pays for that check's reviews. The key also covers each
+engine's request shape -- `max_turns`, `budget_usd`, the tool lists, the output schema -- so
+changing a limit re-scores rather than replaying answers taken under the old one (F139).
 
 ```sh
 just eval                                   # every check the cases name, its configured engine

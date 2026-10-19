@@ -1,10 +1,15 @@
+from collections.abc import Mapping
 from pathlib import Path
+from types import MappingProxyType
+from typing import cast
 
 from conftest import make_check, result
 
 from llm_gate.cache import Cache, cache_key
 from llm_gate.config import TRIAGE, load_gate_config
 from llm_gate.diff import OmittedFile
+from llm_gate.engines.agent_engine import AgentEngine
+from llm_gate.engines.api_engine import MAX_TOKENS, ApiEngine
 from llm_gate.prompts import diff_block, render, strip_frontmatter
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -38,15 +43,61 @@ def test_every_repository_prompt_takes_the_diff_and_guards_against_injection() -
         assert ("## Rubric" if name == TRIAGE else "## Severity") in body, name
 
 
-def test_cache_key_changes_with_every_input() -> None:
-    base: tuple[str, ...] = ("code-review", "api", "m", "prompt", "diff")
-    keys = {cache_key(*base)}
-    for index in range(len(base)):
-        changed: list[str] = list(base)
-        changed[index] += "!"
-        keys.add(cache_key(*changed))
+SHAPE: dict[str, object] = {"max_turns": 30, "budget_usd": 0.5, "tools": ["Read(./**)"]}
 
-    assert len(keys) == len(base) + 1
+
+def key(
+    check: str = "code-review",
+    engine: str = "api",
+    model: str = "m",
+    prompt: str = "prompt",
+    diff: str = "diff",
+    shape: Mapping[str, object] = MappingProxyType(SHAPE),
+) -> str:
+    return cache_key(check, engine, model, prompt, diff, shape)
+
+
+def test_cache_key_changes_with_every_input() -> None:
+    base = key()
+
+    assert key(check="code-review!") != base
+    assert key(engine="agent") != base
+    assert key(model="m!") != base
+    assert key(prompt="prompt!") != base
+    assert key(diff="diff!") != base
+    assert key() == base
+
+
+def test_cache_key_covers_the_engine_request_shape() -> None:
+    """F139: the key was check, engine, model, prompt and diff only, so halving `max_turns`,
+    emptying the read-only tool list or changing the output schema hit every stored entry and
+    reproduced the answer taken under the old settings. llm-eval compares against a baseline, so
+    that made the gate weakest for exactly the changes most worth scoring."""
+    base = key()
+
+    assert key(shape={**SHAPE, "max_turns": 2}) != base  # a shorter leash
+    assert key(shape={**SHAPE, "budget_usd": 0.01}) != base  # a smaller budget
+    assert key(shape={**SHAPE, "tools": []}) != base  # a blinded reviewer
+    assert key(shape={**SHAPE, "schema": {"x": 1}}) != base  # a different answer shape
+    # Order is not an input: the same settings written differently are the same request.
+    assert key(shape=dict(reversed(list(SHAPE.items())))) == base
+
+
+def test_both_engines_declare_what_shapes_their_request(tmp_path: Path) -> None:
+    check = make_check(tmp_path, engine="agent", max_turns=7, budget_usd=0.25)
+
+    agent = AgentEngine().request_shape(check)
+    api = ApiEngine().request_shape(check)
+
+    # The agent engine's fence and limits, so a cached review taken with a wider fence is never
+    # served for a narrower one (F003).
+    assert agent["max_turns"] == 7
+    assert agent["budget_usd"] == 0.25
+    assert "Read(./**)" in cast("list[str]", agent["allowed_tools"])
+    assert "Bash" in cast("list[str]", agent["denied_tools"])
+    # The API engine's reply budget, which decides whether a long review truncates.
+    assert api["max_tokens"] == MAX_TOKENS
+    assert "schema" in api
 
 
 def test_cache_round_trip_and_corrupt_entries(tmp_path: Path) -> None:

@@ -36,6 +36,7 @@ from claude_agent_sdk import (
 from pydantic import ValidationError
 
 from ..audit import summarise_tool_input
+from ..config import Check
 from ..models import EngineResult, Review, ToolCall, Usage
 from ..prompts import DIFF_REFERENCE, diff_block, render
 from . import EngineError, ReviewRequest
@@ -224,6 +225,20 @@ class AgentEngine:
 
     def __init__(self, query_fn: QueryFn = query) -> None:
         self._query = query_fn  # tests inject a fake message stream
+
+    def request_shape(self, check: Check) -> Mapping[str, object]:
+        # What the reviewer is allowed to do and how far it may go. The tool lists and the inline
+        # settings are the read fence (F003): a cached review taken with a wider fence is not
+        # evidence about this one, which is also why CACHE_VERSION was bumped when the fence
+        # arrived. max_turns and budget_usd decide whether a long review finishes at all.
+        return {
+            "max_turns": check.max_turns,
+            "budget_usd": check.budget_usd,
+            "allowed_tools": ALLOWED_TOOLS,
+            "denied_tools": DENIED_TOOLS,
+            "settings": SETTINGS,
+            "schema": Review.model_json_schema(),
+        }
 
     def options(self, request: ReviewRequest, log: ToolCallLog | None = None) -> ClaudeAgentOptions:
         check = request.check

@@ -1,6 +1,6 @@
 import os
 import subprocess
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import replace
 from pathlib import Path
 
@@ -130,6 +130,11 @@ class FakeEngine:
         self.name = name
         self.outcome = result() if outcome is None else outcome
         self.requests: list[ReviewRequest] = []
+
+    def request_shape(self, check: Check) -> Mapping[str, object]:
+        # Mirrors what the real engines expose: enough that a change to a check's limits still
+        # changes the cache key in tests.
+        return {"max_turns": check.max_turns, "budget_usd": check.budget_usd}
 
     def review(self, request: ReviewRequest) -> EngineResult:
         self.requests.append(request)

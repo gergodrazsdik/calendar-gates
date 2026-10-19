@@ -1,11 +1,13 @@
 """Claude API engine: one Messages request with the diff inline, structured output into Review."""
 
 import time
+from collections.abc import Mapping
 from typing import Any
 
 import anthropic
 from pydantic import BaseModel, ValidationError
 
+from ..config import Check
 from ..models import EngineResult, Review, Usage
 from ..prompts import DIFF_REFERENCE, diff_block, render
 from . import EngineError, ReviewRequest
@@ -98,6 +100,12 @@ class ApiEngine:
     def __init__(self, client: Any | None = None) -> None:
         # Any: tests pass a stub with the same `beta.messages.parse` shape.
         self._client = client
+
+    def request_shape(self, check: Check) -> Mapping[str, object]:
+        # The reply budget and the schema the model must answer in. A smaller MAX_TOKENS turns a
+        # long review into a truncation error, and a changed schema changes what comes back, so
+        # neither may be served from a cache filled before the change.
+        return {"max_tokens": MAX_TOKENS, "schema": Review.model_json_schema()}
 
     def review(self, request: ReviewRequest) -> EngineResult:
         started = time.monotonic()

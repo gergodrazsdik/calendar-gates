@@ -96,7 +96,14 @@ def run_check(
         error = f"diff too large: {diff.size_bytes // 1024} KB > max_diff_kb {check.max_diff_kb}"
     else:
         prompt = load_prompt(check.prompt_path)
-        key = cache_key(check.name + cache_salt, engine.name, check.model, prompt, diff.text)
+        key = cache_key(
+            check.name + cache_salt,
+            engine.name,
+            check.model,
+            prompt,
+            diff.text,
+            engine.request_shape(check),
+        )
         result = cache.get(key) if cache else None
         cached = result is not None
         if result is None:
