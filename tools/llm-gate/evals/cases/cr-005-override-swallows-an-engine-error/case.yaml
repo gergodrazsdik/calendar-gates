@@ -1,0 +1,14 @@
+---
+id: cr-005-override-swallows-an-engine-error
+kind: bug
+checks: [code-review]
+source: written for the evals (F099)
+description: policy.decide stops checking the error kind, so an llm-override makes an engine failure —
+  a review that never happened — exit 0 on a blocking check. Until F099 every code-review bug case was
+  in the date API, so recall on the gate's own code was unmeasured.
+base: 29f5ab24e7266ce587c51dc16d1f8dd9f22b6feb
+expect:
+  - file: tools/llm-gate/src/llm_gate/policy.py
+    lines: [70, 70]
+    min_severity: high
+    category: correctness

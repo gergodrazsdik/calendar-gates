@@ -1,0 +1,13 @@
+diff --git a/tools/llm-gate/src/llm_gate/triage.py b/tools/llm-gate/src/llm_gate/triage.py
+index 85fca14..8f1d8a4 100644
+--- a/tools/llm-gate/src/llm_gate/triage.py
++++ b/tools/llm-gate/src/llm_gate/triage.py
+@@ -169,7 +169,7 @@ def floor(changes: Sequence[FileChange], *, ai_assisted: bool, config: TriageCon
+             if rank(source[0]) > rank(key[0]):
+                 key = (source[0], f"{source[1]} (renamed away)")
+         by_reason[key] = by_reason.get(key, 0) + 1
+-    risk = highest(r for r, _ in by_reason)
++    risk = min((r for r, _ in by_reason), key=rank)
+     reasons = [
+         f"{risk_}: {reason} ({count} file{'s' if count != 1 else ''})"
+         for (risk_, reason), count in sorted(by_reason.items(), key=lambda kv: -rank(kv[0][0]))

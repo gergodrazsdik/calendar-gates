@@ -1,0 +1,13 @@
+diff --git a/tools/llm-gate/src/llm_gate/policy.py b/tools/llm-gate/src/llm_gate/policy.py
+index bc4bf18..9de1187 100644
+--- a/tools/llm-gate/src/llm_gate/policy.py
++++ b/tools/llm-gate/src/llm_gate/policy.py
+@@ -67,7 +67,7 @@ def decide(
+             # The verdict stays `error`: nothing was reviewed, and an override doesn't change that.
+             # It only says a human with write access accepted the diff unreviewed, with a reason
+             # on the audit log, which the release attestation lists under `unreviewed` (ADR 0002).
+-            if override and error_kind is ErrorKind.TOO_LARGE:
++            if override:
+                 return Decision(
+                     Verdict.ERROR,
+                     EXIT_PASS,

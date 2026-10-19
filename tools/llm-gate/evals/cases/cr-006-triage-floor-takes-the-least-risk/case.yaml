@@ -1,0 +1,14 @@
+---
+id: cr-006-triage-floor-takes-the-least-risk
+kind: bug
+checks: [code-review]
+source: written for the evals (F099)
+description: triage.floor takes the least risky rule that matched instead of the riskiest, so a PR touching
+  the gate next to a doc is rated low, where the blocking checks do not run at all. A review that never
+  runs looks exactly like a review that passed.
+base: 29f5ab24e7266ce587c51dc16d1f8dd9f22b6feb
+expect:
+  - file: tools/llm-gate/src/llm_gate/triage.py
+    lines: [172, 172]
+    min_severity: high
+    category: correctness
