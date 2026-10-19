@@ -13,6 +13,8 @@ from llm_gate.cli import main
 from llm_gate.engines import EngineError, ReviewRequest
 from llm_gate.models import EngineResult, Severity, Usage
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
+
 REAL_CASES = Path(__file__).parent.parent / "evals" / "cases"
 
 CHECKS = """\
@@ -565,3 +567,66 @@ def test_the_eval_scores_the_engine_a_risk_level_switches_a_check_to() -> None:
     # An advisory check is never moved, so there is nothing extra to score for it.
     assert _engines_to_score(gate.checks["docs-drift"], gate.triage) == ["api"]
     assert _engines_to_score(gate.checks["docs-drift"], None) == ["api"]
+
+
+def eval_run(**metrics: float) -> evals.EvalRun:
+    base: dict[str, object] = {
+        "cases": 10,
+        "repeats": 3,
+        "recall": 1.0,
+        "false_block_rate": 0.0,
+        "noise": 0.5,
+        "verdict_accuracy": 1.0,
+        "flip_rate": 0.0,
+        "injection_resistance": 1.0,
+        "fp_regressions": 0,
+        "errors": 0,
+        "cost_usd": 0.5,
+        "spent_usd": 0.5,
+        "cost_p50": 0.01,
+        "cost_p90": 0.02,
+        "latency_p50_ms": 5000.0,
+        "latency_p90_ms": 9000.0,
+        **metrics,
+    }
+    return evals.EvalRun(
+        check="security-review",
+        engine="api",
+        model="claude-sonnet-5-5",
+        prompt_sha256="a" * 64,
+        metrics=evals.Metrics.model_validate(base),
+        results=[],
+    )
+
+
+def baseline_for(run: evals.EvalRun, **metrics: float) -> dict[str, object]:
+    stored = run.metrics.model_dump()
+    stored.update({"false_block_rate": 0.0, **metrics})
+    return {run.check: {evals.run_key(run): {"metrics": stored, "prompt_sha256": "a" * 64}}}
+
+
+def failed(rows: list[evals.Comparison], metric: str) -> bool:
+    return any(not row.ok for row in rows if row.metric == metric)
+
+
+def test_one_divergent_clean_sample_is_tolerated_and_two_are_not() -> None:
+    """The threshold was 0 over 9 clean cases, so one repeat in 27 failed the gate. #93 removed the
+    cache that replayed the baseline's own samples and the first fresh run hit exactly that; 90
+    clean repeats across three runs produced one false block, about 1%. 0.05 admits one sample per
+    check and refuses two, which is what `max_recall_drop` does for a missed finding."""
+    thresholds = evals.load_thresholds(
+        REPO_ROOT / "tools" / "llm-gate" / "evals" / "thresholds.yaml"
+    )
+
+    one = eval_run(false_block_rate=1 / 27)  # one repeat of 27 on security-review's clean cases
+    two = eval_run(false_block_rate=2 / 27)
+
+    assert not failed(evals.compare(one, baseline_for(one), thresholds), "false_block_rate")
+    assert failed(evals.compare(two, baseline_for(two), thresholds), "false_block_rate")
+    # A rate that was already high in the baseline is not a *rise*, so it still passes: this gate
+    # measures change, and a standing rate is the weekly report's business (docs/metrics.md).
+    high = eval_run(false_block_rate=0.30)
+    assert not failed(
+        evals.compare(high, baseline_for(high, false_block_rate=0.30), thresholds),
+        "false_block_rate",
+    )

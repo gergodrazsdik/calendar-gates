@@ -19,8 +19,23 @@ missed bugs or annoyed authors later.
   resistance, cost and latency.
 - `evals/baseline.json` holds the scores to beat, per check and engine/model. Updating it is a
   deliberate, reviewed change (`just eval-baseline` in a PR). `evals/thresholds.yaml` says how much
-  worse a PR may be: recall may drop by at most 0.05, no new false blocks are allowed, the flip rate
-  must stay at or below 0.10, and cost may rise by at most 25 %.
+  worse a PR may be: recall may drop by at most 0.05, the false-block rate may rise by at most 0.05,
+  the flip rate must stay at or below 0.10, and cost may rise by at most 25 %.
+- **Amended 2026-10-19: the false-block limit admits one divergent sample, not two.** It was 0 --
+  "no new false blocks" -- which reads as the strictest possible setting and was in practice a
+  coin-flip, because the corpus is 10 clean cases for code-review and 9 for security-review: a
+  single repeat out of 30 or 27 is a rate of 0.033 or 0.037, so one sample failed the gate. Nothing
+  noticed while #93's cache replayed the baseline's own samples on every run; the first fresh
+  sampling produced exactly that, and 90 clean repeats across three runs produced one false block,
+  about 1%. The limit is now 0.05, which admits one such sample per check and refuses two (0.067,
+  0.074) -- the same shape as `max_recall_drop`, where one missed finding passes and two do not.
+
+  This is a deliberate loosening and the cost is stated rather than buried: a *persistent* 1-in-30
+  false-block rate now passes this gate, and what would catch it is the fp/ack rate in the weekly
+  report (`docs/metrics.md`), not the eval. The better fix is more clean cases, which makes one
+  sample move the rate less; that costs a paid baseline per case added, so this is the cheap half.
+  `tests/test_evals.py` pins the behaviour against the real `thresholds.yaml`, so setting the
+  number back to 0 -- or raising it to admit two -- fails a test.
 - **Amended 2026-10-18: a missing baseline entry fails the comparison.** It used to mean "only the
   absolute limits apply", which made the gate vacuous for the change most worth checking: switch a
   check's engine or model and recall, false blocks and verdict accuracy were each compared against

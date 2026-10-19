@@ -632,7 +632,9 @@ def run_triage_eval(
 
 class Thresholds(_Strict):
     max_recall_drop: float = 0.05  # absolute
-    max_false_block_increase: float = 0.0  # absolute: no new false blocks
+    # Absolute. 0.05 tolerates one divergent sample per check and fails at two; see
+    # evals/thresholds.yaml, which is what actually applies, for the measurement behind it.
+    max_false_block_increase: float = 0.05
     max_verdict_accuracy_drop: float = 0.10  # absolute
     max_flip_rate: float = 0.10  # absolute, on the current run
     max_cost_increase: float = 0.25  # relative
