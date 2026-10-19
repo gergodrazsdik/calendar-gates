@@ -31,13 +31,13 @@ A review of the whole repository at `43ec3c2` (2026-10-17), after PLAN-v2 was wr
 | accepted | 0 | 0 | 0 | 2 | 1 | 3 |
 | rejected | 0 | 0 | 0 | 0 | 11 | 11 |
 
-**Fixed so far: 113 of 119** (3 partial, 2 open, 1 unverifiable). By severity:
+**Fixed so far: 114 of 119** (3 partial, 1 open, 1 unverifiable). By severity:
 
 | Status | critical | high | medium | low | info | total |
 |---|---|---|---|---|---|---|
-| ✅ fixed | 0 | 2 | 15 | 71 | 25 | 113 |
+| ✅ fixed | 0 | 2 | 15 | 72 | 25 | 114 |
 | 🟡 partial | 0 | 0 | 1 | 2 | 0 | 3 |
-| open | 0 | 0 | 0 | 1 | 1 | 2 |
+| open | 0 | 0 | 0 | 0 | 1 | 1 |
 | ⚪ unverifiable | 0 | 0 | 1 | 0 | 0 | 1 |
 
 Each fix names the PR that made it. The status column is maintained by hand as fixes land; the verdicts and severities below are the review's own and are not revised.
@@ -118,7 +118,12 @@ exactly the bypass it describes, so it was not built. What is confirmed without 
 `http-tests` and `k8s-smoke` hold `checks: write` while running PR code. Moving test reporting to
 a job that runs no PR code removes the question.
 
-**Since the review (2026-10-18).** Seventeen things changed under this document:
+**Since the review (2026-10-19).** Eighteen things changed under this document:
+- **#85** pointed the blocking review at the code this repository actually changes (F099): the
+  code-review prompt's subject and severity anchors now cover the gate itself — a verdict that can
+  pass what it should block, a floor computed too low, a record that claims a review that didn't
+  happen — and two eval cases plant those bugs in `policy.py` and `triage.py`. Verdict accuracy went
+  from 0.98 to 1.00 with recall and false blocks unchanged.
 - **#82** took the thirty smaller items in one pass: the API's contract now says what it does
   (strict integers, required date parameters with a format) and its untested branches are tested;
   the gate measures what it claims to (a triage case that is always wrong fails, `not_needed`
@@ -159,9 +164,8 @@ a job that runs no PR code removes the question.
   (F004's neighbours, ten items in all, each named on its own Status line).
 - **#73** pinned uv itself (F052) and made a malformed `?year=` the same ValidationProblem in both
   environments (F081). F003 was the last open medium until #77; after #82 only two items are open
-  at all: [F099](#f099) (the blocking code-review prompt's scope and rubric describe a date API,
-  not the gate code most PRs change) and [F080](#f080) (tool versions pinned inside `run:` steps
-  aren't covered by Dependabot). Both need more than a small change, which is why they're left.
+  at all, and after #85 only [F080](#f080) is: tool versions pinned inside `run:` steps aren't
+  covered by Dependabot, which needs an update mechanism rather than a patch.
 - **#71** made the approval attestation required, proven on the project cluster: v0.3.2 admitted,
   v0.3.1 denied by name, an image volume denied. That test also found that the F058 readiness wait
   from #63 never matched Kyverno's actual condition, which #71 fixes.
@@ -229,7 +233,6 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F081](#f081) | ✅ fixed | medium | medium | C | A malformed or empty ?year= on /api/friday13 gets a 400 without `errors` in Production and a 500 in Development, not the 400 ValidationProblem | small | S:C/medium M:C/medium I:C/medium |
 | [F084](#f084) | ✅ fixed | medium | medium | C | "A failed smoke leaves a draft; re-running the workflow refreshes it" no longer holds under build-once releases | trivial | S:C/medium M:C/medium I:C/medium |
 | [F003](#f003) | ✅ fixed | medium | high | A | The agent reviewer's file reads are not fenced to the reviewed checkout, and its output is published unredacted | small | S:P/medium M:C/medium I:C/low |
-| [F099](#f099) | open | low | low | C | The blocking code-review prompt's scope and severity rubric cover only the date API, not the gate code most PRs change | medium | S:C/low M:C/low I:C/low |
 | [F048](#f048) | 🟡 partial | low | medium | B | Every attestation Kyverno requires exists before the release is approved or smoke-tested, so rejected and failed candidates are admitted | medium | S:C/low M:C/low I:C/low |
 | [F091](#f091) | 🟡 partial | low | low | C | The audit/v1 type lists in ADR 0005 and in the audit-log branch README are out of date | small | S:C/low M:C/low I:C/low |
 | [F013](#f013) | ✅ fixed | low | medium | A | `llm-gate run --risk` for a check the level runs (demoted to advisory, engine switched) is never exercised | small | S:C/low M:C/low I:C/low |
@@ -303,6 +306,7 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F090](#f090) | ✅ fixed | low | low | C | llm-gate's README leaves out the triage and attest subcommands and --risk/LLM_GATE_RISK, which the workflows call | small | S:C/low M:C/low I:C/low |
 | [F104](#f104) | ✅ fixed | low | low | C | PLAN.md's drill table, which /gate-drill checks results against, predates reasoned overrides and the --no-verify ban | small | S:C/info M:C/low I:C/low |
 | [F045](#f045) | ✅ fixed | low | medium | B | The allow rules for just, uv run, dotnet and gh run auto-approve arbitrary and irreversible commands, which makes the deny list ineffective | small | S:C/low M:C/low I:C/low |
+| [F099](#f099) | ✅ fixed | low | low | C | The blocking code-review prompt's scope and severity rubric cover only the date API, not the gate code most PRs change | medium | S:C/low M:C/low I:C/low |
 | [F080](#f080) | open | info | info | B | Tool versions pinned inside run: steps and with: inputs aren't covered by Dependabot | medium | S:C/info M:C/info I:C/info |
 | [F061](#f061) | ✅ fixed | info | low | B | audit-pull, and with it metrics, fails when the audit-log branch has no events/ directory | trivial | S:C/info M:C/low I:C/info |
 | [F063](#f063) | ✅ fixed | info | low | B | just lint hands the user's full-scope gh OAuth token to a PyPI-fetched zizmor on every run | trivial | S:R/info M:C/low I:C/info |
@@ -1773,7 +1777,7 @@ Only 'Current ISO week' (application/json, line 21) and 'ISO week: invalid date'
 
 **The blocking code-review prompt's scope and severity rubric cover only the date API, not the gate code most PRs change**
 
-- **Status:** open
+- **Status:** ✅ fixed — #85: the prompt's subject and rubric cover the gate's own code (a gate that can pass what it should block is high, critical when it stops working), and cr-005/cr-006 plant such bugs in policy.py and triage.py so recall there is measured
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** medium
 - **Where:** `.claude/commands/llm-code-review.md:6` · **area:** API, tests, docs
 - **Reported by:** `cr-gate-15` (low, medium confidence)

@@ -87,6 +87,13 @@ all of the policy.
   the gate, so code-review and security-review usually run on the agent engine. Each review is
   capped by `budget_usd`. Setting `ai_assisted_raise: 0` is a one-line policy change, and it goes
   through review like any other change to `checks.yaml`.
+  **Amended 2026-10-19 (F099): the blocking prompt describes that code too.** `llm-code-review.md`
+  defined the subject as the date API, and every severity anchor was about endpoints, so the check
+  that blocks these PRs said nothing about what a serious bug in the gate looks like — a verdict
+  that can pass what it should block, a floor computed too low so a review never runs, a record
+  that claims a review that didn't happen. Those are now in its scope and rated high (critical when
+  the gate stops working at all), and two eval cases plant exactly such bugs in `policy.py` and
+  `triage.py`, so recall on the gate's own code is measured instead of assumed.
 - **Amended 2026-10-17: Sonnet, not Opus, at high risk.** The high level first also switched the
   blocking checks to Opus (`LLM_MODEL_STRONG`). The model evals done for docs/WRITEUP.md then
   showed no gain. On the agent engine, Opus matched Sonnet's recall (1.00) but was noisier on
