@@ -31,13 +31,13 @@ A review of the whole repository at `43ec3c2` (2026-10-17), after PLAN-v2 was wr
 | accepted | 0 | 0 | 0 | 2 | 1 | 3 |
 | rejected | 0 | 0 | 0 | 0 | 11 | 11 |
 
-**Fixed so far: 114 of 119** (3 partial, 1 open, 1 unverifiable). By severity:
+**Fixed so far: 115 of 119** (3 partial, 0 open, 1 unverifiable). By severity:
 
 | Status | critical | high | medium | low | info | total |
 |---|---|---|---|---|---|---|
-| ✅ fixed | 0 | 2 | 15 | 72 | 25 | 114 |
+| ✅ fixed | 0 | 2 | 15 | 72 | 26 | 115 |
 | 🟡 partial | 0 | 0 | 1 | 2 | 0 | 3 |
-| open | 0 | 0 | 0 | 0 | 1 | 1 |
+| open | 0 | 0 | 0 | 0 | 0 | 0 |
 | ⚪ unverifiable | 0 | 0 | 1 | 0 | 0 | 1 |
 
 Each fix names the PR that made it. The status column is maintained by hand as fixes land; the verdicts and severities below are the review's own and are not revised.
@@ -118,7 +118,10 @@ exactly the bypass it describes, so it was not built. What is confirmed without 
 `http-tests` and `k8s-smoke` hold `checks: write` while running PR code. Moving test reporting to
 a job that runs no PR code removes the question.
 
-**Since the review (2026-10-19).** Eighteen things changed under this document:
+**Since the review (2026-10-19).** Nineteen things changed under this document:
+- **#86** closed the last open item (F080): the thirteen tool versions Dependabot cannot see are
+  defined once per file, a lint check fails when two definitions disagree, and the weekly Gate
+  health issue names the ones upstream has moved past — six of them on the day it was written.
 - **#85** pointed the blocking review at the code this repository actually changes (F099): the
   code-review prompt's subject and severity anchors now cover the gate itself — a verdict that can
   pass what it should block, a floor computed too low, a record that claims a review that didn't
@@ -164,8 +167,8 @@ a job that runs no PR code removes the question.
   (F004's neighbours, ten items in all, each named on its own Status line).
 - **#73** pinned uv itself (F052) and made a malformed `?year=` the same ValidationProblem in both
   environments (F081). F003 was the last open medium until #77; after #82 only two items are open
-  at all, and after #85 only [F080](#f080) is: tool versions pinned inside `run:` steps aren't
-  covered by Dependabot, which needs an update mechanism rather than a patch.
+  at all, and after #86 none is. What is left is three partial items, each with its reason on the
+  item, and [F050](#f050), which is unverifiable without building the bypass it describes.
 - **#71** made the approval attestation required, proven on the project cluster: v0.3.2 admitted,
   v0.3.1 denied by name, an image volume denied. That test also found that the F058 readiness wait
   from #63 never matched Kyverno's actual condition, which #71 fixes.
@@ -307,7 +310,6 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F104](#f104) | ✅ fixed | low | low | C | PLAN.md's drill table, which /gate-drill checks results against, predates reasoned overrides and the --no-verify ban | small | S:C/info M:C/low I:C/low |
 | [F045](#f045) | ✅ fixed | low | medium | B | The allow rules for just, uv run, dotnet and gh run auto-approve arbitrary and irreversible commands, which makes the deny list ineffective | small | S:C/low M:C/low I:C/low |
 | [F099](#f099) | ✅ fixed | low | low | C | The blocking code-review prompt's scope and severity rubric cover only the date API, not the gate code most PRs change | medium | S:C/low M:C/low I:C/low |
-| [F080](#f080) | open | info | info | B | Tool versions pinned inside run: steps and with: inputs aren't covered by Dependabot | medium | S:C/info M:C/info I:C/info |
 | [F061](#f061) | ✅ fixed | info | low | B | audit-pull, and with it metrics, fails when the audit-log branch has no events/ directory | trivial | S:C/info M:C/low I:C/info |
 | [F063](#f063) | ✅ fixed | info | low | B | just lint hands the user's full-scope gh OAuth token to a PyPI-fetched zizmor on every run | trivial | S:R/info M:C/low I:C/info |
 | [F077](#f077) | ✅ fixed | info | info | B | The pre-commit ruff job skips scripts/*.py, which the lint gate checks | trivial | S:C/info M:C/info I:C/info |
@@ -333,6 +335,7 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F028](#f028) | ✅ fixed | info | low | A | eval add-from-fp looks up a 16-bit finding id across every PR and takes the last match | trivial | S:C/info M:C/low I:C/info |
 | [F116](#f116) | ✅ fixed | info | info | C | The api-contract prompt defines the contract as the /api routes and OpenAPI, leaving out /health, which checks.yaml gives as a reason to review Program.cs | small | S:C/info M:C/info I:C/info |
 | [F128](#f128) | ✅ fixed | info | info | C | The docs-drift gate's own list of docs leaves out the tool READMEs and command files, where drift collects | small | S:C/info M:C/info I:C/info |
+| [F080](#f080) | ✅ fixed | info | info | B | Tool versions pinned inside run: steps and with: inputs aren't covered by Dependabot | medium | S:C/info M:C/info I:C/info |
 | [F050](#f050) | ⚪ unverifiable | medium | medium | B | Required checks are pinned to the GitHub Actions app, not to the jobs that produce them, while three PR jobs hold checks: write next to PR-controlled code | small | S:P/medium M:P/low I:P/medium |
 
 ## Confirmed
@@ -2856,7 +2859,7 @@ When a check isn't needed, `_at_risk` returns the unplanned check, so the record
 
 **Tool versions pinned inside run: steps and with: inputs aren't covered by Dependabot**
 
-- **Status:** open
+- **Status:** ✅ fixed — #86: thirteen pins defined once per file, an agreement check in lint, and the weekly Gate health issue reports which of them upstream has moved past (six were, on the day it was written)
 - **Severity:** info (reviewers: info) · **outcome:** confirmed · **fix cost:** medium
 - **Where:** `.github/workflows/ci.yml:72` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `wr-21` (info, high confidence)
