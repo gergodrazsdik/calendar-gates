@@ -19,6 +19,8 @@ max_flip_rate: 0.10 # absolute, on the current run
 max_cost_increase: 0.25 # relative
 # Absolute, over all triage repeats. On its own it would let one case be wrong every time, so
 # `cases_wrong_every_repeat` must also be 0 (F018); `model_below_floor` is reported, not gated,
-# because the floor wins whatever the model says (F030).
+# because the floor wins whatever the model says (F030). Since 2026-10-19 that same rule applies to
+# the review checks: it has no threshold of its own because it is not a rate -- a case the gate
+# decides wrongly in *every* repeat fails the comparison, whatever the averages say.
 max_risk_accuracy_drop: 0.15
 budget_usd: 6 # per `llm-gate eval run`, all checks and engines together

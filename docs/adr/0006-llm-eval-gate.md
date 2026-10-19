@@ -47,6 +47,19 @@ missed bugs or annoyed authors later.
 
   What this does not buy: the clean cases are all changes from this repository's own history, so
   they measure the reviewer against the kind of diff this project produces and nothing else.
+- **Amended 2026-10-19: a case the gate decides wrongly in every repeat fails any check, not just
+  triage.** Refreshing the baseline on the larger corpus moved code-review's verdict accuracy from
+  1.00 to 0.975 -- `cr-002`, whose planted bug the model rated below `fail_on: high` in 2 of 3
+  repeats -- which lowered that check's floor from 0.90 to 0.875. Pinning 1.00 by hand would have
+  recorded a number the run did not measure, and a baseline that keeps the best value per metric
+  becomes a high-water mark where every flake is a failure, which is what this ADR's previous
+  amendment was about.
+  The real gap was elsewhere: `cases_wrong_every_repeat` existed for exactly this reason (F018) and
+  was **computed only for triage**, so the review checks carried the field's default of 0 and
+  nothing gated it. With 27 cases, one always-wrong case moves verdict accuracy by 0.037 against a
+  tolerance of 0.10 -- comfortably absorbed. It is now computed for every check and gated at 0, so
+  a persistent wrong decision fails however healthy the average looks, while a 2-of-3 flake like
+  `cr-002` still passes. Verified against the current corpus: 0 for every review check today.
 - **Amended 2026-10-18: a missing baseline entry fails the comparison.** It used to mean "only the
   absolute limits apply", which made the gate vacuous for the change most worth checking: switch a
   check's engine or model and recall, false blocks and verdict accuracy were each compared against
@@ -79,6 +92,13 @@ missed bugs or annoyed authors later.
   changes how a request is *built* rather than what it contains still needs that bump. The eval
   gate's own review (code-review blocks at high risk on `tools/llm-gate/**`) is what is supposed
   to catch a missing bump.
+- **Adding eval cases costs twice, which the paragraph above hides.** The cache that makes a PR
+  cheap is scoped per ref, so a PR cannot read `main`'s future entries and `main` cannot read the
+  PR's: the push that merges a case-adding PR re-scores those cases from scratch. #95's eight clean
+  cases cost $1.40 in the PR and $1.40 again on `main`. The first run of such a PR also fails on
+  `cost_increase` by construction -- more cases is more cost against a baseline measured on fewer --
+  so the baseline is refreshed from that run's own report, which is what keeps it at two payments
+  rather than three.
 - The PR's code runs with the API key. Only collaborators can open PRs here and fork PRs get no
   secrets; the key's exposure is the same as for v1's llm-review. A team repository would add
   CODEOWNERS review for `tools/llm-gate/`.

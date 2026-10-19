@@ -99,6 +99,13 @@ just eval-baseline                          # baseline.json from the last run; c
 uv run --project tools/llm-gate llm-gate eval add-from-fp cr-3f2a
 ```
 
+**Adding a case costs twice.** The Actions cache is scoped per ref: a PR's entries cannot be read
+from `main`, and `main`'s run is the one that fills the cache every later PR restores. So a PR that
+adds cases pays for them, and the push to `main` that merges it pays for them again. The eight clean
+cases added in #95 cost $1.40 in the PR and $1.40 on `main`. Budget for about double what the
+per-case arithmetic suggests, and expect the *first* run to fail on `cost_increase` until the
+baseline is refreshed from it.
+
 A full baseline with both engines costs about $4 (about 30 cases × 3 repeats, $0.01–0.04 per review).
 `llm-eval` in CI uses each check's own engine. It starts from the cache that its run on `main` keeps
 warm, so a PR pays only for the checks it changes: about $0.70 for a code-review prompt change, $0
