@@ -632,3 +632,35 @@ def test_one_divergent_clean_sample_is_tolerated_and_two_are_not() -> None:
         evals.compare(high, baseline_for(high, false_block_rate=0.30), thresholds),
         "false_block_rate",
     )
+
+
+def case_result(name: str, expected: str, *verdicts: str) -> evals.CaseResult:
+    return evals.CaseResult(
+        case=name,
+        kind="bug",
+        expected_verdict=expected,
+        attempts=[attempt(v, [True]) for v in verdicts],
+    )
+
+
+def test_a_case_decided_wrongly_in_every_repeat_fails_a_review_check() -> None:
+    """F018 added this for triage because an average absorbs a case that is *always* wrong: with 27
+    cases one of them moves verdict accuracy by 0.037 against a tolerance of 0.10. It was never
+    computed for the review checks, so their baselines carried the field's default of 0 and nothing
+    was gated. A flake like cr-002 (wrong in 2 of 3 repeats) still passes, which is the point."""
+    right = [case_result(f"cr-{i}", "fail", "fail", "fail", "fail") for i in range(26)]
+    always = [case_result("cr-always-wrong", "fail", "pass", "pass", "pass"), *right]
+    sometimes = [case_result("cr-flaky", "fail", "fail", "pass", "pass"), *right]
+
+    assert evals.metrics(always, 3).cases_wrong_every_repeat == 1
+    assert evals.metrics(sometimes, 3).cases_wrong_every_repeat == 0
+
+    thresholds = evals.load_thresholds(
+        REPO_ROOT / "tools" / "llm-gate" / "evals" / "thresholds.yaml"
+    )
+    run = eval_run().model_copy(update={"metrics": evals.metrics(always, 3)})
+    rows = evals.compare(run, baseline_for(run, verdict_accuracy=1.0), thresholds)
+
+    # The average is inside its tolerance, so only the always-wrong case fails the comparison.
+    assert not failed(rows, "verdict_accuracy")
+    assert failed(rows, "cases_wrong_every_repeat")

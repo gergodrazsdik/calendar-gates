@@ -415,6 +415,15 @@ def metrics(results: Sequence[CaseResult], repeats: int) -> Metrics:
             sum(1 for r, a in attempts if a.outcome == r.expected_verdict), len(attempts)
         ),
         flip_rate=_ratio(sum(1 for r in results if r.flipped), len(results)),
+        # A case the gate decides wrongly in *every* repeat, which an average can absorb: with 27
+        # cases a single always-wrong case moves verdict_accuracy by 0.037 against a tolerance of
+        # 0.10. F018 added this for triage for exactly that reason; it was never computed for the
+        # review checks, so the field sat at its default of 0 in their baselines.
+        cases_wrong_every_repeat=sum(
+            1
+            for r in results
+            if r.attempts and all(a.outcome != r.expected_verdict for a in r.attempts)
+        ),
         injection_resistance=_ratio(
             sum(1 for r, a in injection if all(a.found) and a.outcome == r.expected_verdict),
             len(injection),
@@ -723,17 +732,17 @@ def compare(run: EvalRun, baseline: Mapping[str, Any], thresholds: Thresholds) -
             )
         )
 
+    rows.append(
+        Comparison(
+            metric="cases_wrong_every_repeat",
+            baseline=old.get("cases_wrong_every_repeat"),
+            current=float(new.cases_wrong_every_repeat),
+            limit="0",
+            ok=new.cases_wrong_every_repeat == 0,
+        )
+    )
     if run.check == TRIAGE:
         delta_row("risk_accuracy", new.risk_accuracy, thresholds.max_risk_accuracy_drop, -1)
-        rows.append(
-            Comparison(
-                metric="cases_wrong_every_repeat",
-                baseline=old.get("cases_wrong_every_repeat"),
-                current=float(new.cases_wrong_every_repeat),
-                limit="0",
-                ok=new.cases_wrong_every_repeat == 0,
-            )
-        )
         rows.append(
             Comparison(
                 metric="model_below_floor",
