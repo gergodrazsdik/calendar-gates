@@ -79,8 +79,16 @@ truncated output, and the gate has to say what happens then.
   for a high-risk PR). The collector refuses a blocking record that claims a cache hit. The triage
   cache stays: a forged entry there can only *raise* the model's risk, and the collector recomputes
   the floor anyway. Separately, the review diff is built with `git --attr-source=<base> … --text`,
-  so the PR's own `.gitattributes` can no longer turn its files into "Binary files … differ"; a
-  vendored binary is excluded by `diff.EXCLUDES`, which is code on the base branch.
+  so the PR's own `.gitattributes` can no longer turn its files into "Binary files … differ".
+- **Amended 2026-10-19: a binary file is omitted, not excluded.** The sentence here used to say a
+  vendored binary was "excluded by `diff.EXCLUDES`, which is code on the base branch". That was
+  never true -- `EXCLUDES` holds lock files and this repository's own test fixtures, and no binary
+  pattern -- and because `--text` makes git inline the blob, the first PR to commit one would have
+  raised `UnicodeDecodeError` in every review job at every risk level, with no override and no
+  `/llm-risk` escape (#90). Such a file is now **omitted**, like a generated file over
+  `max_file_kb`: named in the prompt, the comment, the record and the attestation, with a blocking
+  check refusing to review the rest until a human accepts it. An exclusion would mean nobody looks
+  and nothing says so, which is the wrong answer for a file the PR changed.
 
 ## Consequences
 

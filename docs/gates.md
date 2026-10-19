@@ -1,8 +1,10 @@
 # Gates
 
 Every gate runs locally through `just` and in CI as a named check. `just ci` runs the deterministic
-ones that need no container or cluster (`pr-title`, `format`, `lint`, `build-test`); `http-tests`,
-`grype` and `k8s-smoke` have their own recipes. Required checks on `main` are set in the ruleset
+ones that need no container or cluster (`format`, `lint`, `build-test`); `http-tests`, `grype` and
+`k8s-smoke` have their own recipes. The PR title is not among them: locally it is checked by
+lefthook's `commit-msg` hook (or `scripts/check-commit-msg.sh --title`), and in CI by its own
+workflow. Required checks on `main` are set in the ruleset
 `.github/rulesets/main.json` (applied with `just gh-rulesets`): `pr-title`, `format`, `lint`,
 `build-test / dotnet`, `http-tests`, `grype`, `k8s-smoke`, `gates`, `llm / code-review`,
 `llm / security-review`, `llm / workflow-review` and `llm-eval` (required on its own, not part of `gates`:
@@ -123,8 +125,11 @@ changes CI state for no convenience gain.
   `llm / …` checks and `llm-eval` are required on their own.
 
 - **llm / <check>**: the model returns findings; llm-gate decides from their severities
-  ([ADR 0002](adr/0002-llm-gate-policy.md)). Advisory checks never fail. Results are cached per
-  check, engine, model, prompt and diff, so re-runs without changes are free.
+  ([ADR 0002](adr/0002-llm-gate-policy.md)). Advisory checks never fail. Locally, results are
+  cached per check, engine, model, prompt and diff, so re-runs without changes are free. **In CI
+  there is no cache**: the key is made of inputs a PR author knows and a sibling workflow the PR
+  adds reads the same secrets, so a cached pass would be forgeable (ADR 0002). Every CI re-run
+  pays again, about $0.12 at high risk.
   In CI each check is a job in `llm-review.yml` (a matrix spelled out in the workflow, kept equal to
   `checks.yaml` by `check-ruleset-consistency.py`: a matrix built from a job's output can't expand
   until that job finishes, and a run cancelled before that leaves a phantom
@@ -132,7 +137,8 @@ changes CI state for no convenience gain.
   review to the job summary and one sticky PR comment per check (updated on every run; "not
   applicable" only updates an existing one). PRs without the API key (forks, Dependabot) skip with a
   notice; set the repo variable `LLM_GATE_MISSING_KEY=fail` to make blocking checks fail closed
-  instead (gate drill 9). Adding or removing a label re-runs only these checks, from the cache.
+  instead (gate drill 9). Adding or removing a label re-runs only these checks, and in CI that means paying for them
+  again -- an `/llm-override` or `/llm-risk` comment costs another round.
 - **Triage** ([ADR 0008](adr/0008-risk-triage.md)): the `triage` job (first in `llm-review.yml`)
   rates the PR `low`, `medium` or `high`.
   - **Rules:** the paths in `checks.yaml` `triage.rules` (`.github/`, the gate, deployment and the
@@ -280,7 +286,7 @@ yourself ([ADR 0009](adr/0009-build-once-attest-promote.md)). Deploy it with `ju
 ## Admission control (the project cluster)
 
 Kyverno 1.19.1 on `kind-calendar-gates` (`just k8s-up k8s-policy-up`,
-[ADR 0010](adr/0010-admission-control.md)) enforces three policies.
+[ADR 0010](adr/0010-admission-control.md)) enforces four policies.
 
 | Policy | `calendar-gates` | `calendar-gates-dev` | Fails when |
 |---|---|---|---|
