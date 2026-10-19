@@ -27,8 +27,10 @@ updates:
       nuget-minor-patch:
         update-types: [minor, patch]
 
-  # The cooldown here is the dynamic layer; pyproject's `exclude-newer` is a fixed ceiling that
-  # caps these PRs too, and check-cooldown-date.py fails lint once it goes stale (F076).
+  # Two layers, now the same length: this cooldown delays the PR, and pyproject's `exclude-newer`
+  # caps what uv may resolve when Dependabot re-locks. That cap used to be a fixed date, which no
+  # re-lock could ever get past (F076); it is a rolling 14-day window, and scripts/check-cooldown.py
+  # fails the lint gate if it turns back into a date or stops matching this number.
   - package-ecosystem: uv
     directory: "/tools/llm-gate"
     schedule:
