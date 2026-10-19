@@ -81,7 +81,7 @@ cases, 3 repeats each.
 - **Models:** Haiku and Opus on the agent engine, run once on 2026-10-17 for this write-up. Haiku's
   security-review run hit the $6 budget after 9 of its 13 cases.
 
-| code-review (16 cases) | Recall | False blocks | Noise per clean case | Verdicts right | Flips | Cost / review | p50 |
+| code-review (19 cases) | Recall | False blocks | Noise per clean case | Verdicts right | Flips | Cost / review | p50 |
 |---|---|---|---|---|---|---|---|
 | agent · Sonnet | 1.00 | 0.00 | 0.23 | 1.00 | 0.00 | $0.014 | 5.6 s |
 | API · Sonnet | 0.83 | 0.00 | 0.53 | 0.94 | 0.00 | $0.016* | 6.4 s |
@@ -204,7 +204,7 @@ nothing):
   and is easy to grep, but it won't scale past a few thousand records or support concurrent
   writers gracefully.
 - **Many more eval cases,** grown from `/llm-fp` (`eval add-from-fp`) and from production misses,
-  with per-repository baselines. Today's 30-odd cases can catch a collapse like drill 14, but not a
+  with per-repository baselines. Today's 37 cases can catch a collapse like drill 14, but not a
   5% drift.
 - **The review passes not built here:** an architecture or design review on larger diffs, a
   security review guided by a team's own tenets instead of a generic checklist, and
