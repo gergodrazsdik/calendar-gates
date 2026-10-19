@@ -1,0 +1,131 @@
+diff --git a/.github/workflows/llm-review.yml b/.github/workflows/llm-review.yml
+index 2a09e2a..a8094ab 100644
+--- a/.github/workflows/llm-review.yml
++++ b/.github/workflows/llm-review.yml
+@@ -39,7 +39,6 @@ jobs:
+       contents: read
+       pull-requests: write # the risk:<level> and ai-assisted labels
+     outputs:
+-      checks: ${{ steps.list.outputs.checks }}
+       gate_sha: ${{ steps.gate.outputs.sha }}
+       risk: ${{ steps.triage.outputs.risk }}
+     env:
+@@ -66,12 +65,6 @@ jobs:
+       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+         with:
+           cache-dependency-glob: gate/tools/llm-gate/uv.lock
+-      - name: Checks from the base commit's checks.yaml (the matrix below)
+-        id: list
+-        run: >-
+-          echo "checks=$(uv run --project gate/tools/llm-gate --locked llm-gate --repo gate
+-          --config gate/tools/llm-gate/checks.yaml list --json)" >> "$GITHUB_OUTPUT"
+-
+       # The description from the API, not the event: a re-run (after /llm-risk) keeps the
+       # original payload. The commits from the checkout, as the collector gets them from the
+       # compare API for this head: a later push can't change what this run is checked against.
+@@ -183,8 +176,21 @@ jobs:
+       issues: read # who added llm-override, and their /llm-override reason
+     strategy:
+       fail-fast: false
++      # A literal list, not `fromJSON(needs.triage.outputs.checks)`: a matrix built from a
++      # dependency's output can't expand until that job finishes, so a run cancelled during triage
++      # — which is what happens when two pushes land a second apart, as Dependabot does — left a
++      # check literally named `llm / ${{ matrix.check }}` behind, failed and for ever, because no
++      # later run ever reports that context. With the names known at run start, the cancelled run's
++      # checks share their names with the next run's and are superseded.
++      # scripts/check-ruleset-consistency.py keeps this list equal to checks.yaml's checks.
+       matrix:
+-        check: ${{ fromJSON(needs.triage.outputs.checks) }}
++        check:
++          - code-review
++          - security-review
++          - test-review
++          - api-contract
++          - docs-drift
++          - workflow-review
+     env:
+       CHECK: ${{ matrix.check }}
+       PR: ${{ github.event.pull_request.number }}
+diff --git a/docs/gates.md b/docs/gates.md
+index 123923b..abbac12 100644
+--- a/docs/gates.md
++++ b/docs/gates.md
+@@ -87,7 +87,10 @@ changes CI state for no convenience gain.
+ - **llm / <check>**: the model returns findings; llm-gate decides from their severities
+   ([ADR 0002](adr/0002-llm-gate-policy.md)). Advisory checks never fail. Results are cached per
+   check, engine, model, prompt and diff, so re-runs without changes are free.
+-  In CI each check is a job in `llm-review.yml` (matrix from `llm-gate list --json`) that writes the
++  In CI each check is a job in `llm-review.yml` (a matrix spelled out in the workflow, kept equal to
++  `checks.yaml` by `check-ruleset-consistency.py`: a matrix built from a job's output can't expand
++  until that job finishes, and a run cancelled before that leaves a phantom
++  `llm / ${{ matrix.check }}` check behind) that writes the
+   review to the job summary and one sticky PR comment per check (updated on every run; "not
+   applicable" only updates an existing one). PRs without the API key (forks, Dependabot) skip with a
+   notice; set the repo variable `LLM_GATE_MISSING_KEY=fail` to make blocking checks fail closed
+diff --git a/scripts/check-ruleset-consistency.py b/scripts/check-ruleset-consistency.py
+index 8682221..8b0c897 100755
+--- a/scripts/check-ruleset-consistency.py
++++ b/scripts/check-ruleset-consistency.py
+@@ -9,7 +9,14 @@
+ 
+ A required check that no job produces never reports, so it blocks every PR; a renamed job silently
+ stops being required; a blocking LLM check (at any triage risk level) that is not required can be
+-ignored. This catches all three before the ruleset is applied. Usage: scripts/check-ruleset-consistency.py [repo root]
++ignored. This catches all three before the ruleset is applied.
++
++It also pins `llm-review.yml`'s matrix list to `checks.yaml`. That list is spelled out in the
++workflow on purpose — a matrix built from a job's output can't expand until that job finishes, and a
++run cancelled before that leaves a check named `${{ matrix.check }}` behind for ever — so the
++duplication is deliberate and this is what keeps it true.
++
++Usage: scripts/check-ruleset-consistency.py [repo root]
+ """
+ 
+ import json
+@@ -22,6 +29,8 @@ import yaml
+ GITHUB_ACTIONS_APP_ID = 15368
+ WORKFLOWS = ("ci.yml", "pr-title.yml", "llm-review.yml", "llm-eval.yml")
+ MATRIX_CHECK = "${{ matrix.check }}"
++# The workflow and job whose matrix must list exactly the checks in checks.yaml.
++MATRIX_JOB = ("llm-review.yml", "llm")
+ 
+ 
+ def load_yaml(path: Path) -> Any:
+@@ -56,6 +65,15 @@ def job_check_names(
+     return names, conditional
+ 
+ 
++def matrix_checks(workflow: Path, job_id: str) -> list[str] | None:
++    """The job's literal `strategy.matrix.check` list, sorted, or None when it isn't one."""
++    job = load_yaml(workflow)["jobs"].get(job_id, {})
++    values = ((job.get("strategy") or {}).get("matrix") or {}).get("check")
++    if not isinstance(values, list) or not all(isinstance(v, str) for v in values):
++        return None
++    return sorted(values)
++
++
+ def blocking_checks(config: dict[str, Any]) -> set[str]:
+     """Checks that can fail a PR. With triage (ADR 0008), those that block at *any* risk level:
+     a check that blocks only at high risk must still be required, or a high-risk PR could merge
+@@ -94,6 +112,21 @@ def main(root: Path) -> int:
+         conditional |= skippable
+ 
+     errors: list[str] = []
++    matrix = matrix_checks(
++        root / ".github" / "workflows" / MATRIX_JOB[0], MATRIX_JOB[1]
++    )
++    if matrix is None:
++        errors.append(
++            f"{MATRIX_JOB[0]}: job {MATRIX_JOB[1]!r} has no literal matrix of checks"
++        )
++    elif matrix != sorted(checks):
++        missing = sorted(set(checks) - set(matrix))
++        extra = sorted(set(matrix) - set(checks))
++        errors.append(
++            f"{MATRIX_JOB[0]}'s matrix does not match checks.yaml"
++            + (f"; missing {missing}" if missing else "")
++            + (f"; unknown {extra}" if extra else "")
++        )
+     contexts = {check["context"] for check in required}
+     for check in required:
+         context = check["context"]

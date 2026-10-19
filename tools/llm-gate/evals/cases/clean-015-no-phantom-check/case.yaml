@@ -1,0 +1,8 @@
+---
+id: clean-015-no-phantom-check
+kind: clean
+checks: [code-review, security-review]
+source: 'merged 29f5ab2: ci(llm-review): no phantom check when a run is cancelled mid-triage (#84)'
+description: A merged change; no finding should block it.
+base: 679f1c8cad68d756afbeadec6a4c1470f2a568f7
+expect: []

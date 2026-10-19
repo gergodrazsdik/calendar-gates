@@ -1,0 +1,8 @@
+---
+id: clean-013-high-risk-model
+kind: clean
+checks: [code-review, security-review]
+source: 'merged e3b88e0: ci(llm-gate): high-risk PRs keep Sonnet for the blocking reviews, not Opus (#58)'
+description: A merged change; no finding should block it.
+base: b34f4b1250ce7a8c4765e547ef81d63932fc3427
+expect: []

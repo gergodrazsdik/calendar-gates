@@ -1,0 +1,9 @@
+---
+id: clean-016-release-tag-on-main
+kind: clean
+checks: [code-review, security-review]
+source: 'merged fd6fa9c: fix(release): bind a release tag to a commit on main, outside the tagged workflow
+  (#67)'
+description: A merged change; no finding should block it.
+base: 9d1263bc573a920318740525df37fceaa93d79ec
+expect: []

@@ -1,0 +1,8 @@
+---
+id: clean-014-latest-feedback-wins
+kind: clean
+checks: [code-review, security-review]
+source: 'merged b34f4b1: fix(metrics): the latest feedback on a finding wins by time, not file order (#57)'
+description: A merged change; no finding should block it.
+base: 03f427bdb128d7516543d1a1d7f46dbe106b667e
+expect: []

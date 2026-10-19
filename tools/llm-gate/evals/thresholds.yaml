@@ -1,19 +1,19 @@
 # llm-eval gate (docs/PLAN-v2.md 15.4): how much worse than evals/baseline.json a change to the
 # review prompts or llm-gate may be. Changing these weakens or tightens a gate: say so in the PR.
 max_recall_drop: 0.05 # absolute
-# Was 0 ("no new false blocks") until 2026-10-19. That is zero tolerance over a corpus of 10 clean
-# cases for code-review and 9 for security-review, so a single divergent sample -- one repeat out of
-# 30 or 27 -- failed the gate. #93 removed the cache that had been replaying the baseline's own
-# samples, and the first fresh sampling showed exactly that: security-review/api rated one finding
-# on a clean case medium in 1 of 3 repeats (0.04), where the baseline said 0.00. Re-sampled twice
-# more, 60 further clean repeats produced none: 1 in 90, about 1%.
+# Was 0 ("no new false blocks"), which over a corpus of 10 clean cases for code-review and 9 for
+# security-review meant a single divergent sample -- one repeat in 30 or 27 -- failed the gate. #93
+# removed the cache that had been replaying the baseline's own samples and the first fresh sampling
+# showed exactly that, at 0.04 where the baseline said 0.00; 90 clean repeats produced one, about
+# 1%. #94 set it to 0.05, which admitted one sample and refused two, and said the real fix was more
+# clean cases.
 #
-# 0.05 tolerates one such sample per check (0.033 for code-review, 0.037 for security-review) and
-# fails at two (0.067, 0.074), which is the same shape as max_recall_drop above. This is a
-# deliberate loosening: a *persistent* 1-in-30 false-block rate would now pass, and the thing that
-# would catch it is the fp/ack rate in the weekly report, not this gate. The better fix is more
-# clean cases, which makes one sample move the rate less; this is the cheap half of it.
-max_false_block_increase: 0.05 # absolute; one divergent sample per check, not two
+# Those cases exist now (clean-011..018), so the corpus is 18 clean cases for code-review and 17 for
+# security-review. One sample is 0.019 or 0.020 and two are 0.037 or 0.039, so 0.025 restores the
+# intended strictness: one divergent sample is tolerated, two are not -- the same rule as before,
+# at half the tolerance, because the denominator doubled. The next step, if a 1-in-50 flake ever
+# fails this, is more clean cases again rather than a bigger number here.
+max_false_block_increase: 0.025 # absolute; one divergent sample per check, not two
 max_verdict_accuracy_drop: 0.10 # absolute; one case drifting in every repeat is about 0.06
 max_flip_rate: 0.10 # absolute, on the current run
 max_cost_increase: 0.25 # relative

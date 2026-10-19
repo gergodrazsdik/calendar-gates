@@ -1,0 +1,93 @@
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index 1e32b70..7748a3d 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -431,14 +431,17 @@ jobs:
+           done
+       - name: Unattested and foreign images are denied in calendar-gates
+         run: |
+-          refused() { # pod name, image, the policy that must refuse it
++          # Each image policy has its own webhook, called in parallel: an image that fails both
++          # Deny policies may be refused by either one first, so the check takes a regex.
++          refused() { # pod name, image, the policy (an ERE) that must refuse it
+             if out=$(kubectl -n calendar-gates run "$1" --image="$2" --restart=Never --dry-run=server 2>&1); then
+               echo "::error::$2 was admitted in calendar-gates"; exit 1
+             fi
+             echo "$out"
+-            grep -q "Policy $3 failed" <<< "$out" || { echo "::error::$2 was not refused by $3"; exit 1; }
++            grep -qE "Policy ($3) failed" <<< "$out" || { echo "::error::$2 was not refused by $3"; exit 1; }
+           }
+-          refused edge "$IMAGE:edge" calendar-gates-release
++          unattested='calendar-gates-release|calendar-gates-llm-review'
++          refused edge "$IMAGE:edge" "$unattested"
+           refused foreign "$FOREIGN" calendar-gates-images
+           # An unattested image hidden in an init container, next to the attested release.
+           if out=$(kubectl create --dry-run=server -f - 2>&1 <<EOF
+@@ -453,8 +456,8 @@ jobs:
+             echo "::error::an edge init container was admitted in calendar-gates"; exit 1
+           fi
+           echo "$out"
+-          grep -q "Policy calendar-gates-release failed" <<< "$out" \
+-            || { echo "::error::the edge init container was not refused by calendar-gates-release"; exit 1; }
++          grep -qE "Policy ($unattested) failed" <<< "$out" \
++            || { echo "::error::the edge init container was not refused by $unattested"; exit 1; }
+       - name: calendar-gates-dev admits edge and reports it
+         run: |
+           kubectl -n calendar-gates-dev run edge --image="$IMAGE:edge" --restart=Never
+diff --git a/deploy/policies/base/llm-review.yaml b/deploy/policies/base/llm-review.yaml
+index d5d4292..bec5002 100644
+--- a/deploy/policies/base/llm-review.yaml
++++ b/deploy/policies/base/llm-review.yaml
+@@ -1,11 +1,12 @@
+-# The release's LLM-review attestation (ADR 0009) must be there. Audit for now; switch to Deny
+-# after a few releases have carried it (docs/adr/0010-admission-control.md).
++# The release's LLM-review attestation (ADR 0009) must be there. Deny since v0.3.1: it started as
++# Audit until releases carried it (v0.3.0, v0.3.1). The dev overlay still only audits
++# (docs/adr/0010-admission-control.md).
+ apiVersion: policies.kyverno.io/v1
+ kind: ImageValidatingPolicy
+ metadata:
+   name: calendar-gates-llm-review
+ spec:
+-  validationActions: [Audit]
++  validationActions: [Deny]
+   matchConstraints:
+     namespaceSelector:
+       matchLabels:
+diff --git a/docs/adr/0010-admission-control.md b/docs/adr/0010-admission-control.md
+index fae285a..aa7afa3 100644
+--- a/docs/adr/0010-admission-control.md
++++ b/docs/adr/0010-admission-control.md
+@@ -64,14 +64,16 @@ not ready.
+ 
+    It also sets `mutateDigest`, so what runs is the digest that was verified.
+ 3. **`calendar-gates-llm-review`** (`ImageValidatingPolicy`): the LLM-review attestation is
+-   present. It **audits in both namespaces** for now; once a few releases carry it, it moves to
+-   Deny with a one-line change.
++   present. It started as Audit while no release carried the attestation yet, and has **denied in
++   `calendar-gates` since v0.3.1** (2026-10-17), once v0.3.0 and v0.3.1 carried it. The dev
++   namespace only audits.
+ 
+ **Proof on every release.** `release.yml`'s `admission-smoke` builds the same cluster, Kyverno
+ and policies on the runner, then checks:
+ 
+ - the just-published chart is admitted and runs the release digest;
+-- `edge` and a foreign image are denied, each by the expected policy;
++- `edge` and a foreign image are denied, each by the expected policy. `edge` fails both
++  attestation policies, and their webhooks run in parallel, so either one may refuse it;
+ - `calendar-gates-dev` admits `edge` and reports it as failing.
+ 
+ `smoke`, which publishes the release, waits for it. `kyverno test` covers the one policy that needs
+diff --git a/docs/gates.md b/docs/gates.md
+index 9f4df35..75ceb3f 100644
+--- a/docs/gates.md
++++ b/docs/gates.md
+@@ -159,7 +159,7 @@ Kyverno 1.19.1 on `kind-calendar-gates` (`just k8s-up k8s-policy-up`,
+ |---|---|---|---|
+ | `calendar-gates-images` | Deny | Audit | An image isn't `ghcr.io/gergodrazsdik/calendar-gates` by digest |
+ | `calendar-gates-release` | Deny | Audit | There's no build provenance or vulnerability scan signed by `release.yml` on a `v*` tag, or the scan lists a critical finding |
+-| `calendar-gates-llm-review` | Audit | Audit | There's no LLM-review attestation (to become Deny after a few releases) |
++| `calendar-gates-llm-review` | Deny | Audit | There's no LLM-review attestation signed by `release.yml` on a `v*` tag |
+ 
+ - **Fix a denial:** deploy a release (`just k8s-deploy-release X.Y.Z`). A local build goes to
+   `calendar-gates-dev` (`just k8s-deploy calendar-gates-dev`).

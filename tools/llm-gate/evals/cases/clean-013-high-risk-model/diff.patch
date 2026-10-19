@@ -1,0 +1,104 @@
+diff --git a/docs/WRITEUP.md b/docs/WRITEUP.md
+index 51ddb96..7765d05 100644
+--- a/docs/WRITEUP.md
++++ b/docs/WRITEUP.md
+@@ -160,8 +160,8 @@ two disagree for Haiku, so treat the starred numbers as approximate.
+ - **The high-risk reviewer choice doesn't hold up yet.** Since Phase 17, high-risk PRs, about 60% of
+   those triaged here, get Opus on the agent engine. The evals measured afterwards (§3) show no recall gain over
+   Sonnet on these cases, at three to four times the cost and with more noise. Haiku on the agent engine
+-  was the most expensive of all, because it explores more. The next change is to keep Sonnet for
+-  high risk and spend the difference on more eval cases.
++  was the most expensive of all, because it explores more. So on 2026-10-17 high risk went back to
++  Sonnet, still on the agent engine, and the difference can go to more eval cases.
+ - **A false positive turned out to be a true one.** The only `/llm-fp` so far (drill 19) marked a
+   finding on a drill PR that had planted the bug, so the finding was correct and marking it only
+   tested the command. `eval add-from-fp` turned it into a case that would have forbidden the right
+diff --git a/docs/adr/0008-risk-triage.md b/docs/adr/0008-risk-triage.md
+index b8d257e..d3bee4e 100644
+--- a/docs/adr/0008-risk-triage.md
++++ b/docs/adr/0008-risk-triage.md
+@@ -44,7 +44,8 @@ all of the policy.
+ 5. **The level decides what runs.**
+    - `low`: code-review and docs-drift, both advisory.
+    - `medium`: everything but workflow-review. Code-review and security-review block.
+-   - `high`: everything. The blocking checks move to the agent engine and the strong model.
++   - `high`: everything. The blocking checks move to the agent engine, keeping their own model
++     (amended 2026-10-17; see Consequences).
+ 
+    Every `llm / <check>` job still runs and reports. A check outside the level's plan passes as
+    "not needed at risk: <level>" (verdict `not_needed`), and one that is advisory at this level
+@@ -70,8 +71,14 @@ all of the policy.
+   them by default, but nothing proves a commit wasn't AI-assisted. The markers are a transparency
+   signal for triage and the metrics, not enforcement.
+ - **Most PRs here will be rated high.** Most PRs in this repository are Claude-assisted and touch
+-  the gate, so code-review and security-review usually run on the agent engine with Opus. Each
+-  review is capped by `budget_usd`. Setting `ai_assisted_raise: 0` is a one-line policy change, and
++  the gate, so code-review and security-review usually run on the agent engine. Each review is
++  capped by `budget_usd`.
++- **Amended 2026-10-17: Sonnet, not Opus, at high risk.** The high level first also switched the
++  blocking checks to Opus (`LLM_MODEL_STRONG`). The model evals done for docs/WRITEUP.md then
++  showed no gain. On the agent engine, Opus matched Sonnet's recall (1.00) but was noisier on
++  clean cases (0.87 vs 0.23 findings per code-review case) and less consistent (verdict
++  accuracy 0.96 vs 1.00). It cost 3 to 4 times more per review. The level now changes only the
++  engine. Setting `ai_assisted_raise: 0` is a one-line policy change, and
+   it goes through review like any other change to `checks.yaml`.
+ - **The model can only add review.** A prompt injection that talks the model down changes nothing,
+   because the floor still holds. Talking it up costs money but weakens nothing. Eval case
+diff --git a/docs/gates.md b/docs/gates.md
+index 75ceb3f..bf38566 100644
+--- a/docs/gates.md
++++ b/docs/gates.md
+@@ -69,7 +69,7 @@ is required too (see below).
+     To change the risk, comment `/llm-risk <level> <reason>`.
+ 
+   The level decides which checks review and which block. At `low`, only code-review and docs-drift
+-  review, and both are advisory. At `high`, the blocking checks use the agent engine and the strong
++  review, and both are advisory. At `high`, the blocking checks use the agent engine, with their usual
+   model. A check the level doesn't need still reports success with "not needed at risk: <level>",
+   so required checks never go missing. The job summary shows why the PR got its level.
+ - **api-contract** runs when a PR touches `Endpoints/`, `Domain/`, `Program.cs` or `http/`. The JSON
+diff --git a/tools/llm-gate/checks.yaml b/tools/llm-gate/checks.yaml
+index 47468e3..6639f03 100644
+--- a/tools/llm-gate/checks.yaml
++++ b/tools/llm-gate/checks.yaml
+@@ -64,5 +64,7 @@ triage:
+     high:
+       run: all
+       blocking: [code-review, security-review]
+-      engine: agent # for the blocking checks; advisory ones keep their own
+-      model: "${LLM_MODEL_STRONG:-claude-opus-5-5}"
++      # The blocking checks move to the agent engine (it reads the surrounding code) and keep their
++      # own model; advisory checks keep both. Opus was measured on 2026-10-17 and was no better
++      # than Sonnet here, at 3-4x the cost (ADR 0008, docs/WRITEUP.md).
++      engine: agent
+diff --git a/tools/llm-gate/tests/test_triage.py b/tools/llm-gate/tests/test_triage.py
+index c791995..5bf6efa 100644
+--- a/tools/llm-gate/tests/test_triage.py
++++ b/tools/llm-gate/tests/test_triage.py
+@@ -218,11 +218,24 @@ def test_the_plan_per_level(real: GateConfig, tc: TriageConfig) -> None:
+ 
+     high = triage.plan_for("high", tc, real.checks)
+     assert all(high.values())
+-    cr, docs = high["code-review"], high["docs-drift"]
+-    assert cr is not None and (cr.engine, cr.model) == ("agent", "claude-opus-5-5")
++    cr, sr, docs = high["code-review"], high["security-review"], high["docs-drift"]
++    # High risk changes the engine of the blocking checks, not their model (ADR 0008, amended).
++    assert cr is not None and (cr.engine, cr.model) == ("agent", real.checks["code-review"].model)
++    assert sr is not None and (sr.engine, sr.model) == (
++        "agent",
++        real.checks["security-review"].model,
++    )
++    assert sr.model == "claude-sonnet-5-5"
+     assert docs is not None and docs.model == "claude-haiku-5-5"  # advisory: unchanged
+ 
+ 
++def test_the_former_strong_model_variable_changes_nothing() -> None:
++    gate = load_gate_config(CONFIG, REPO_ROOT, env={"LLM_MODEL_STRONG": "claude-opus-5-5"})
++    assert gate.triage is not None
++    high = triage.plan_for("high", gate.triage, gate.checks)
++    assert {c.model for c in high.values() if c is not None and c.blocking} == {"claude-sonnet-5-5"}
++
++
+ def write_config(tmp_path: Path, levels: str) -> Path:
+     for name in ("code-review", "docs-drift", "triage"):
+         prompt = tmp_path / ".claude" / "commands" / f"llm-{name}.md"

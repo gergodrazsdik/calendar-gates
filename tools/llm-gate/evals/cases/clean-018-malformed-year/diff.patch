@@ -1,0 +1,353 @@
+diff --git a/docs/gates.md b/docs/gates.md
+index bf0885b..3a81c7c 100644
+--- a/docs/gates.md
++++ b/docs/gates.md
+@@ -41,6 +41,11 @@ is required too (see below).
+   job passes with a notice and runs nothing: `LLM_GATE_MISSING_KEY` applies to `llm / <check>`,
+   not to `llm-eval`. A Dependabot bump of `tools/llm-gate`'s dependencies therefore merges without
+   an eval run.
++- **uv itself is pinned** in `uv.toml` (`required-version`), which `setup-uv` reads in every
++  workflow: the attest job signs with an OIDC token and the collector and feedback jobs hold write
++  tokens, so "whatever uv was released last, with no cooldown" was the one unpinned tool in the
++  trusted path (F052). Bumping it is a deliberate PR, like the linters below. A local `uv` of
++  another version fails loudly rather than drifting.
+ - **lint**: the tools fetched on demand are pinned in both `ci.yml` and the `lint` recipe
+   (`uvx yamllint@...`, `zizmor@...`, `ruff@...`, `actionlint@...`); bump them together. The ones
+   that come from the image or the system (hadolint, shellcheck, helm, kubeconform, kyverno) follow
+diff --git a/docs/v2-review-findings.md b/docs/v2-review-findings.md
+index 6698d68..32d7cfd 100644
+--- a/docs/v2-review-findings.md
++++ b/docs/v2-review-findings.md
+@@ -31,13 +31,13 @@ A review of the whole repository at `43ec3c2` (2026-10-17), after PLAN-v2 was wr
+ | accepted | 0 | 0 | 0 | 2 | 1 | 3 |
+ | rejected | 0 | 0 | 0 | 0 | 11 | 11 |
+ 
+-**Fixed so far: 55 of 119** (3 partial, 60 open, 1 unverifiable). By severity:
++**Fixed so far: 57 of 119** (3 partial, 58 open, 1 unverifiable). By severity:
+ 
+ | Status | critical | high | medium | low | info | total |
+ |---|---|---|---|---|---|---|
+-| ✅ fixed | 0 | 2 | 12 | 22 | 19 | 55 |
++| ✅ fixed | 0 | 2 | 14 | 22 | 19 | 57 |
+ | 🟡 partial | 0 | 0 | 1 | 2 | 0 | 3 |
+-| open | 0 | 0 | 3 | 50 | 7 | 60 |
++| open | 0 | 0 | 1 | 50 | 7 | 58 |
+ | ⚪ unverifiable | 0 | 0 | 1 | 0 | 0 | 1 |
+ 
+ Each fix names the PR that made it. The status column is maintained by hand as fixes land; the verdicts and severities below are the review's own and are not revised.
+@@ -118,7 +118,9 @@ exactly the bypass it describes, so it was not built. What is confirmed without
+ `http-tests` and `k8s-smoke` hold `checks: write` while running PR code. Moving test reporting to
+ a job that runs no PR code removes the question.
+ 
+-**Since the review (2026-10-18).** Nine things changed under this document:
++**Since the review (2026-10-18).** Ten things changed under this document:
++- **#73** pinned uv itself (F052) and made a malformed `?year=` the same ValidationProblem in both
++  environments (F081), leaving F003 as the last open medium.
+ - **#71** made the approval attestation required, proven on the project cluster: v0.3.2 admitted,
+   v0.3.1 denied by name, an image volume denied. That test also found that the F058 readiness wait
+   from #63 never matched Kyverno's actual condition, which #71 fixes.
+@@ -171,8 +173,6 @@ Open items are sorted after fixed ones of the same severity, so the top of each
+ | [F001](#f001) | ✅ fixed | high | high | A | A PR's own .gitattributes can hide its changes from every LLM reviewer and from triage's size rule | small | S:C/high M:C/high I:C/medium |
+ | [F002](#f002) | ✅ fixed | high | high | A | Review results restored from the Actions cache are trusted unverified, and other workflows of the same PR can write that cache | medium | S:C/high M:C/high I:C/medium |
+ | [F003](#f003) | open | medium | high | A | The agent reviewer's file reads are not fenced to the reviewed checkout, and its output is published unredacted | small | S:P/medium M:C/medium I:C/low |
+-| [F052](#f052) | open | medium | medium | B | uv itself is unpinned: every setup-uv step installs the newest uv release, in the signing job and the write-token jobs too | small | S:C/low M:C/medium I:C/medium |
+-| [F081](#f081) | open | medium | medium | C | A malformed or empty ?year= on /api/friday13 gets a 400 without `errors` in Production and a 500 in Development, not the 400 ValidationProblem | small | S:C/medium M:C/medium I:C/medium |
+ | [F012](#f012) | 🟡 partial | medium | medium | A | Cache keys ignore llm-gate's request code and engine settings, so llm-eval scores engine changes from main's cached reviews | small | S:C/medium M:C/medium I:C/medium |
+ | [F004](#f004) | ✅ fixed | medium | high | A | The collector's triage recomputation (_triage_expected) has no test at all | small | S:C/medium M:C/medium I:C/low |
+ | [F005](#f005) | ✅ fixed | medium | medium | A | Triage and the collector accept any risk_override record on audit-log, so a hand-pushed record can lower the risk with a forged author and an unbeatable timestamp | medium | S:C/medium M:C/medium I:C/medium |
+@@ -185,6 +185,8 @@ Open items are sorted after fixed ones of the same severity, so the top of each
+ | [F043](#f043) | ✅ fixed | medium | medium | B | A v* tag on any commit, merged or not, mints release attestations, because the 'on main' check runs inside that commit's own release.yml | medium | S:C/medium M:C/medium I:C/medium |
+ | [F044](#f044) | ✅ fixed | medium | medium | B | /llm-risk and /llm-override posted while llm-review is running get a +1 reaction but may never take effect | small | S:C/medium M:C/medium I:C/medium |
+ | [F047](#f047) | ✅ fixed | medium | medium | B | No policy inspects OCI image volumes, so a pod in calendar-gates can run code from any registry next to an attested container | trivial | S:C/medium M:C/medium I:C/low |
++| [F052](#f052) | ✅ fixed | medium | medium | B | uv itself is unpinned: every setup-uv step installs the newest uv release, in the signing job and the write-token jobs too | small | S:C/low M:C/medium I:C/medium |
++| [F081](#f081) | ✅ fixed | medium | medium | C | A malformed or empty ?year= on /api/friday13 gets a 400 without `errors` in Production and a 500 in Development, not the 400 ValidationProblem | small | S:C/medium M:C/medium I:C/medium |
+ | [F084](#f084) | ✅ fixed | medium | medium | C | "A failed smoke leaves a draft; re-running the workflow refreshes it" no longer holds under build-once releases | trivial | S:C/medium M:C/medium I:C/medium |
+ | [F007](#f007) | open | low | medium | A | An override by label skips the write-role check that `/llm-override` enforces | trivial | S:C/low M:C/low I:C/low |
+ | [F009](#f009) | open | low | medium | A | llm-eval scores security-review only on the API engine, but high-risk PRs (most of them) review it on the agent engine | small | S:C/low M:C/medium I:C/low |
+@@ -401,62 +403,6 @@ The Review step exports ANTHROPIC_API_KEY, and the Agent SDK passes os.environ o
+ 
+ </details>
+ 
+-### F052
+-
+-**uv itself is unpinned: every setup-uv step installs the newest uv release, in the signing job and the write-token jobs too**
+-
+-- **Status:** open
+-- **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
+-- **Where:** `.github/workflows/release.yml:207` · **area:** workflows, release, deploy, scripts
+-- **Reported by:** `wr-08` (medium, high confidence)
+-
+-setup-uv's `version` input "Defaults to the version in pyproject.toml or `latest`" (action.yml at the pinned SHA c18668ad), and it looks in working-directory, the workspace root. No workflow sets `version`, the repository has no uv.toml or root pyproject.toml, and tools/llm-gate/pyproject.toml has no required-version. So all nine setup-uv steps (ci lint, llm-review triage and llm, llm-compare, llm-eval, llm-feedback, audit-collect, metrics, release attest) download whatever uv was released last, with no cooldown. The actions get a SHA pin and a 14-day Dependabot cooldown, and the Python dependencies get exclude-newer; uv gets neither. In release.yml's attest job, every step can request an OIDC token (id-token: write) and therefore sign as release.yml. Before the actions/attest steps, that job also runs uv, llm-gate's PyPI dependencies, anchore/sbom-action and the syft binary it downloads.
+-
+-*Failure scenario:* A compromised or broken uv release is published. The next tag push installs it in attest, where it can request an OIDC token and push attestations for any digest under the release identity. audit-collect and llm-feedback run it with contents: write.
+-
+-*Suggested fix:* Pin uv: `version: "0.x.y"` on every setup-uv step, or required-version in a root uv.toml or a version-file, ideally with `checksum`. Move predicate and SBOM generation into a job without id-token: write, and keep the attest job to actions/attest steps on downloaded files.
+-
+-<details><summary>Council</summary>
+-
+-- **skeptic** (CONFIRMED, low, small): No setup-uv step sets version or version-file, and setup-uv at the pinned SHA documents 'Defaults to the version in pyproject.toml or latest', looked up in working-directory (default github.workspace). The workspace root has no pyproject.toml or uv.toml (tools/llm-gate/pyproject.toml has exclude-newer but no required-version), so every setup-uv step installs the newest uv release with no cooldown, unlike the SHA-pinned actions and the locked, exclude-newer Python dependencies. In release.yml's attest job every step can request an OIDC token, so a malicious uv release there could sign as release.yml. It needs a compromised upstream release and only bites on a tag push, so low rather than medium.
+-- **maintainer** (CONFIRMED, medium, trivial): setup-uv's action.yml at the pinned SHA c18668ad says version 'Defaults to the version in pyproject.toml or latest' and searches uv.toml/pyproject.toml in the workspace root. No workflow sets version, there is no root uv.toml or pyproject.toml, and tools/llm-gate/pyproject.toml has no required-version, so all nine setup-uv steps install the newest uv. That includes release.yml's attest job, where every step can request an OIDC token (id-token: write) and sign as release.yml, and audit-collect/llm-feedback with contents: write. Everything else in the repo is pinned (action SHAs with a 14-day cooldown, exclude-newer, image digests), and nothing records uv as an exception. Adding version: to each step, or a root uv.toml, is trivial.
+-- **impact** (CONFIRMED, medium, small): setup-uv at the pinned SHA documents version default '' = 'the version in pyproject.toml or latest', looked up in working-directory (the workspace root); the repo has no root pyproject.toml, uv.toml or .tool-versions, tools/llm-gate/pyproject.toml has no required-version, and no setup-uv step sets version or version-file. So every run, including release attest (id-token: write) and audit-collect/llm-feedback (contents: write), installs whatever uv was released last, bypassing both the 14-day action cooldown and exclude-newer. A compromised uv release is unlikely, a behaviour change that breaks every --locked step at once is the likelier bite (fails closed). Medium matches the repo's own workflow-review scale for an unpinned dependency in privileged jobs.
+-
+-</details>
+-
+-### F081
+-
+-**A malformed or empty ?year= on /api/friday13 gets a 400 without `errors` in Production and a 500 in Development, not the 400 ValidationProblem**
+-
+-- **Status:** open
+-- **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
+-- **Where:** `src/CalendarGates.Api/Endpoints/Friday13Endpoints.cs:28` · **area:** API, tests, docs
+-- **Reported by:** `api-01` (medium, high confidence), `cr-api-01` (medium, high confidence)
+-
+-**`api-01`: A malformed or empty ?year= on /api/friday13 gets a 400 without `errors` in Production and a 500 in Development, not the 400 ValidationProblem**
+-
+-`InYear` binds `[Range(Years.Min, Years.Max)] int? year`, so a value that doesn't parse as an int is a framework binding failure, not a validation error. Probed against a build of 43ec3c2. In Production, `GET /api/friday13?year=abc`, `?year=` (empty), `?year=2026.0`, `?year=99999999999` and `?year=2026&year=2027` all return 400 application/problem+json with only `title: Bad Request`, `status: 400`. There is no `errors` member. Meanwhile `?year=1500` returns the ValidationProblem (`title: One or more validation errors occurred.`, `errors.year`). In Development the same requests return 500 `An error occurred while processing your request.` and log an unhandled BadHttpRequestException (`Failed to bind parameter "Nullable<int> year" from "abc"`). The reason: `RouteHandlerOptions.ThrowOnBadRequest` is on in Development, and the exception reaches `app.UseExceptionHandler()` (Program.cs:13). `just run` uses the `http` launch profile (ASPNETCORE_ENVIRONMENT=Development). TUnit's TestWebApplicationFactory is built on WebApplicationFactory, which also runs the app as Development by default. The documented contract (llm-api-contract.md, new-endpoint.md) is '400 ValidationProblem for bad input', and /api/week/{date} and /api/workdays follow it for unparseable dates. Neither http/calendar.http nor the integration tests send a non-numeric or empty year.
+-
+-*Failure scenario:* A client sends `/api/friday13?year=` from an empty optional form field, or `?year=abc`. Against the container it gets a 400 with no field information. Against `just run` it gets a 500. A `.http` request asserting `errors.year` for `?year=abc` would pass in http-tests (Production container) and fail under `just http` (Development).
+-
+-*Suggested fix:* Bind `string? year` and validate it like WorkdaysEndpoints: parse it, check the range, and return a ValidationProblem with `errors.year`, treating empty as 'this year'. Alternatively, set `RouteHandlerOptions.ThrowOnBadRequest = false` and turn BadHttpRequestException into a ValidationProblem in one place. Add `?year=abc` and `?year=` cases to calendar.http and Friday13Tests.
+-
+-**`cr-api-01`: An unparsable /api/friday13?year= returns 500 in Development and the test host, and a 400 with no errors map in Production**
+-
+-`InYear` binds `[Range] int? year` straight from the query. When the value can't be parsed (`year=abc`, an empty `year=`, or a repeated `year=2026&year=2027`), minimal APIs fail parameter binding before the validation filter runs. In Development, `RouteHandlerOptions.ThrowOnBadRequest` defaults to true, so a `BadHttpRequestException` is thrown. `app.UseExceptionHandler()` (Program.cs:13) catches it and, with no `StatusCodeSelector`, maps it to 500. In Production the binder writes a bare 400 instead. `UseStatusCodePages` then adds a generic ProblemDetails with title "Bad Request" and no `errors.year`. So the failure has a different status code depending on the environment, and in neither environment does it match the endpoint's own validation contract (`year=1500` gives a 400 ValidationProblem with `errors.year`, which `http/calendar.http` relies on). I checked this by running it. With the built API in Production, all three inputs gave a 400 with a field-less body. With `ASPNETCORE_ENVIRONMENT=Development`, all three gave a 500, and the log showed `BadHttpRequestException: Failed to bind parameter "Nullable<int> year" from "abc"`. Through `WebApplicationFactory` (Mvc.Testing 10.0.12, the host under TUnit.AspNetCore), the environment was `Development` and both `?year=abc` and `?year=` gave a 500. So an integration test can't pin the production behaviour, and `just run` serves 500s. This is the only query-bound value type in the API: `{year:int}` route values fail the constraint and give a 404, and the date parameters are strings that are parsed explicitly.
+-
+-*Failure scenario:* GET /api/friday13?year=abc. Against `just run` or an integration test you get HTTP 500 "An error occurred while processing your request." Against the container (Production) you get a 400 with no `errors` property, so a client that reads `errors.year`, as the .http test does for year=1500, fails. `year=` (empty) is rejected the same way instead of falling back to "this year".
+-
+-*Suggested fix:* Parse `year` the same way the date endpoints parse dates. Bind it as `string?`, use `int.TryParse(..., NumberStyles.None, CultureInfo.InvariantCulture, ...)`, check `Years.IsSupported`, and return `TypedResults.ValidationProblem(new() { ["year"] = [...] })`. Alternatively, give the exception handler `StatusCodeSelector = ex => ex is BadHttpRequestException b ? b.StatusCode : 500` so the status code at least matches across environments. Add an integration test for `?year=abc`.
+-
+-<details><summary>Council</summary>
+-
+-- **skeptic** (CONFIRMED, medium, small): Reproduced on a Release build of 43ec3c2. In Production, ?year=abc, ?year=, ?year=2026.0, ?year=99999999999 and ?year=2026&year=2027 return 400 problem+json with only title/status and no errors, while ?year=1500 returns the ValidationProblem with errors.year. In Development the first three return 500, and the log shows BadHttpRequestException 'Failed to bind parameter "Nullable<int> year" from "abc"' caught by UseExceptionHandler (Program.cs:13). The integration host runs as Development: TUnit.AspNetCore pulls in Mvc.Testing 10.0.12, whose WebApplicationFactory defaults to Development. No test or .http request sends a malformed year, so nothing pins either behaviour. I found no guard elsewhere, and the repo's own code-review rubric rates a 500 for invalid input medium.
+-- **maintainer** (CONFIRMED, medium, small): I built 43ec3c2's API (scratch copy, dotnet publish) and probed it. In Production, `/api/friday13?year=abc`, `?year=`, `?year=99999999999` and `?year=2026&year=2027` return 400 problem+json with only title 'Bad Request' and no `errors`, while `?year=1500` returns the ValidationProblem with `errors.year`. In Development the same malformed inputs return 500, and the log shows `BadHttpRequestException: Failed to bind parameter "Nullable<int> year"` caught by ExceptionHandlerMiddleware. `[Range] int?` follows PLAN.md 2.2's 'AddValidation where it fits', but the result breaks the project's own contract (llm-api-contract.md: 400 ValidationProblem for bad input; llm-code-review.md rates a 500 for invalid input as medium). No test or .http request sends a malformed year.
+-- **impact** (CONFIRMED, medium, small): Built 43ec3c2 and ran it in both environments: `?year=abc`, `?year=`, `?year=%20`, `2026.0`, `99999999999` and a repeated `year` return a 400 ProblemDetails with only title 'Bad Request' (no `errors`) in Production and a 500 in Development (logged as BadHttpRequestException 'Failed to bind parameter Nullable<int> year'), while `?year=1500` gets the ValidationProblem in both. A scratch TUnit project on the same TestWebApplicationFactory confirmed the test host runs as Development and returns 500 for `?year=abc` and `?year=`, and `just run`/`just http` use the Development profile, so contributors see 500s locally while CI's http-tests (Production container) see 400s. It bites an HTML form sending an empty optional `?year=` (400 instead of 'this year') and whoever writes the missing test (a different status per environment); medium on the repo's own rubric ('a 500 only for ... invalid input', 'inconsistent error shape'), at its low end because generated clients follow the documented int32 schema with pattern and min/max. One slip in api-01: a `.http` assertion on `errors.year` for `?year=abc` would fail in http-tests too, since Production returns no `errors`.
+-
+-</details>
+-
+ ### F012
+ 
+ **Cache keys ignore llm-gate's request code and engine settings, so llm-eval scores engine changes from main's cached reviews**
+@@ -804,6 +750,62 @@ calendar-gates-images builds its image list from spec.containers, initContainers
+ 
+ </details>
+ 
++### F052
++
++**uv itself is unpinned: every setup-uv step installs the newest uv release, in the signing job and the write-token jobs too**
++
++- **Status:** ✅ fixed — #73: uv.toml's required-version pins uv for all nine setup-uv steps, including the signing job
++- **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
++- **Where:** `.github/workflows/release.yml:207` · **area:** workflows, release, deploy, scripts
++- **Reported by:** `wr-08` (medium, high confidence)
++
++setup-uv's `version` input "Defaults to the version in pyproject.toml or `latest`" (action.yml at the pinned SHA c18668ad), and it looks in working-directory, the workspace root. No workflow sets `version`, the repository has no uv.toml or root pyproject.toml, and tools/llm-gate/pyproject.toml has no required-version. So all nine setup-uv steps (ci lint, llm-review triage and llm, llm-compare, llm-eval, llm-feedback, audit-collect, metrics, release attest) download whatever uv was released last, with no cooldown. The actions get a SHA pin and a 14-day Dependabot cooldown, and the Python dependencies get exclude-newer; uv gets neither. In release.yml's attest job, every step can request an OIDC token (id-token: write) and therefore sign as release.yml. Before the actions/attest steps, that job also runs uv, llm-gate's PyPI dependencies, anchore/sbom-action and the syft binary it downloads.
++
++*Failure scenario:* A compromised or broken uv release is published. The next tag push installs it in attest, where it can request an OIDC token and push attestations for any digest under the release identity. audit-collect and llm-feedback run it with contents: write.
++
++*Suggested fix:* Pin uv: `version: "0.x.y"` on every setup-uv step, or required-version in a root uv.toml or a version-file, ideally with `checksum`. Move predicate and SBOM generation into a job without id-token: write, and keep the attest job to actions/attest steps on downloaded files.
++
++<details><summary>Council</summary>
++
++- **skeptic** (CONFIRMED, low, small): No setup-uv step sets version or version-file, and setup-uv at the pinned SHA documents 'Defaults to the version in pyproject.toml or latest', looked up in working-directory (default github.workspace). The workspace root has no pyproject.toml or uv.toml (tools/llm-gate/pyproject.toml has exclude-newer but no required-version), so every setup-uv step installs the newest uv release with no cooldown, unlike the SHA-pinned actions and the locked, exclude-newer Python dependencies. In release.yml's attest job every step can request an OIDC token, so a malicious uv release there could sign as release.yml. It needs a compromised upstream release and only bites on a tag push, so low rather than medium.
++- **maintainer** (CONFIRMED, medium, trivial): setup-uv's action.yml at the pinned SHA c18668ad says version 'Defaults to the version in pyproject.toml or latest' and searches uv.toml/pyproject.toml in the workspace root. No workflow sets version, there is no root uv.toml or pyproject.toml, and tools/llm-gate/pyproject.toml has no required-version, so all nine setup-uv steps install the newest uv. That includes release.yml's attest job, where every step can request an OIDC token (id-token: write) and sign as release.yml, and audit-collect/llm-feedback with contents: write. Everything else in the repo is pinned (action SHAs with a 14-day cooldown, exclude-newer, image digests), and nothing records uv as an exception. Adding version: to each step, or a root uv.toml, is trivial.
++- **impact** (CONFIRMED, medium, small): setup-uv at the pinned SHA documents version default '' = 'the version in pyproject.toml or latest', looked up in working-directory (the workspace root); the repo has no root pyproject.toml, uv.toml or .tool-versions, tools/llm-gate/pyproject.toml has no required-version, and no setup-uv step sets version or version-file. So every run, including release attest (id-token: write) and audit-collect/llm-feedback (contents: write), installs whatever uv was released last, bypassing both the 14-day action cooldown and exclude-newer. A compromised uv release is unlikely, a behaviour change that breaks every --locked step at once is the likelier bite (fails closed). Medium matches the repo's own workflow-review scale for an unpinned dependency in privileged jobs.
++
++</details>
++
++### F081
++
++**A malformed or empty ?year= on /api/friday13 gets a 400 without `errors` in Production and a 500 in Development, not the 400 ValidationProblem**
++
++- **Status:** ✅ fixed — #73: the year is parsed, so a bad one is the same ValidationProblem in both environments
++- **Severity:** medium (reviewers: medium) · **outcome:** confirmed · **fix cost:** small
++- **Where:** `src/CalendarGates.Api/Endpoints/Friday13Endpoints.cs:28` · **area:** API, tests, docs
++- **Reported by:** `api-01` (medium, high confidence), `cr-api-01` (medium, high confidence)
++
++**`api-01`: A malformed or empty ?year= on /api/friday13 gets a 400 without `errors` in Production and a 500 in Development, not the 400 ValidationProblem**
++
++`InYear` binds `[Range(Years.Min, Years.Max)] int? year`, so a value that doesn't parse as an int is a framework binding failure, not a validation error. Probed against a build of 43ec3c2. In Production, `GET /api/friday13?year=abc`, `?year=` (empty), `?year=2026.0`, `?year=99999999999` and `?year=2026&year=2027` all return 400 application/problem+json with only `title: Bad Request`, `status: 400`. There is no `errors` member. Meanwhile `?year=1500` returns the ValidationProblem (`title: One or more validation errors occurred.`, `errors.year`). In Development the same requests return 500 `An error occurred while processing your request.` and log an unhandled BadHttpRequestException (`Failed to bind parameter "Nullable<int> year" from "abc"`). The reason: `RouteHandlerOptions.ThrowOnBadRequest` is on in Development, and the exception reaches `app.UseExceptionHandler()` (Program.cs:13). `just run` uses the `http` launch profile (ASPNETCORE_ENVIRONMENT=Development). TUnit's TestWebApplicationFactory is built on WebApplicationFactory, which also runs the app as Development by default. The documented contract (llm-api-contract.md, new-endpoint.md) is '400 ValidationProblem for bad input', and /api/week/{date} and /api/workdays follow it for unparseable dates. Neither http/calendar.http nor the integration tests send a non-numeric or empty year.
++
++*Failure scenario:* A client sends `/api/friday13?year=` from an empty optional form field, or `?year=abc`. Against the container it gets a 400 with no field information. Against `just run` it gets a 500. A `.http` request asserting `errors.year` for `?year=abc` would pass in http-tests (Production container) and fail under `just http` (Development).
++
++*Suggested fix:* Bind `string? year` and validate it like WorkdaysEndpoints: parse it, check the range, and return a ValidationProblem with `errors.year`, treating empty as 'this year'. Alternatively, set `RouteHandlerOptions.ThrowOnBadRequest = false` and turn BadHttpRequestException into a ValidationProblem in one place. Add `?year=abc` and `?year=` cases to calendar.http and Friday13Tests.
++
++**`cr-api-01`: An unparsable /api/friday13?year= returns 500 in Development and the test host, and a 400 with no errors map in Production**
++
++`InYear` binds `[Range] int? year` straight from the query. When the value can't be parsed (`year=abc`, an empty `year=`, or a repeated `year=2026&year=2027`), minimal APIs fail parameter binding before the validation filter runs. In Development, `RouteHandlerOptions.ThrowOnBadRequest` defaults to true, so a `BadHttpRequestException` is thrown. `app.UseExceptionHandler()` (Program.cs:13) catches it and, with no `StatusCodeSelector`, maps it to 500. In Production the binder writes a bare 400 instead. `UseStatusCodePages` then adds a generic ProblemDetails with title "Bad Request" and no `errors.year`. So the failure has a different status code depending on the environment, and in neither environment does it match the endpoint's own validation contract (`year=1500` gives a 400 ValidationProblem with `errors.year`, which `http/calendar.http` relies on). I checked this by running it. With the built API in Production, all three inputs gave a 400 with a field-less body. With `ASPNETCORE_ENVIRONMENT=Development`, all three gave a 500, and the log showed `BadHttpRequestException: Failed to bind parameter "Nullable<int> year" from "abc"`. Through `WebApplicationFactory` (Mvc.Testing 10.0.12, the host under TUnit.AspNetCore), the environment was `Development` and both `?year=abc` and `?year=` gave a 500. So an integration test can't pin the production behaviour, and `just run` serves 500s. This is the only query-bound value type in the API: `{year:int}` route values fail the constraint and give a 404, and the date parameters are strings that are parsed explicitly.
++
++*Failure scenario:* GET /api/friday13?year=abc. Against `just run` or an integration test you get HTTP 500 "An error occurred while processing your request." Against the container (Production) you get a 400 with no `errors` property, so a client that reads `errors.year`, as the .http test does for year=1500, fails. `year=` (empty) is rejected the same way instead of falling back to "this year".
++
++*Suggested fix:* Parse `year` the same way the date endpoints parse dates. Bind it as `string?`, use `int.TryParse(..., NumberStyles.None, CultureInfo.InvariantCulture, ...)`, check `Years.IsSupported`, and return `TypedResults.ValidationProblem(new() { ["year"] = [...] })`. Alternatively, give the exception handler `StatusCodeSelector = ex => ex is BadHttpRequestException b ? b.StatusCode : 500` so the status code at least matches across environments. Add an integration test for `?year=abc`.
++
++<details><summary>Council</summary>
++
++- **skeptic** (CONFIRMED, medium, small): Reproduced on a Release build of 43ec3c2. In Production, ?year=abc, ?year=, ?year=2026.0, ?year=99999999999 and ?year=2026&year=2027 return 400 problem+json with only title/status and no errors, while ?year=1500 returns the ValidationProblem with errors.year. In Development the first three return 500, and the log shows BadHttpRequestException 'Failed to bind parameter "Nullable<int> year" from "abc"' caught by UseExceptionHandler (Program.cs:13). The integration host runs as Development: TUnit.AspNetCore pulls in Mvc.Testing 10.0.12, whose WebApplicationFactory defaults to Development. No test or .http request sends a malformed year, so nothing pins either behaviour. I found no guard elsewhere, and the repo's own code-review rubric rates a 500 for invalid input medium.
++- **maintainer** (CONFIRMED, medium, small): I built 43ec3c2's API (scratch copy, dotnet publish) and probed it. In Production, `/api/friday13?year=abc`, `?year=`, `?year=99999999999` and `?year=2026&year=2027` return 400 problem+json with only title 'Bad Request' and no `errors`, while `?year=1500` returns the ValidationProblem with `errors.year`. In Development the same malformed inputs return 500, and the log shows `BadHttpRequestException: Failed to bind parameter "Nullable<int> year"` caught by ExceptionHandlerMiddleware. `[Range] int?` follows PLAN.md 2.2's 'AddValidation where it fits', but the result breaks the project's own contract (llm-api-contract.md: 400 ValidationProblem for bad input; llm-code-review.md rates a 500 for invalid input as medium). No test or .http request sends a malformed year.
++- **impact** (CONFIRMED, medium, small): Built 43ec3c2 and ran it in both environments: `?year=abc`, `?year=`, `?year=%20`, `2026.0`, `99999999999` and a repeated `year` return a 400 ProblemDetails with only title 'Bad Request' (no `errors`) in Production and a 500 in Development (logged as BadHttpRequestException 'Failed to bind parameter Nullable<int> year'), while `?year=1500` gets the ValidationProblem in both. A scratch TUnit project on the same TestWebApplicationFactory confirmed the test host runs as Development and returns 500 for `?year=abc` and `?year=`, and `just run`/`just http` use the Development profile, so contributors see 500s locally while CI's http-tests (Production container) see 400s. It bites an HTML form sending an empty optional `?year=` (400 instead of 'this year') and whoever writes the missing test (a different status per environment); medium on the repo's own rubric ('a 500 only for ... invalid input', 'inconsistent error shape'), at its low end because generated clients follow the documented int32 schema with pattern and min/max. One slip in api-01: a `.http` assertion on `errors.year` for `?year=abc` would fail in http-tests too, since Production returns no `errors`.
++
++</details>
++
+ ### F084
+ 
+ **"A failed smoke leaves a draft; re-running the workflow refreshes it" no longer holds under build-once releases**
+diff --git a/http/calendar.http b/http/calendar.http
+index 3f846a2..e6da998 100644
+--- a/http/calendar.http
++++ b/http/calendar.http
+@@ -96,6 +96,33 @@ Accept: application/json
+   });
+ %}
+ 
++### Fridays the 13th: a year that isn't a number
++# F081: this used to fail parameter binding, so it answered 400 with no `errors` in Production and
++# 500 in Development. Both environments now give the same ValidationProblem.
++GET {{baseUrl}}/api/friday13?year=abc
++Accept: application/json
++
++> {%
++  client.test("friday13?year=abc: 400 ValidationProblem", () => {
++    client.assert(response.status === 400, `status ${response.status}`);
++    client.assert(response.contentType.mimeType === "application/problem+json",
++      response.contentType.mimeType);
++    client.assert(response.body.errors.year.length > 0, "errors.year missing");
++  });
++%}
++
++### Fridays the 13th: an empty year means this year
++GET {{baseUrl}}/api/friday13?year=
++Accept: application/json
++
++> {%
++  client.test("friday13?year= : this year", () => {
++    client.assert(response.status === 200, `status ${response.status}`);
++    const now = new Date();
++    client.assert(response.body.year === now.getUTCFullYear(), `year ${response.body.year}`);
++  });
++%}
++
+ ### Next Friday the 13th
+ GET {{baseUrl}}/api/friday13/next
+ Accept: application/json
+diff --git a/src/CalendarGates.Api/Endpoints/EndpointHelpers.cs b/src/CalendarGates.Api/Endpoints/EndpointHelpers.cs
+index e769043..aa87cf6 100644
+--- a/src/CalendarGates.Api/Endpoints/EndpointHelpers.cs
++++ b/src/CalendarGates.Api/Endpoints/EndpointHelpers.cs
+@@ -1,4 +1,5 @@
+ using System.Globalization;
++using CalendarGates.Api.Domain;
+ 
+ namespace CalendarGates.Api.Endpoints;
+ 
+@@ -19,6 +20,20 @@ internal static class EndpointHelpers
+             out date
+         );
+ 
++    /// <summary>
++    /// A year from the query string. Bound as a string on purpose: an <c>int?</c> parameter makes an
++    /// unparsable value a binding failure, which never reaches the validation filter, so the caller
++    /// got a 400 with no <c>errors</c> in Production and a 500 in Development.
++    /// </summary>
++    public static bool TryParseYear(string? value, out int year) =>
++        int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out year)
++        && Years.IsSupported(year);
++
++    public static string InvalidYearMessage(string? value) =>
++        string.IsNullOrEmpty(value)
++            ? $"A year is required ({Years.Min}-{Years.Max})."
++            : $"'{value}' is not a supported year; expected {Years.Min}-{Years.Max}.";
++
+     public static string InvalidDateMessage(string? value) =>
+         string.IsNullOrEmpty(value)
+             ? $"A date is required ({DateFormat})."
+diff --git a/src/CalendarGates.Api/Endpoints/Friday13Endpoints.cs b/src/CalendarGates.Api/Endpoints/Friday13Endpoints.cs
+index cd2390f..73aa96c 100644
+--- a/src/CalendarGates.Api/Endpoints/Friday13Endpoints.cs
++++ b/src/CalendarGates.Api/Endpoints/Friday13Endpoints.cs
+@@ -1,4 +1,4 @@
+-using System.ComponentModel.DataAnnotations;
++using System.Globalization;
+ using CalendarGates.Api.Domain;
+ using Microsoft.AspNetCore.Http.HttpResults;
+ 
+@@ -25,12 +25,27 @@ public static class Friday13Endpoints
+         return app;
+     }
+ 
+-    private static Ok<Friday13YearResponse> InYear(
+-        [Range(Years.Min, Years.Max)] int? year,
++    // `string?`, not `int?`: an unparsable value bound to an int fails parameter binding before the
++    // validation filter runs, which answered `?year=abc` with a 400 carrying no `errors` in
++    // Production and a 500 in Development (F081). Parsed here, every bad year is one ValidationProblem.
++    private static Results<Ok<Friday13YearResponse>, ValidationProblem> InYear(
++        string? year,
+         TimeProvider time
+     )
+     {
+-        var y = year ?? time.Today().Year;
++        if (!string.IsNullOrEmpty(year) && !EndpointHelpers.TryParseYear(year, out _))
++        {
++            return TypedResults.ValidationProblem(
++                new Dictionary<string, string[]>
++                {
++                    ["year"] = [EndpointHelpers.InvalidYearMessage(year)],
++                }
++            );
++        }
++
++        var y = string.IsNullOrEmpty(year)
++            ? time.Today().Year
++            : int.Parse(year, CultureInfo.InvariantCulture);
+         var dates = Friday13Calculator.InYear(y);
+         return TypedResults.Ok(new Friday13YearResponse(y, dates.Count, dates));
+     }
+diff --git a/tests/CalendarGates.IntegrationTests/Friday13Tests.cs b/tests/CalendarGates.IntegrationTests/Friday13Tests.cs
+index 71ce55c..f2dded2 100644
+--- a/tests/CalendarGates.IntegrationTests/Friday13Tests.cs
++++ b/tests/CalendarGates.IntegrationTests/Friday13Tests.cs
+@@ -30,6 +30,31 @@ public class Friday13Tests : ApiTestBase
+         await AssertValidationProblemAsync($"/api/friday13?year={year}", "year");
+     }
+ 
++    /// <summary>
++    /// A year the framework can't bind used to fail before the validation filter: a 400 with no
++    /// `errors` in Production and a 500 here, where the test host runs in Development (F081).
++    /// </summary>
++    [Test]
++    [Arguments("abc")]
++    [Arguments("2026.0")]
++    [Arguments("99999999999")]
++    [Arguments("%20")] // whitespace is not a year; a raw space in a URI is normalised away
++    [Arguments("-2026")]
++    [Arguments("2026&year=2027")] // a repeated parameter binds as "2026,2027"
++    public async Task RejectsAYearItCannotParse(string year)
++    {
++        await AssertValidationProblemAsync($"/api/friday13?year={year}", "year");
++    }
++
++    /// <summary>An empty `year=` means "this year", as an absent parameter does.</summary>
++    [Test]
++    public async Task AnEmptyYearIsThisYear()
++    {
++        var json = await GetJsonAsync("/api/friday13?year=");
++
++        await Assert.That(json.GetProperty("year").GetInt32()).IsEqualTo(2026);
++    }
++
+     [Test]
+     public async Task NextIsTomorrow()
+     {
+diff --git a/uv.toml b/uv.toml
+new file mode 100644
+index 0000000..2b7c694
+--- /dev/null
++++ b/uv.toml
+@@ -0,0 +1,9 @@
++# uv itself, pinned like the linters in ci.yml and the `lint` recipe (F052 in
++# docs/v2-review-findings.md). `astral-sh/setup-uv` reads `required-version` from here, so all nine
++# setup-uv steps install this exact version instead of whatever was released last: the attest job
++# signs with an OIDC token, and the collector and feedback jobs hold write tokens, so "the newest
++# uv, no cooldown" is the one unpinned tool in the trusted path.
++#
++# Bumping it is a deliberate PR, as with the other pinned tools. A local `uv` of another version
++# fails loudly ("project requires uv ==...") rather than drifting, which is the point.
++required-version = "==0.13.0"
