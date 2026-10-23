@@ -146,6 +146,14 @@ changing the rule without changing the cases fails the lint gate instead of ship
   attestors accept `release.yml@refs/tags/v…`, which a tag on an unmerged commit also gets
   (ADR 0009's amendment). The cluster can't check whether a commit is on `main`, so that check
   lives in `just verify-release` and in the `release-tags` ruleset's `creation` rule, not here.
+- **The image policies judge pods, not Deployments** (2026-10-23). Kyverno's autogen applies a
+  pod policy to Deployments and the other pod controllers too, but not when the policy also
+  matches `pods/ephemeralcontainers`, as all four do. Checked with CLI 1.19.1: `images.yaml`
+  produces no result for a Deployment with a foreign image, and the same policy matching only
+  `pods` fails it. So a Deployment with a refused image is admitted, its ReplicaSet records
+  `FailedCreate`, and `helm --wait` times out without saying why. That is acceptable for the
+  image policies, because the release chart always passes them. ADR 0011's workload policy
+  matches `pods` only, so a bad chart fails at `helm install` instead.
 - **Failure is closed.** The webhooks fail closed. When Kyverno is down, no pod starts in
   `calendar-gates`, and a policy that can't be evaluated denies. The spike saw this: a wrong CEL
   path denied the release instead of admitting it.

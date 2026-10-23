@@ -4,7 +4,7 @@ A learning playground for **GitHub Actions CI with merge gates**. The ASP.NET Co
 about dates is deliberately small; the gates are the product. Not production software.
 
 The full plan, phase by phase, is in `docs/PLAN.md` (Phases 1-12, drills 1-13) and
-`docs/PLAN-v2.md` (Phases 13-21, drills 14-23, with a Status section listing the deviations).
+`docs/PLAN-v2.md` (Phases 13-22, drills 14-24, with a Status section listing the deviations).
 Check which phase is in progress before adding things from later phases.
 `docs/v2-review-findings.md` holds the whole-codebase review of 2026-10-17 and what has been
 fixed since.
