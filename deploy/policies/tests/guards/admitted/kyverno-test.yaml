@@ -1,0 +1,19 @@
+# calendar-gates-namespaces (deploy/policies/guards/namespaces.yaml).
+# The namespaces as deploy/policies renders them, and one the guard doesn't cover.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: calendar-gates-namespaces-admitted
+policies:
+  - ../../../guards/namespaces.yaml
+resources:
+  - resources.yaml
+results:
+  - policy: calendar-gates-namespaces
+    kind: Namespace
+    resources: [calendar-gates, calendar-gates-dev]
+    result: pass
+  - policy: calendar-gates-namespaces
+    kind: Namespace
+    resources: [elsewhere]
+    result: skip

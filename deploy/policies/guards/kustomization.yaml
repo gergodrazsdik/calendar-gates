@@ -1,0 +1,5 @@
+# Cluster-level guards that belong to neither namespace's set (docs/adr/0011-workload-hardening.md).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespaces.yaml

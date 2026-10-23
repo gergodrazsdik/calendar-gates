@@ -1,0 +1,53 @@
+# The Pod Security Admission labels of the two project namespaces (docs/adr/0011-workload-hardening.md).
+# PSA's only bypass is its label: whoever can patch the namespace could set `enforce: privileged` or
+# drop it. This refuses that. It checks the values, not "unchanged since before", so bumping
+# `enforce-version` with the node image needs no change here.
+#
+# Not in base/: the dev overlay rewrites every policy there into an Audit copy for the dev namespace.
+# The namespaceSelector is checked against the Namespace object itself, so Kyverno's webhook (which
+# fails closed) only ever sees these two namespaces: Kyverno being down blocks changes to them, not
+# to every namespace in the cluster.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: calendar-gates-namespaces
+spec:
+  validationActions: [Deny]
+  matchConstraints:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values: [calendar-gates, calendar-gates-dev]
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [namespaces]
+  variables:
+    - name: labels
+      expression: object.metadata.?labels.orValue({})
+    - name: enforce
+      expression: variables.labels[?'pod-security.kubernetes.io/enforce'].orValue('(unset)')
+    - name: version
+      expression: variables.labels[?'pod-security.kubernetes.io/enforce-version'].orValue('(unset)')
+    - name: warn
+      expression: variables.labels[?'pod-security.kubernetes.io/warn'].orValue('(unset)')
+    - name: audit
+      expression: variables.labels[?'pod-security.kubernetes.io/audit'].orValue('(unset)')
+    # The dev namespace enforces baseline so bare test pods run there; it may be stricter.
+    - name: allowed
+      expression: "object.metadata.name == 'calendar-gates' ? ['restricted'] : ['baseline', 'restricted']"
+  validations:
+    - expression: variables.enforce in variables.allowed
+      messageExpression: >-
+        object.metadata.name + ' must keep pod-security.kubernetes.io/enforce at '
+        + variables.allowed.join(' or ') + ', not ' + variables.enforce
+    - expression: variables.version.matches('^v1\\.[0-9]+$')
+      messageExpression: >-
+        object.metadata.name + ' must pin pod-security.kubernetes.io/enforce-version to a minor
+        such as v1.35, not ' + variables.version
+    - expression: variables.warn == 'restricted' && variables.audit == 'restricted'
+      messageExpression: >-
+        object.metadata.name + ' must keep pod-security.kubernetes.io/warn and audit at restricted,
+        not ' + variables.warn + ' and ' + variables.audit

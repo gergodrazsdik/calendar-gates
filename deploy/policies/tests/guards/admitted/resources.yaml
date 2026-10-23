@@ -1,0 +1,33 @@
+# Namespaces for kyverno test: The namespaces as deploy/policies renders them, and one the guard doesn't cover.
+# Each suite holds at most one of each namespace: kyverno test refuses duplicate names.
+# As base/namespace.yaml, with the label the API server adds.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: calendar-gates
+  labels:
+    kubernetes.io/metadata.name: calendar-gates
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.35
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+---
+# As the dev overlay renders it.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: calendar-gates-dev
+  labels:
+    kubernetes.io/metadata.name: calendar-gates-dev
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: v1.35
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+---
+# Not one of the two namespaces.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: elsewhere
+  labels:
+    kubernetes.io/metadata.name: elsewhere

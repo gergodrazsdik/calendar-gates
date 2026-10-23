@@ -1,0 +1,24 @@
+# Namespaces for kyverno test: Enforcement intact, but violations no longer warned about or audited.
+# Each suite holds at most one of each namespace: kyverno test refuses duplicate names.
+# No warnings.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: calendar-gates
+  labels:
+    kubernetes.io/metadata.name: calendar-gates
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.35
+    pod-security.kubernetes.io/audit: restricted
+---
+# Auditing at a weaker level.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: calendar-gates-dev
+  labels:
+    kubernetes.io/metadata.name: calendar-gates-dev
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: v1.35
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: baseline

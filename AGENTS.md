@@ -17,7 +17,7 @@ fixed since.
 | `tests/CalendarGates.UnitTests/`, `tests/CalendarGates.IntegrationTests/` | TUnit tests (calculators; API via `TUnit.AspNetCore`) |
 | `http/` | `.http` contract tests run by `ijhttp` (`http-client.env.json`; the private env file is gitignored) |
 | `Dockerfile`, `deploy/helm/calendar-gates/` | Container image and Helm chart (kind clusters, CI smoke) |
-| `deploy/kind/`, `deploy/kyverno/`, `deploy/policies/` | The project's kind cluster, Kyverno (pinned) and the admission policies ([ADR 0010](docs/adr/0010-admission-control.md)) |
+| `deploy/kind/`, `deploy/kyverno/`, `deploy/policies/` | The project's kind cluster, Kyverno (pinned) and the admission policies: `base/` (Deny), `dev/` (Audit overlay), `guards/` (the namespace labels) ([ADR 0010](docs/adr/0010-admission-control.md), [ADR 0011](docs/adr/0011-workload-hardening.md)) |
 | `tools/llm-gate/` | Python (uv) LLM review gate on the Claude SDKs; policy in `checks.yaml` |
 | `.claude/commands/` | Review prompts, shared by interactive Claude Code and the CI LLM gate |
 | `.github/` | Workflows, composite action, rulesets (as JSON), Dependabot |
