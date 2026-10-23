@@ -15,9 +15,14 @@ patches:
       - op: replace
         path: /spec/matchConstraints/namespaceSelector/matchLabels/kubernetes.io~1metadata.name
         value: calendar-gates-dev
+  # PSA: `baseline` admits the bare `kubectl run` pods drill 21 and admission-smoke use here;
+  # `warn`/`audit` stay `restricted` (docs/adr/0011-workload-hardening.md).
   - target:
       kind: Namespace
     patch: |-
       - op: replace
         path: /metadata/name
         value: calendar-gates-dev
+      - op: replace
+        path: /metadata/labels/pod-security.kubernetes.io~1enforce
+        value: baseline
