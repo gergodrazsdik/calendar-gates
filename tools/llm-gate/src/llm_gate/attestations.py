@@ -189,6 +189,9 @@ def llm_review(
             "checks": {check: _check_state(run) for check, run in sorted(latest.items())},
             "overrides": overrides,
             "risk_overrides": risk_overrides,
+            # Reviewed by llm-review's workflow_dispatch after the PR had merged (ADR 0005): the
+            # review is real, but it didn't gate the merge.
+            "reviewed_after_merge": any(r.get("reviewed_after_merge") for r in latest.values()),
         }
         prs.append(entry)
 
@@ -264,6 +267,11 @@ def render_notes(predicate: Mapping[str, Any]) -> str:
         for o in pr["overrides"]:
             lines.append(f"- #{pr['number']} overridden by @{o['by']}: {inert(o['reason'])}")
     if overridden:
+        lines.append("")
+    after = [pr for pr in prs if pr.get("reviewed_after_merge")]
+    if after:
+        lines += ["**Reviewed after merge** (the review didn't gate the merge)", ""]
+        lines += [f"- #{pr['number']}" for pr in after]
         lines.append("")
     for key, title in (("unreviewed", "Unreviewed"), ("unverified", "Unverified")):
         if predicate[key]:

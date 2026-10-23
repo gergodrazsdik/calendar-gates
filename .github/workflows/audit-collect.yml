@@ -13,6 +13,11 @@
 # #110 made the collector wait. The run is read from the API and must be a finished pull_request run
 # of llm-review.yml; everything after that is the same validation. The records go to their own
 # `-recollected` paths, and only for checks whose original file holds nothing but tamper_suspected.
+#
+# Review after merge: an llm-review run started by workflow_dispatch on the default branch reviewed a
+# PR that had already merged. Its run name says which (`review after merge: #N`); the PR is checked
+# through the API (merged, and its merged head is what the records name), and the records are
+# marked reviewed_after_merge.
 name: audit-collect
 
 on: # zizmor: ignore[dangerous-triggers] -- no PR code is checked out or run; see above
@@ -39,7 +44,11 @@ permissions: {}
 jobs:
   collect:
     name: collect
-    if: github.event.workflow_run.event == 'pull_request' || github.event_name == 'workflow_dispatch'
+    if: >-
+      github.event.workflow_run.event == 'pull_request'
+      || (github.event.workflow_run.event == 'workflow_dispatch'
+          && github.event.workflow_run.head_branch == github.event.repository.default_branch)
+      || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -59,6 +68,8 @@ jobs:
       EVENT_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
       EVENT_WORKFLOW_PATH: ${{ github.event.workflow_run.path }}
       EVENT_RUN_STARTED_AT: ${{ github.event.workflow_run.run_started_at }}
+      EVENT_RUN_EVENT: ${{ github.event.workflow_run.event }}
+      EVENT_RUN_TITLE: ${{ github.event.workflow_run.display_title }}
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       PR_FROM_EVENT: ${{ github.event.workflow_run.pull_requests[0].number }}
     steps:
@@ -70,13 +81,29 @@ jobs:
           INPUT_RUN_ATTEMPT: ${{ inputs.run_attempt }}
         run: |
           if [ "$EVENT_NAME" != workflow_dispatch ]; then
+            head=$EVENT_HEAD_SHA after_merge_pr="" after_merge=""
+            if [ "$EVENT_RUN_EVENT" = workflow_dispatch ]; then
+              # A review after merge: the event's head is the default branch, not the PR's.
+              [[ $EVENT_RUN_TITLE =~ ^review\ after\ merge:\ \#([0-9]+)$ ]] || {
+                echo "::error::run $EVENT_RUN_ID is a dispatched llm-review without a PR in its name"
+                exit 1; }
+              after_merge_pr=${BASH_REMATCH[1]}
+              pr=$(gh api "repos/$REPO/pulls/$after_merge_pr" --jq '{merged, head: .head.sha}')
+              [ "$(jq -r '.merged' <<< "$pr")" = true ] || {
+                echo "::error::#$after_merge_pr is not merged"; exit 1; }
+              head=$(jq -r '.head' <<< "$pr")
+              after_merge=--after-merge
+              echo "::notice title=audit-collect::Run $EVENT_RUN_ID reviewed #$after_merge_pr after merge."
+            fi
             {
               echo "RUN_ID=$EVENT_RUN_ID"
               echo "RUN_ATTEMPT=$EVENT_RUN_ATTEMPT"
-              echo "HEAD_SHA=$EVENT_HEAD_SHA"
+              echo "HEAD_SHA=$head"
               echo "WORKFLOW_PATH=$EVENT_WORKFLOW_PATH"
               echo "RUN_STARTED_AT=$EVENT_RUN_STARTED_AT"
               echo "RECOLLECT="
+              echo "AFTER_MERGE_PR=$after_merge_pr"
+              echo "AFTER_MERGE=$after_merge"
             } >> "$GITHUB_ENV"
             exit 0
           fi
@@ -99,6 +126,8 @@ jobs:
             echo "WORKFLOW_PATH=$path"
             echo "RUN_STARTED_AT=$(jq -r '.run_started_at' <<< "$run")"
             echo "RECOLLECT=--recollect"
+            echo "AFTER_MERGE_PR="
+            echo "AFTER_MERGE="
           } >> "$GITHUB_ENV"
           echo "::notice title=audit-collect::Re-collecting llm-review run $INPUT_RUN_ID, attempt $INPUT_RUN_ATTEMPT."
       - name: Collector code from the default branch
@@ -117,7 +146,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          pr="$PR_FROM_EVENT"
+          pr="${AFTER_MERGE_PR:-$PR_FROM_EVENT}"
           # The event lists only *open* PRs (and none at all for forks), and the fallback used to
           # filter on open as well, so a review that finished after its PR merged was dropped
           # whole: no records, and the release attestation then reported the merged head as
@@ -229,7 +258,7 @@ jobs:
           WORKFLOW_MODIFIED: ${{ steps.gather.outputs.flag }}
         run: |
           WORK="$RUNNER_TEMP/audit"
-          # shellcheck disable=SC2086  # WORKFLOW_MODIFIED and RECOLLECT are each empty or one flag
+          # shellcheck disable=SC2086  # WORKFLOW_MODIFIED, RECOLLECT, AFTER_MERGE: empty or one flag
           uv run --project tools/llm-gate --locked llm-gate audit collect \
             --repo-name "$REPO" --run-id "$RUN_ID" --run-attempt "$RUN_ATTEMPT" \
             --head-sha "$HEAD_SHA" --pr "$PR" \
@@ -238,7 +267,7 @@ jobs:
             --writers "$WORK/writers.json" \
             --triage-inputs "$WORK/triage-inputs.json" --audit-dir "$WORK/audit-log" \
             --date "${RUN_STARTED_AT%%T*}" --default-branch "$DEFAULT_BRANCH" \
-            --checks "$(cat "$WORK/checks.json")" ${WORKFLOW_MODIFIED:-} ${RECOLLECT:-} \
+            --checks "$(cat "$WORK/checks.json")" ${WORKFLOW_MODIFIED:-} ${RECOLLECT:-} ${AFTER_MERGE:-} \
             --out "$WORK/out" > "$WORK/collected.json"
           {
             echo "### Audit records for run $RUN_ID (attempt $RUN_ATTEMPT), PR #$PR"

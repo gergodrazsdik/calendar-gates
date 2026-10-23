@@ -246,6 +246,16 @@ changes CI state for no convenience gain.
       so.
     - **What changes:** the PR stops being unreviewed. Its tamper events stay on the log, so it
       stays listed as unverified.
+  - **Reviewing a PR that merged without a review** (a Dependabot PR before the key was a
+    Dependabot secret, say): `gh workflow run llm-review.yml -f pr=<number>` on `main`.
+    - **What it checks first:** the PR must be merged into `main`.
+    - **What it runs:** the same triage and checks as a normal run, from `main`'s gate, at the
+      PR's merged head.
+    - **What it doesn't do:** post labels or comments to the merged PR.
+    - **How it's collected:** like any run, then marked `reviewed_after_merge`. The release notes
+      list such PRs under "Reviewed after merge". The review didn't gate the merge, and the notes
+      say so.
+    - **Cost:** about $0.12 per PR at high risk.
 
 ## Release gates (`release.yml`)
 
