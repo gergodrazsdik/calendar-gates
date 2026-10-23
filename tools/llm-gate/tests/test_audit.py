@@ -449,7 +449,6 @@ def test_artifact_names_and_contents_are_checked(tmp_path: Path) -> None:
     [
         ({}, "has no job 'llm / code-review'"),
         ({"llm / code-review": "cancelled"}, "concluded cancelled, so the record can't be checked"),
-        ({"llm / code-review": None}, "concluded None"),
     ],
 )
 def test_a_record_needs_a_finished_job_to_confirm_it(
@@ -459,6 +458,25 @@ def test_a_record_needs_a_finished_job_to_confirm_it(
     ((info, lines),) = collect(tmp_path, jobs=jobs)
     assert info.tamper is True
     assert any(problem in p for p in lines[0]["problems"]), lines[0]["problems"]
+
+
+@pytest.mark.parametrize(
+    "jobs",
+    [
+        {"llm / code-review": None},
+        # One unfinished job is enough, even one the artifacts don't name: 2026-10-19's run
+        # 39287691571 had triage and workflow-review concluded and five checks still at null.
+        {"llm / code-review": "success", "triage": None},
+    ],
+)
+def test_a_job_with_no_conclusion_yet_stops_the_collection(
+    tmp_path: Path, jobs: dict[str, str | None]
+) -> None:
+    # Not tampering, and nothing written: the paths stay free for a re-run (ADR 0005).
+    artifact(tmp_path, "audit-100-1-code-review", audit.dumps(gate_run()))
+    with pytest.raises(audit.JobsNotFinished, match="no conclusion yet for: "):
+        collect(tmp_path, jobs=jobs)
+    assert not (tmp_path / "out").exists()
 
 
 def test_only_checks_from_the_default_branch_are_collected(tmp_path: Path) -> None:
@@ -639,6 +657,44 @@ def test_cli_collect(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None
     (summary,) = json.loads(capsys.readouterr().out)
     assert summary["path"] == "events/2026/10/16/100-1-code-review.jsonl"
     assert summary["tamper"] is False
+
+
+def test_cli_collect_exits_3_while_a_job_has_no_conclusion(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    artifact(tmp_path, "audit-100-1-code-review", audit.dumps(gate_run()))
+    jobs = tmp_path / "jobs.jsonl"
+    jobs.write_text('{"name": "llm / code-review", "conclusion": null}\n')
+    empty = tmp_path / "empty.json"
+    empty.write_text("[]")
+
+    code = main(
+        [
+            "audit",
+            "collect",
+            *expected_args(),
+            "--artifacts",
+            str(tmp_path / "artifacts"),
+            "--checks",
+            '["code-review"]',
+            "--jobs",
+            str(jobs),
+            "--out",
+            str(tmp_path / "out"),
+            "--date",
+            "2026-10-16",
+            "--events",
+            str(empty),
+            "--comments",
+            str(empty),
+        ]
+    )
+
+    assert code == 3
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "not finished: no conclusion yet for: llm / code-review" in captured.err
+    assert not (tmp_path / "out").exists()
 
 
 def test_cli_override(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

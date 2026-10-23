@@ -108,8 +108,24 @@ jobs:
           PR: ${{ steps.pr.outputs.pr }}
         run: |
           WORK="$RUNNER_TEMP/audit"
-          gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs" \
-            --jq '.jobs[] | {name, conclusion}' > "$WORK/jobs.jsonl"
+          # Wait until every job reports a conclusion. Right after `workflow_run: completed` the
+          # API can still say null for jobs that finished moments before (on 2026-10-19 for
+          # minutes), and collecting then wrote tamper_suspected over real reviews in their
+          # append-only paths (#92, #93; ADR 0005). Still null after ~5 min: fail, write nothing,
+          # and a re-run of this job collects the run once GitHub has caught up.
+          for try in $(seq 20); do
+            gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs" \
+              --jq '.jobs[] | {name, conclusion}' > "$WORK/jobs.jsonl"
+            pending=$(jq -r 'select(.conclusion == null) | .name' "$WORK/jobs.jsonl")
+            [ -z "$pending" ] && break
+            if [ "$try" = 20 ]; then
+              message="Jobs with no conclusion yet: ${pending//$'\n'/, }."
+              echo "::error title=audit-collect::$message Nothing was written; re-run this job later."
+              exit 1
+            fi
+            sleep 15
+          done
+          [ "$try" = 1 ] || echo "::notice title=audit-collect::Job conclusions were complete after $try tries."
           gh api --paginate "repos/$REPO/issues/$PR/events" --jq '.[]' | jq -s . > "$WORK/events.json"
           gh api --paginate "repos/$REPO/issues/$PR/comments" --jq '.[]' | jq -s . > "$WORK/comments.json"
           GITHUB_REPOSITORY="$REPO" scripts/override-writers.sh "$WORK/comments.json" > "$WORK/writers.json"

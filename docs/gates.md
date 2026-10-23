@@ -231,6 +231,10 @@ changes CI state for no convenience gain.
   with their free text withheld. The
   `audit-log` ruleset blocks deletion and force pushes. Locally: `just audit-pull`, then `jq` over
   `.audit-log/events/`. Raw results (model output) stay a 90-day workflow artifact.
+  - **A collector run that fails with "Jobs with no conclusion yet":** GitHub hadn't caught up
+    after about 5 minutes. Nothing was written, so re-run that `audit-collect` run once the review
+    run's jobs all show a conclusion. Before 2026-10-24 this case was written as
+    `tamper_suspected` instead, and the append-only log keeps those events (#92, #93; ADR 0005).
 
 ## Release gates (`release.yml`)
 

@@ -610,17 +610,22 @@ def _audit(args: argparse.Namespace) -> int:
             print(f"{args.file}: {len(records)} valid record(s)")
         return 1 if problems else 0
     if args.audit_command == "collect":
-        collected = audit.collect(
-            args.artifacts,
-            expected=_expected(args),
-            checks=frozenset(str(name) for name in args.checks),
-            jobs=audit.read_jobs(args.jobs),
-            workflow_modified=args.workflow_modified,
-            override=_find_override(args),
-            out=args.out,
-            day=args.date or datetime.now(UTC).date(),
-            triage=_triage_expected(args),
-        )
+        try:
+            collected = audit.collect(
+                args.artifacts,
+                expected=_expected(args),
+                checks=frozenset(str(name) for name in args.checks),
+                jobs=audit.read_jobs(args.jobs),
+                workflow_modified=args.workflow_modified,
+                override=_find_override(args),
+                out=args.out,
+                day=args.date or datetime.now(UTC).date(),
+                triage=_triage_expected(args),
+            )
+        except audit.JobsNotFinished as error:
+            # Not a verdict on the records: nothing was written, and a re-run collects them.
+            print(f"the triggering run is not finished: {error}", file=sys.stderr)
+            return 3
         print(json.dumps([vars(c) for c in collected]))
         return 0
     found = _find_override(args)
