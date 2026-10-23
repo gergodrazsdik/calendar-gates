@@ -238,7 +238,8 @@ changes CI state for no convenience gain.
 tag `vX.Y.Z`. The workflow then:
 
 1. **verify**: the tag is SemVer, annotated, signed (verified by GitHub) and on `main`; it also
-   finds the previous release tag.
+   finds the previous release: the last **published** GitHub Release, never just the nearest
+   tag, since a failed release leaves its tag behind (`scripts/previous-release.sh`, ADR 0009).
 2. **build-test**: the same build and tests as pull requests.
 3. **build**: builds the amd64 + arm64 image **once** (no cache) and pushes it by digest, tagged
    only `candidate-vX.Y.Z`. Every later job uses that digest
@@ -247,9 +248,9 @@ tag `vX.Y.Z`. The workflow then:
    pull requests.
 5. **attest**: four attestations on the digest, pushed next to the image: build provenance, the
    SPDX SBOM, the **vulnerability scan** (counts per platform, ignores with their reasons) and the
-   **LLM review** (every PR since the previous release with its gate verdicts on the merged head,
-   plus the unreviewed and unverified ones, from `audit-log`). Each one is a permanent entry in the
-   public Rekor log; that's why only releases are attested.
+   **LLM review** (every PR since the previous published release with its gate verdicts on the
+   merged head, plus the unreviewed and unverified ones, from `audit-log`). Each one is a permanent
+   entry in the public Rekor log; that's why only releases are attested.
 6. **approve**: waits for approval in the `release` environment and then does one thing — attests
    the approval on the digest (`release-approved/v1`), which is what admission requires and what
    lets the next two jobs run. Nothing public is created here (amended 2026-10-18, F071).

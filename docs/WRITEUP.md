@@ -206,6 +206,16 @@ nothing):
     pass). Move back to 3.15 once Dependabot supports it.
   - **What it shows:** a configured updater that never ran looked the same as one with nothing to
     update.
+- **A failed release shortened the next one's review claim.** The attestation covers the PRs since
+  the previous release, which `verify` took to be the nearest tag.
+  - **What it caused:** a failed release keeps its tag, so v0.3.5, after the failed v0.3.3 and
+    v0.3.4, attested only #81 of the twelve PRs it was the first to publish. They had all been
+    reviewed; six `unverified` ones were left out of its claim.
+  - **How it surfaced:** v0.4.0's admission-smoke refused five unreviewed PRs, and asking what a
+    retry would attest showed that v0.4.1 would have measured from the failed `v0.4.0` and been
+    admitted.
+  - **The fix:** the range now starts at the last *published* release, and `verify-release`
+    checks it for every release (ADR 0009).
 
 ## 6. At larger scale
 

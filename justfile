@@ -418,6 +418,15 @@ verify-release version:
           "  unreviewed: \(.unreviewed | map("#\(.number // .commit): \(.reason)") | join("; ") | if . == "" then "none" else . end)",
           "  unverified: \(.unverified | map("#\(.number): \(.reason)") | join("; ") | if . == "" then "none" else . end)"' \
         "$tmp/llm-review.json"
+    # The range must start at the last *published* release, as release.yml computes it since
+    # 2026-10-23: one that started at a failed attempt's tag left PRs out of every review claim
+    # (v0.3.5 attests v0.3.4..v0.3.5 and so omits #70-#80; ADR 0009).
+    from=$(jq -r '.[0].verificationResult.statement.predicate.range.from // ""' "$tmp/llm-review.json")
+    expected=$(GITHUB_REPOSITORY=$repo scripts/previous-release.sh "$commit" "$version")
+    [ "$from" = "$expected" ] || {
+        echo "v$version attests the PRs since ${from:-the first commit}, but the last published release before it is ${expected:-none}" >&2
+        echo "the PRs in between are in no release's review claim" >&2
+        exit 1; }
     # Printing those lists was all this did, so "verified" said nothing about what they contained.
     # `unreviewed` is now an assertion, the same one base/llm-review.yaml denies on; `unverified`
     # stays a warning, because a PR that changed the review workflow is most PRs here and failing

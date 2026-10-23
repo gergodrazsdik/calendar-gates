@@ -56,7 +56,8 @@ A release also said nothing about how its changes were reviewed. The LLM gate's 
 
     The release notes print the same lists. The range starts at the previous **final** release
     for a final version, and at the previous release of any kind for a prerelease. PRs that only
-    reached an `-rc` tag therefore still count for the final release.
+    reached an `-rc` tag therefore still count for the final release. "Release" means a
+    *published* one (amended 2026-10-23, below), not any tag.
 - **Promote after approval *and* after the tests.** `promote` gives the attested digest `X.Y.Z`
   and `X.Y` with `buildx imagetools create`, and checks that both tags resolve to it. It has no
   `environment:` of its own — it can only run because the gated `approve` passed, and the approval
@@ -125,3 +126,22 @@ verifiable outside GitHub.
   such a tag; nothing in the cluster can check ancestry, so that check is the human step.
 - **v0.1.0 and v0.2.0 carry provenance only.** `verify-release` fails for them on the other three
   types.
+- **Amended 2026-10-23: the range starts at the last *published* release, not the nearest tag.**
+  - **The bug:** `verify` used `git describe --tags`, which takes the nearest `v*` tag. A release
+    that fails after tagging leaves its tag on `main` for good: the ruleset blocks deletion, and a
+    version is never reused. The next release then attested only the PRs since the failed tag, and
+    every PR before it fell out of all review claims.
+  - **It had already happened:** v0.3.3 and v0.3.4 failed, and v0.3.5's attestation reads
+    `v0.3.4..v0.3.5`. It lists only #81, though v0.3.5 was the first published release with
+    #70-#81.
+  - **Recomputed over v0.3.2..v0.3.5 with the same tool and audit log:** all 12 were reviewed
+    (`unreviewed` empty). But #74, #75 and #78-#81 were `unverified` and missing from v0.3.5's
+    signed claim and notes. No unreviewed code shipped; the claim was narrower than it read.
+  - **Found with v0.4.0:** its admission-smoke correctly refused it, listing five unreviewed PRs.
+    Retrying as v0.4.1 would have measured from the failed `v0.4.0` tag and dropped all five.
+  - **The fix:** `scripts/previous-release.sh` returns the highest tag before the commit that has
+    a non-draft GitHub Release (only final ones, for a final version). It fails rather than print
+    nothing when the releases can't be listed, since an empty range would attest the whole
+    history. `verify` uses it, and `just verify-release` compares every attestation's
+    `range.from` with it. That check fails for v0.3.5, which is true, and passes for v0.3.6 and
+    v0.3.7.
