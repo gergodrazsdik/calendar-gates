@@ -744,7 +744,7 @@ and listed in the release attestation ([ADR 0005](adr/0005-audit-trail.md), F007
 | 10 | Huge diff (generated file over `max_diff_kb`) | LLM gate reports "too large" per policy instead of spending tokens |
 | 11 | Tag `v0.2.0`, reject the environment approval once, then approve | release waits, then publishes |
 | 12 | Point the readiness probe at `/healthz` in the chart | `k8s-smoke` fails, `--atomic` rolls back, the step summary shows the failing probe events |
-| 13 | Set `runAsUser: 0` in the chart | `runAsNonRoot` makes the pod fail to start; `k8s-smoke` fails; `security-review` may flag it too |
+| 13 | Set `runAsUser: 0` in the chart | Since Phase 22 (ADR 0011): `lint` fails (the rendered chart against `calendar-gates-workload`); `k8s-smoke` fails, because its namespace enforces PSA `restricted`, so the Deployment is admitted with a warning, its pods are refused and Helm rolls back; in `calendar-gates` the Deployment itself is refused by `calendar-gates-workload`. Before Phase 22 the pod only failed to start (`runAsNonRoot`). `security-review` may flag it too |
 
 ---
 
