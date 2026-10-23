@@ -77,13 +77,11 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "commit=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-          # The previous release: the range the llm-review attestation covers. A final release is
-          # measured against the previous final one, so PRs released only in a prerelease count.
-          exclude=()
-          [[ $version == *-* ]] || exclude=(--exclude '*-*')
-          previous=$(git describe --tags --abbrev=0 --match 'v*.*.*' "${exclude[@]}" "$GITHUB_SHA^" \
-            2> /dev/null || true)
-          [[ -z $previous || $previous =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || previous=""
+          # The previous release: where the llm-review attestation's range starts. The last
+          # *published* one, never the nearest tag: a release that failed after tagging leaves its
+          # tag on main, and measuring from it dropped every earlier PR from the next release's
+          # review claim (ADR 0009, amended 2026-10-23). Fails if the releases can't be listed.
+          previous=$(scripts/previous-release.sh "$GITHUB_SHA" "$version")
           echo "previous=$previous" >> "$GITHUB_OUTPUT"
           echo "Releasing $version from $GITHUB_SHA (tag signature: $reason)" >> "$GITHUB_STEP_SUMMARY"
 
