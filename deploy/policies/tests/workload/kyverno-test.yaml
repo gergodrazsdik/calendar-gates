@@ -1,0 +1,58 @@
+# What calendar-gates-workload admits and refuses (docs/adr/0011-workload-hardening.md). The real
+# policy is tested, not a copy: it needs no registry. Every refused case is listed on its own, so a
+# rule that stops firing shows as "want fail, got pass" for the case that exercises it.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: calendar-gates-workload
+policies:
+  - ../../base/workload.yaml
+resources:
+  - resources.yaml
+variables: ../values.yaml
+results:
+  - policy: calendar-gates-workload
+    kind: Pod
+    resources:
+      - compliant
+    result: pass
+  - policy: calendar-gates-workload
+    kind: Pod
+    resources:
+      - root-in-container
+      - runasnonroot-false-in-container
+      - uid-unset
+      - gid-zero
+      - gid-unset
+      - fsgroup-zero
+      - supplemental-group-zero
+      - escalation-unset
+      - privileged-init
+      - root-init-container
+      - writable-root
+      - drop-all-plus-net-raw
+      - drop-lowercase-all
+      - add-net-bind-service
+      - seccomp-unconfined-in-container
+      - seccomp-localhost
+      - host-pid
+      - token-automount-unset
+      - projected-token
+      - no-memory-limit
+    result: fail
+  - policy: calendar-gates-workload
+    kind: Pod
+    resources:
+      - root-elsewhere
+    result: skip
+  # Autogen: the same rules on the pod template, so `helm install` fails at the Deployment.
+  - policy: calendar-gates-workload
+    kind: Deployment
+    resources:
+      - compliant-deployment
+    result: pass
+  - policy: calendar-gates-workload
+    kind: Deployment
+    resources:
+      - writable-root-deployment
+    result: fail

@@ -1,4 +1,4 @@
-# `calendar-gates`: the policies deny (docs/adr/0010-admission-control.md). `../dev` audits.
+# `calendar-gates`: the policies deny (docs/adr/0010-admission-control.md, 0011 for workload.yaml). `../dev` audits.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -7,3 +7,4 @@ resources:
   - release.yaml
   - llm-review.yaml
   - approved.yaml
+  - workload.yaml

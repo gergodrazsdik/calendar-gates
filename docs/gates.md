@@ -22,7 +22,7 @@ is required too (see below).
 |---|---|---|---|---|
 | `pr-title` | `scripts/check-commit-msg.sh --title "<title>"` | PR title is not a Conventional Commit (it becomes the squash commit) | Edit the title, then push (title edits alone don't re-run CI) | none |
 | `format` | `just fmt-check` | CSharpier would change layout, or a code-style/analyzer rule fires | `just fmt`; for rule findings fix the code (the message names the rule) | none; rules live in `.editorconfig` and are changed in their own PR |
-| `lint` | `just lint lint-chart lint-policies` | actionlint, zizmor, hadolint, yamllint, shellcheck, ruff, mypy, the llm-gate tests, the ruleset consistency check, the Kyverno policy tests (`kyverno test`), `helm lint` or kubeconform report a finding | Fix the finding; suppress only inline with a reason (`# zizmor: ignore[...]`, `# shellcheck disable=...`, `# noqa`) | Repo-wide rule changes in `.github/zizmor.yml`, `.yamllint.yaml` |
+| `lint` | `just lint lint-chart lint-policies` | actionlint, zizmor, hadolint, yamllint, shellcheck, ruff, mypy, the llm-gate tests, the ruleset consistency check, the Kyverno policy tests (`kyverno test`), the rendered chart against `calendar-gates-workload` (`scripts/check-chart-admission.sh`), `helm lint` or kubeconform report a finding | Fix the finding; suppress only inline with a reason (`# zizmor: ignore[...]`, `# shellcheck disable=...`, `# noqa`) | Repo-wide rule changes in `.github/zizmor.yml`, `.yamllint.yaml` |
 | `build-test / dotnet` | `just build test` | Build warning (warnings are errors) or a failing test | The **test results** check run lists failures with file/line; coverage is in the job summary | none |
 | `image` | `just image` | Docker build fails | Build output in the job log | none |
 | `http-tests` | `just image http-docker` | An `http/calendar.http` handler assertion fails against the built container | The **http test results** check run names the request; container logs are printed on failure | none |
@@ -255,7 +255,9 @@ tag `vX.Y.Z`. The workflow then:
    installs Kyverno and the policies from `deploy/policies`. It packages the chart with the digest
    pinned in `image.digest`, installs **that tarball** in `calendar-gates` and checks the pods run
    the release digest. It checks that the `edge` image (no release attestations) and a foreign
-   image are denied, each by the policy that should deny them. And it checks that
+   image are denied, each by the policy that should deny them, and that the release digest with a
+   writable root filesystem is denied by `calendar-gates-workload`. Its test pods run as the chart's
+   pod does, so each breaks only the policy it's about. And it checks that
    `calendar-gates-dev` admits `edge` and reports it as a failure. The tarball it installed is
    handed to `promote` as an artifact, so the chart that is published is the one that was tested.
 8. **smoke**: runs the digest, checks `/api/version` reports `X.Y.Z` and runs the contract tests.
@@ -288,7 +290,8 @@ yourself ([ADR 0009](adr/0009-build-once-attest-promote.md)). Deploy it with `ju
 ## Admission control (the project cluster)
 
 Kyverno 1.19.1 on `kind-calendar-gates` (`just k8s-up k8s-policy-up`,
-[ADR 0010](adr/0010-admission-control.md)) enforces four policies.
+[ADR 0010](adr/0010-admission-control.md), [ADR 0011](adr/0011-workload-hardening.md)) enforces
+five policies: four on the image, one on how the pod runs.
 
 | Policy | `calendar-gates` | `calendar-gates-dev` | Fails when |
 |---|---|---|---|
@@ -296,6 +299,7 @@ Kyverno 1.19.1 on `kind-calendar-gates` (`just k8s-up k8s-policy-up`,
 | `calendar-gates-release` | Deny | Audit | There's no build provenance or vulnerability scan signed by `release.yml` on a `v*` tag, or the scan lists a critical finding |
 | `calendar-gates-llm-review` | Deny | Audit | There's no LLM-review attestation signed by `release.yml` on a `v*` tag |
 | `calendar-gates-approved` | Deny | Audit | There's no `release-approved` attestation: the image was never approved in the `release` environment, or it's a rejected candidate. Deny since v0.3.2, the first release that carries one |
+| `calendar-gates-workload` | Deny | Audit | A container or init container isn't non-root with an explicit uid and gid above 0, can escalate privileges or is privileged, has a writable root filesystem, keeps or adds a capability, or doesn't use seccomp `RuntimeDefault`; or the pod uses group 0, a host namespace, a service-account token or no memory limit. Also refuses the Deployment, so `helm install` fails with the rule's message |
 | (any policy) | Deny | Audit | The pod has an **image volume**: nothing can attestation-verify one, so they aren't allowed in `calendar-gates` |
 
 - **Fix a denial:** deploy a release **from v0.3.2 on** (`just k8s-deploy-release X.Y.Z`). v0.3.0
@@ -303,8 +307,11 @@ Kyverno 1.19.1 on `kind-calendar-gates` (`just k8s-up k8s-policy-up`,
   `calendar-gates-dev`, which audits. A local build goes there too
   (`just k8s-deploy calendar-gates-dev`).
 - **See the findings:** `just k8s-policy-report [namespace]` lists the Audit findings.
-- **Test offline:** `just lint-policies` runs the policy tests that need no registry; it's part of
-  `just ci` and the `lint` job.
+- **Test offline:** `just lint-policies` runs the policy tests that need no registry and checks the
+  rendered chart against `calendar-gates-workload`; it's part of `just ci` and the `lint` job.
+- **Fix a workload denial:** the message names the rule and the containers. The chart's
+  `deployment.yaml` is the reference for a compliant pod; a container that needs to write gets an
+  `emptyDir` mount, as `/tmp` does.
 
 ## Hooks are not gates
 

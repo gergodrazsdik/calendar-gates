@@ -128,12 +128,15 @@ jobs:
           helm template calendar-gates "$chart" --set image.digest=$digest |
             docker run --rm -i "$kubeconform" -strict -summary -kubernetes-version 1.37.0 -
       # The image verification itself needs the registry: release.yml's admission-smoke (ADR 0010).
-      - name: Admission policies (kustomize renders, offline kyverno tests)
+      # The rendered chart against calendar-gates-workload: a chart change admission would refuse
+      # fails here, on the PR (ADR 0011).
+      - name: Admission policies (kustomize renders, offline kyverno tests, the chart passes them)
         run: |
           kubectl kustomize deploy/policies > /dev/null
           uv run --locked --script scripts/check-policy-clauses.py
           kyverno="$KYVERNO_CLI_IMAGE"
           docker run --rm -v "$PWD:/repo:ro" --workdir /repo "$kyverno" test deploy/policies/tests --remove-color
+          scripts/check-chart-admission.sh
 
   build-test:
     name: build-test

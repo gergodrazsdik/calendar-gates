@@ -312,7 +312,7 @@ lint-chart:
         --set image.digest=sha256:0000000000000000000000000000000000000000000000000000000000000000 \
         | kubeconform -strict -summary -kubernetes-version 1.37.0 -
 
-# The admission policies: both kustomize layers render, and the offline kyverno tests pass (the image verification itself runs in release.yml's admission-smoke)
+# The admission policies: both kustomize layers render, the offline kyverno tests pass, and the rendered chart passes calendar-gates-workload (the image verification itself runs in release.yml's admission-smoke)
 [group('format')]
 lint-policies:
     #!/usr/bin/env bash
@@ -323,6 +323,7 @@ lint-policies:
     kubectl --context {{ kube_context }} kustomize deploy/policies > /dev/null
     uv run --locked --script scripts/check-policy-clauses.py
     kyverno test deploy/policies/tests --remove-color
+    scripts/check-chart-admission.sh
 
 # Tag main as vX.Y.Z (signed) and push the tag; release.yml then waits for your approval
 [group('release')]

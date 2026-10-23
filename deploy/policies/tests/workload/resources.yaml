@@ -1,0 +1,693 @@
+# Pods for kyverno test (kyverno-test.yaml): what calendar-gates-workload admits and refuses.
+# Each case is the chart's pod with exactly one change, so each fails exactly one rule.
+# Generated once from that pod; edit the cases by hand from here on.
+# yamllint disable rule:line-length
+# The chart's pod (deploy/helm/calendar-gates/templates/deployment.yaml).
+apiVersion: v1
+kind: Pod
+metadata: {name: compliant, namespace: calendar-gates}
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1654
+    runAsGroup: 1654
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: api
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        limits: {memory: 256Mi}
+      volumeMounts:
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - name: tmp
+      emptyDir: {sizeLimit: 64Mi}
+---
+# The pod says 1654, the container overrides it with 0.
+apiVersion: v1
+kind: Pod
+metadata: {name: root-in-container, namespace: calendar-gates}
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1654
+    runAsGroup: 1654
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: api
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+        runAsUser: 0
+      resources:
+        limits: {memory: 256Mi}
+      volumeMounts:
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - name: tmp
+      emptyDir: {sizeLimit: 64Mi}
+---
+# The container switches runAsNonRoot off under a compliant pod.
+apiVersion: v1
+kind: Pod
+metadata: {name: runasnonroot-false-in-container, namespace: calendar-gates}
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1654
+    runAsGroup: 1654
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: api
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+        runAsNonRoot: false
+      resources:
+        limits: {memory: 256Mi}
+      volumeMounts:
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - name: tmp
+      emptyDir: {sizeLimit: 64Mi}
+---
+# runAsNonRoot alone: PSA admits it and lets the image choose the uid.
+apiVersion: v1
+kind: Pod
+metadata: {name: uid-unset, namespace: calendar-gates}
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsGroup: 1654
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: api
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        limits: {memory: 256Mi}
+      volumeMounts:
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - name: tmp
+      emptyDir: {sizeLimit: 64Mi}
+---
+# PSA doesn't check groups.
+apiVersion: v1
+kind: Pod
+metadata: {name: gid-zero, namespace: calendar-gates}
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1654
+    runAsGroup: 0
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: api
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        limits: {memory: 256Mi}
+      volumeMounts:
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - name: tmp
+      emptyDir: {sizeLimit: 64Mi}
+---
+# Unset means the image's group, as an unset uid means the image's user.
+apiVersion: v1
+kind: Pod
+metadata: {name: gid-unset, namespace: calendar-gates}
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1654
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: api
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        limits: {memory: 256Mi}
+      volumeMounts:
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - name: tmp
+      emptyDir: {sizeLimit: 64Mi}
+---
+# Volumes owned by group 0.
+apiVersion: v1
+kind: Pod
+metadata: {name: fsgroup-zero, namespace: calendar-gates}
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1654
+    runAsGroup: 1654
+    seccompProfile: {type: RuntimeDefault}
+    fsGroup: 0
+  containers:
+    - name: api
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        limits: {memory: 256Mi}
+      volumeMounts:
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - name: tmp
+      emptyDir: {sizeLimit: 64Mi}
+---
+# Group 0 as a supplementary group.
+apiVersion: v1
+kind: Pod
+metadata: {name: supplemental-group-zero, namespace: calendar-gates}
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1654
+    runAsGroup: 1654
+    seccompProfile: {type: RuntimeDefault}
+    supplementalGroups: [1654, 0]
+  containers:
+    - name: api
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        limits: {memory: 256Mi}
+      volumeMounts:
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - name: tmp
+      emptyDir: {sizeLimit: 64Mi}
+---
+# Unset allowPrivilegeEscalation is true.
+apiVersion: v1
+kind: Pod
+metadata: {name: escalation-unset, namespace: calendar-gates}
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1654
+    runAsGroup: 1654
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: api
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      securityContext:
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        limits: {memory: 256Mi}
+      volumeMounts:
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - name: tmp
+      emptyDir: {sizeLimit: 64Mi}
+---
+# A privileged init container next to a compliant app container.
+apiVersion: v1
+kind: Pod
+metadata: {name: privileged-init, namespace: calendar-gates}
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1654
+    runAsGroup: 1654
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: api
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        limits: {memory: 256Mi}
+      volumeMounts:
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - name: tmp
+      emptyDir: {sizeLimit: 64Mi}
+  initContainers:
+    - name: init
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+        privileged: true
+      resources:
+        limits: {memory: 256Mi}
+---
+# An init container running as root.
+apiVersion: v1
+kind: Pod
+metadata: {name: root-init-container, namespace: calendar-gates}
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1654
+    runAsGroup: 1654
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: api
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        limits: {memory: 256Mi}
+      volumeMounts:
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - name: tmp
+      emptyDir: {sizeLimit: 64Mi}
+  initContainers:
+    - name: init
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+        runAsUser: 0
+      resources:
+        limits: {memory: 256Mi}
+---
+# PSA doesn't check the root filesystem; drill 24.
+apiVersion: v1
+kind: Pod
+metadata: {name: writable-root, namespace: calendar-gates}
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1654
+    runAsGroup: 1654
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: api
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: false
+        capabilities:
+          drop: [ALL]
+      resources:
+        limits: {memory: 256Mi}
+      volumeMounts:
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - name: tmp
+      emptyDir: {sizeLimit: 64Mi}
+---
+# Dropping ALL and adding one back.
+apiVersion: v1
+kind: Pod
+metadata: {name: drop-all-plus-net-raw, namespace: calendar-gates}
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1654
+    runAsGroup: 1654
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: api
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+          add: [NET_RAW]
+      resources:
+        limits: {memory: 256Mi}
+      volumeMounts:
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - name: tmp
+      emptyDir: {sizeLimit: 64Mi}
+---
+# Not the exact string ALL.
+apiVersion: v1
+kind: Pod
+metadata: {name: drop-lowercase-all, namespace: calendar-gates}
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1654
+    runAsGroup: 1654
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: api
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [all]
+      resources:
+        limits: {memory: 256Mi}
+      volumeMounts:
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - name: tmp
+      emptyDir: {sizeLimit: 64Mi}
+---
+# PSA allows it; the app listens on 8080 and needs none.
+apiVersion: v1
+kind: Pod
+metadata: {name: add-net-bind-service, namespace: calendar-gates}
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1654
+    runAsGroup: 1654
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: api
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+          add: [NET_BIND_SERVICE]
+      resources:
+        limits: {memory: 256Mi}
+      volumeMounts:
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - name: tmp
+      emptyDir: {sizeLimit: 64Mi}
+---
+# The container overrides the pod's RuntimeDefault.
+apiVersion: v1
+kind: Pod
+metadata: {name: seccomp-unconfined-in-container, namespace: calendar-gates}
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1654
+    runAsGroup: 1654
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: api
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+        seccompProfile: {type: Unconfined}
+      resources:
+        limits: {memory: 256Mi}
+      volumeMounts:
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - name: tmp
+      emptyDir: {sizeLimit: 64Mi}
+---
+# PSA allows a Localhost profile; it is a file on the node nobody reviews.
+apiVersion: v1
+kind: Pod
+metadata: {name: seccomp-localhost, namespace: calendar-gates}
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1654
+    runAsGroup: 1654
+    seccompProfile: {type: Localhost, localhostProfile: x.json}
+  containers:
+    - name: api
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        limits: {memory: 256Mi}
+      volumeMounts:
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - name: tmp
+      emptyDir: {sizeLimit: 64Mi}
+---
+# The host's process namespace.
+apiVersion: v1
+kind: Pod
+metadata: {name: host-pid, namespace: calendar-gates}
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1654
+    runAsGroup: 1654
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: api
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        limits: {memory: 256Mi}
+      volumeMounts:
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - name: tmp
+      emptyDir: {sizeLimit: 64Mi}
+  hostPID: true
+---
+# Unset means the service account decides, and the default one mounts a token.
+apiVersion: v1
+kind: Pod
+metadata: {name: token-automount-unset, namespace: calendar-gates}
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1654
+    runAsGroup: 1654
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: api
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        limits: {memory: 256Mi}
+      volumeMounts:
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - name: tmp
+      emptyDir: {sizeLimit: 64Mi}
+---
+# automountServiceAccountToken is false, but the token is mounted by hand.
+apiVersion: v1
+kind: Pod
+metadata: {name: projected-token, namespace: calendar-gates}
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1654
+    runAsGroup: 1654
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: api
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      resources:
+        limits: {memory: 256Mi}
+      volumeMounts:
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - name: tmp
+      emptyDir: {sizeLimit: 64Mi}
+    - name: token
+      projected:
+        sources:
+          - serviceAccountToken: {path: token}
+---
+# A runaway pod can take the single node down.
+apiVersion: v1
+kind: Pod
+metadata: {name: no-memory-limit, namespace: calendar-gates}
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1654
+    runAsGroup: 1654
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: api
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      volumeMounts:
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - name: tmp
+      emptyDir: {sizeLimit: 64Mi}
+---
+# Autogen: the compliant pod template in a Deployment is admitted.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: compliant-deployment, namespace: calendar-gates}
+spec:
+  selector:
+    matchLabels: &id001 {app.kubernetes.io/name: compliant-deployment}
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: api
+          image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            limits: {memory: 256Mi}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {sizeLimit: 64Mi}
+---
+# Autogen: a Deployment with a writable root filesystem is refused at the Deployment, not later at its pods.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: writable-root-deployment, namespace: calendar-gates}
+spec:
+  selector:
+    matchLabels: &id001 {app.kubernetes.io/name: writable-root-deployment}
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654
+        runAsGroup: 1654
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: api
+          image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            limits: {memory: 256Mi}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {sizeLimit: 64Mi}
+---
+# Outside calendar-gates the policy doesn't apply.
+apiVersion: v1
+kind: Pod
+metadata: {name: root-elsewhere, namespace: default}
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1654
+    runAsGroup: 1654
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: api
+      image: ghcr.io/gergodrazsdik/calendar-gates@sha256:10f58f25e5c30254c1f2225fdd6cf308229736dd44175656cbc8d69eb921a7c5
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+        runAsUser: 0
+        privileged: true
+      resources:
+        limits: {memory: 256Mi}
+      volumeMounts:
+        - {name: tmp, mountPath: /tmp}
+  volumes:
+    - name: tmp
+      emptyDir: {sizeLimit: 64Mi}
