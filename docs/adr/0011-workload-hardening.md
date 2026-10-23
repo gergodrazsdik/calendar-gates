@@ -85,6 +85,17 @@ engine choice. Where they disagreed, the decisions below say which way it went.
    changing the `pod-security.kubernetes.io/*` labels on both namespaces. Without it, editing the
    label would be PSA's one bypass.
 
+   Built in Phase 22 step 4 as `calendar-gates-namespaces` (`deploy/policies/guards/`).
+   - **What it checks:** values, not "unchanged since before". `calendar-gates` enforces
+     `restricted`; dev enforces `baseline` or `restricted`; both pin `enforce-version` to a minor
+     and warn and audit at `restricted`. So a version bump with the node image needs no change to
+     the guard.
+   - **Where it lives:** not in `base/`, whose policies the dev overlay rewrites into Audit copies.
+   - **Its scope:** its `namespaceSelector` is checked against the Namespace object itself. The
+     webhook Kyverno generates carries that selector (checked on the cluster), so the fail-closed
+     webhook only ever sees these two namespaces. With Kyverno down, their labels can't be
+     changed; every other namespace is unaffected.
+
 **Deny from the first PR.** The earlier Audit periods (LLM review, approval; ADR 0010) existed
 because older releases didn't carry the new attestations. Here every release of the chart
 complies, and `admission-smoke` runs before anything is published (F071). So a rule that is
@@ -132,8 +143,16 @@ wrong fails a release candidate, not a published release.
   - **Anything about mirror pods.** Kyverno skips requests from `system:nodes` (the chart's
     default), though PSA still checks those pods.
 - **Kyverno PolicyExceptions are switched off** in the pinned chart
-  (`features.policyExceptions.enabled: false`), but the CRD is installed. `admission-smoke` proves
-  an exception doesn't work rather than assuming it.
+  (`features.policyExceptions.enabled: false`, so `--enablePolicyException=false`), but both CRDs
+  are installed.
+  - **What happens:** Kyverno *accepts* a `policies.kyverno.io/v1` PolicyException, warning that
+    it "would not be processed until it is enabled", and ignores it.
+  - **What's tested:** `admission-smoke` creates one for `calendar-gates-workload` and checks the
+    pod it names is still refused (checked on the cluster, 2026-10-23).
+  - **What isn't:** that the same exception *would* match if exceptions were enabled. Proving that
+    would need Kyverno installed with them on.
+  - **What must not change:** turning exceptions on is a bypass of every policy here, so that chart
+    value must not change without amending this ADR.
 - **`readOnlyRootFilesystem` proves less than its name suggests.** `/tmp` is a writable emptyDir,
   so the setting doesn't stop a payload being written and run. It stops runtime changes to `/app`,
   which uid 1654 can't write anyway. The rule is kept because it costs nothing, and because

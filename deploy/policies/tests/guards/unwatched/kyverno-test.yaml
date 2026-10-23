@@ -1,0 +1,15 @@
+# calendar-gates-namespaces (deploy/policies/guards/namespaces.yaml).
+# Enforcement intact, but violations no longer warned about or audited.
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: calendar-gates-namespaces-unwatched
+policies:
+  - ../../../guards/namespaces.yaml
+resources:
+  - resources.yaml
+results:
+  - policy: calendar-gates-namespaces
+    kind: Namespace
+    resources: [calendar-gates, calendar-gates-dev]
+    result: fail

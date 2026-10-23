@@ -421,45 +421,8 @@ jobs:
           done
       - name: Unattested, foreign and unhardened pods are denied in calendar-gates
         run: |
-          # Each test pod runs as the chart's pod does (ADR 0011), so it breaks only the rule the
-          # case is about. Pod Security Admission answers before any webhook and stops the request
-          # there, so a pod that broke `restricted` would never reach the policy under test. And the
-          # image-attestation policies each have their own webhook, called in parallel with the one
-          # that serves calendar-gates-images and -workload (that one reports both).
-          # pod name, image of the app container, image of an init container ("" for none),
-          # readOnlyRootFilesystem, extra container securityContext, extra pod spec line
-          pod() {
-            local init=""
-            [ -n "$3" ] && init="initContainers: [{name: sneak, image: \"$3\", $(container)}]"
-            cat <<EOF
-          apiVersion: v1
-          kind: Pod
-          metadata: {name: $1, namespace: calendar-gates}
-          spec:
-            automountServiceAccountToken: false
-            securityContext:
-              runAsNonRoot: true
-              runAsUser: 1654
-              runAsGroup: 1654
-              seccompProfile: {type: RuntimeDefault}
-            $init
-            containers: [{name: app, image: "$2", $(container "${4:-true}" "${5:-}")}]
-            ${6:-}
-          EOF
-          }
-          container() { # the chart's container securityContext and memory limit, on one line
-            local sc="allowPrivilegeEscalation: false, readOnlyRootFilesystem: ${1:-true}, capabilities: {drop: [ALL]}"
-            echo "securityContext: {$sc${2:+, $2}}, resources: {limits: {memory: 64Mi}}"
-          }
-          refused() { # description, an ERE the refusal must match; the pod on stdin
-            if out=$(kubectl create --dry-run=server -f - 2>&1); then
-              echo "::error::$1 was admitted in calendar-gates"; exit 1
-            fi
-            echo "$out"
-            grep -qE "$2" <<< "$out" || { echo "::error::$1 was not refused by $2"; exit 1; }
-          }
-          policy() { echo "Policy ($1) failed"; }
-          psa='violates PodSecurity "restricted:v1\.35"'
+          # pod(), refused(), policy() and $psa; why each test pod runs as the chart's does.
+          . scripts/admission-fixtures.sh
           # All three attestation policies deny `edge`, and their webhooks are called in parallel,
           # so any one of them can be the one that answers first. `calendar-gates-approved` has
           # been in that set since it went Deny in v0.3.2 (#71) but wasn't listed here, which made
@@ -479,6 +442,37 @@ jobs:
             | refused "a hostPath volume" "$psa"
           # Root: both layers refuse it, and PSA answers first (ADR 0011, measured 2026-10-23).
           pod root "$IMAGE@$DIGEST" "" true "runAsUser: 0" | refused "a root container" "$psa"
+      # The two ways around the layers above (ADR 0011): relabelling the namespace so PSA stops
+      # enforcing, and a Kyverno PolicyException. Neither may work.
+      - name: Bypass attempts are refused
+        run: |
+          . scripts/admission-fixtures.sh
+          guard=$(policy calendar-gates-namespaces)
+          refused "relabelling calendar-gates to privileged" "$guard" \
+            kubectl label ns calendar-gates --overwrite --dry-run=server \
+            pod-security.kubernetes.io/enforce=privileged
+          refused "removing the enforce label" "$guard" \
+            kubectl label ns calendar-gates --dry-run=server pod-security.kubernetes.io/enforce-
+          # PolicyExceptions are off in the pinned chart (--enablePolicyException=false), but the
+          # CRDs are installed, so a tenant can create one. Created for real, since a dry run
+          # proves nothing; Kyverno refusing to create it at all would pass too.
+          if kubectl apply -f - <<EOF
+          apiVersion: policies.kyverno.io/v1
+          kind: PolicyException
+          metadata: {name: writable-root, namespace: calendar-gates}
+          spec:
+            policyRefs: [{kind: ValidatingPolicy, name: calendar-gates-workload}]
+            matchConditions:
+              - name: the-test-pod
+                expression: object.metadata.name == 'writable-root'
+          EOF
+          then
+            pod writable-root "$IMAGE@$DIGEST" "" false \
+              | refused "a writable root filesystem under a PolicyException" "$(policy calendar-gates-workload)"
+            kubectl -n calendar-gates delete policyexception.policies.kyverno.io writable-root
+          else
+            echo "the PolicyException itself was refused"
+          fi
       - name: calendar-gates-dev admits edge and reports it
         run: |
           kubectl -n calendar-gates-dev run edge --image="$IMAGE:edge" --restart=Never

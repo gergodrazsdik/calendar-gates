@@ -260,7 +260,9 @@ tag `vX.Y.Z`. The workflow then:
    image are denied, each by the policy that should deny them, and that the release digest with a
    writable root filesystem is denied by `calendar-gates-workload`, and with a hostPath volume or
    as root by Pod Security Admission. Its test pods run as the chart's pod does, so each breaks
-   only the rule it's about. And it checks that
+   only the rule it's about (`scripts/admission-fixtures.sh`). Two bypass attempts must fail
+   too: relabelling `calendar-gates` so PSA stops enforcing, and a Kyverno PolicyException for the
+   writable-root pod. And it checks that
    `calendar-gates-dev` admits `edge` and reports it as a failure. The tarball it installed is
    handed to `promote` as an artifact, so the chart that is published is the one that was tested.
 8. **smoke**: runs the digest, checks `/api/version` reports `X.Y.Z` and runs the contract tests.
@@ -294,7 +296,7 @@ yourself ([ADR 0009](adr/0009-build-once-attest-promote.md)). Deploy it with `ju
 
 Kyverno 1.19.1 on `kind-calendar-gates` (`just k8s-up k8s-policy-up`,
 [ADR 0010](adr/0010-admission-control.md), [ADR 0011](adr/0011-workload-hardening.md)) enforces
-five policies: four on the image, one on how the pod runs.
+six policies: four on the image, one on how the pod runs, and one guarding the namespace labels.
 
 Under them, **Pod Security Admission** is built into the API server and runs before any Kyverno
 webhook ([ADR 0011](adr/0011-workload-hardening.md)). The namespace labels are in
@@ -314,6 +316,7 @@ pod with the chart's `deployment.yaml`.
 | `calendar-gates-llm-review` | Deny | Audit | There's no LLM-review attestation signed by `release.yml` on a `v*` tag |
 | `calendar-gates-approved` | Deny | Audit | There's no `release-approved` attestation: the image was never approved in the `release` environment, or it's a rejected candidate. Deny since v0.3.2, the first release that carries one |
 | `calendar-gates-workload` | Deny | Audit | A container or init container isn't non-root with an explicit uid and gid above 0, can escalate privileges or is privileged, has a writable root filesystem, keeps or adds a capability, or doesn't use seccomp `RuntimeDefault`; or the pod uses group 0, a host namespace, a service-account token or no memory limit. Also refuses the Deployment, so `helm install` fails with the rule's message |
+| `calendar-gates-namespaces` | Deny | Deny | A namespace's Pod Security labels are weakened or removed: `calendar-gates` must enforce `restricted`, dev `baseline` or stricter, both pinned to a minor version and warning and auditing at `restricted`. One policy for both namespaces (`deploy/policies/guards/`) |
 | (any policy) | Deny | Audit | The pod has an **image volume**: nothing can attestation-verify one, so they aren't allowed in `calendar-gates` |
 
 - **Fix a denial:** deploy a release **from v0.3.2 on** (`just k8s-deploy-release X.Y.Z`). v0.3.0
