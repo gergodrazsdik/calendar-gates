@@ -1,4 +1,15 @@
+# Pod Security Admission `restricted` is the floor under the Kyverno policies
+# (docs/adr/0011-workload-hardening.md): built into the API server, no webhook that can be down.
+# The enforce version is pinned to the node's minor (deploy/kind/cluster.yaml), so a Kubernetes
+# upgrade can't change the rules silently: bump it in the same PR as the node image. `warn` and
+# `audit` follow the latest version, to show what the next one would add. The dev overlay enforces
+# only `baseline` and warns on `restricted`. ci.yml's k8s-smoke applies this file too.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: calendar-gates
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.35
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted

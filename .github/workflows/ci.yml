@@ -297,6 +297,10 @@ jobs:
           cluster_name: smoke
       - name: Load the tested image into kind
         run: kind load image-archive "$RUNNER_TEMP/image.tar" --name smoke
+      # The namespace with its Pod Security Admission labels (`restricted`, ADR 0011), so a chart
+      # change that admission would refuse fails here, on the PR.
+      - name: Namespace (enforces the restricted Pod Security Standard)
+        run: kubectl apply -f deploy/policies/base/namespace.yaml
       - name: Install the chart (rolls back unless every pod becomes ready)
         run: >-
           helm upgrade --install calendar-gates deploy/helm/calendar-gates

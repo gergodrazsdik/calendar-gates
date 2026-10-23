@@ -98,7 +98,8 @@ Details, fixes and overrides: `docs/gates.md`.
 11. Admission (releases, [ADR 0010](docs/adr/0010-admission-control.md),
     [ADR 0011](docs/adr/0011-workload-hardening.md)): Kyverno admits only attested release images,
     in hardened pods (non-root, read-only root, no capabilities, no token), in `calendar-gates`
-    and audits `calendar-gates-dev`.
+    and audits `calendar-gates-dev`. Pod Security Admission (`restricted`, namespace labels) is the
+    floor under Kyverno and also applies in k8s-smoke.
     `release.yml`'s `admission-smoke` proves it on every release. Locally: `just k8s-up
     k8s-policy-up`, `just k8s-policy-report`; offline tests: `just lint-policies`.
 

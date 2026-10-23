@@ -113,7 +113,9 @@ changes CI state for no convenience gain.
   gate fails.
 - **k8s-smoke** installs the chart with the tested image on a throwaway kind cluster
   (`helm/kind-action`), with `--rollback-on-failure`, then runs the contract tests through a
-  port-forward ([ADR 0003](adr/0003-kind-access.md)).
+  port-forward ([ADR 0003](adr/0003-kind-access.md)). The namespace comes from
+  `deploy/policies/base/namespace.yaml`, so it enforces the `restricted` Pod Security Standard as
+  the project cluster does: a chart change that breaks it fails here, with PSA's message.
 - **publish-edge** (push to `main` only, not a gate) pushes the tested image as
   `ghcr.io/gergodrazsdik/calendar-gates:edge` and `:sha-<short>`.
 - **gates** is red unless every gate it needs **succeeded**: failed, cancelled and *skipped* all
@@ -256,8 +258,9 @@ tag `vX.Y.Z`. The workflow then:
    pinned in `image.digest`, installs **that tarball** in `calendar-gates` and checks the pods run
    the release digest. It checks that the `edge` image (no release attestations) and a foreign
    image are denied, each by the policy that should deny them, and that the release digest with a
-   writable root filesystem is denied by `calendar-gates-workload`. Its test pods run as the chart's
-   pod does, so each breaks only the policy it's about. And it checks that
+   writable root filesystem is denied by `calendar-gates-workload`, and with a hostPath volume or
+   as root by Pod Security Admission. Its test pods run as the chart's pod does, so each breaks
+   only the rule it's about. And it checks that
    `calendar-gates-dev` admits `edge` and reports it as a failure. The tarball it installed is
    handed to `promote` as an artifact, so the chart that is published is the one that was tested.
 8. **smoke**: runs the digest, checks `/api/version` reports `X.Y.Z` and runs the contract tests.
@@ -292,6 +295,17 @@ yourself ([ADR 0009](adr/0009-build-once-attest-promote.md)). Deploy it with `ju
 Kyverno 1.19.1 on `kind-calendar-gates` (`just k8s-up k8s-policy-up`,
 [ADR 0010](adr/0010-admission-control.md), [ADR 0011](adr/0011-workload-hardening.md)) enforces
 five policies: four on the image, one on how the pod runs.
+
+Under them, **Pod Security Admission** is built into the API server and runs before any Kyverno
+webhook ([ADR 0011](adr/0011-workload-hardening.md)). The namespace labels are in
+`deploy/policies/base/namespace.yaml`:
+
+- **`calendar-gates`** enforces `restricted`, pinned to `v1.35`, the node's version. It warns and
+  audits at the latest version. The pin moves with the node image.
+- **`calendar-gates-dev`** enforces `baseline` and warns and audits at `restricted`.
+
+A PSA refusal reads `violates PodSecurity "restricted:v1.35": …` and names the field. Compare the
+pod with the chart's `deployment.yaml`.
 
 | Policy | `calendar-gates` | `calendar-gates-dev` | Fails when |
 |---|---|---|---|

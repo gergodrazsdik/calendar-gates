@@ -111,12 +111,19 @@ wrong fails a release candidate, not a published release.
 
 ## Consequences
 
-- **PSA runs before Kyverno's webhooks.** The PodSecurity plugin comes before the validating
-  webhooks in the API server's admission chain, and the chain stops at the first refusal.
-  `admission-smoke`'s negative pods (`kubectl run edge`, `foreign`, the `init-edge` manifest) have
-  no `securityContext`. Under `enforce: restricted`, PSA would refuse them first, and their
-  "refused by policy X" checks would fail the release. They must become `restricted`-compliant in
-  the same PR that adds the labels, so each one still tests its image policy.
+- **PSA runs before Kyverno's webhooks** (measured on the project cluster, 2026-10-23). The
+  PodSecurity plugin comes before the validating webhooks in the API server's admission chain, and
+  the chain stops at the first refusal.
+  - A root pod, and a foreign image running as root, were refused by PSA in five out of five
+    tries each, never by Kyverno.
+  - So `admission-smoke`'s negative pods must be `restricted`-compliant (they are since #101), or
+    PSA would answer instead of the policy under test.
+  - Within `calendar-gates`, the Kyverno rules that repeat PSA (non-root, privilege escalation,
+    host namespaces) never fire while the label is there. They still do work: they check the chart
+    in CI, report in `calendar-gates-dev`, and stand in if the label goes.
+- **One webhook serves both plain `ValidatingPolicies`** (`images` and `workload`). It reports every
+  policy that failed, each with its first failed rule. Each image-attestation policy has its own
+  webhook, called in parallel, which is where the races in `admission-smoke` come from.
 - **What it proves:** the pod spec submitted to `calendar-gates` is hardened.
 - **What it doesn't prove:**
   - **That the kubelet and runtime honour it.**

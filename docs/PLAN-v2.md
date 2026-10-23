@@ -42,7 +42,7 @@ deviation is recorded in the ADR named here.
 - **The live `/llm-fp` → eval-case loop:** waiting for a genuine false positive.
 
 **Phase 22** (workload hardening, [ADR 0011](adr/0011-workload-hardening.md)) was added on
-2026-10-23 and is in progress: steps 1 (decision) and 2 (`calendar-gates-workload`) are done.
+2026-10-23 and is in progress: steps 1 (decision), 2 (`calendar-gates-workload`) and 3 (Pod Security Admission) are done.
 
 ---
 
