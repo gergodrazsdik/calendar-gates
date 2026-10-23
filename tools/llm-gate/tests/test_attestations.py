@@ -251,6 +251,26 @@ def test_a_recollected_review_counts_and_its_tamper_events_stay_on_record(tmp_pa
     assert predicate["unverified"] == [{"number": 5, "reason": "tamper_suspected (1)"}]
 
 
+def test_a_review_after_merge_counts_and_the_notes_say_so(tmp_path: Path) -> None:
+    # #97 on 2026-10-24: a Dependabot PR that merged with skipped_no_key, then reviewed by
+    # llm-review's workflow_dispatch. The later run wins for each check, and it is marked.
+    log = write_log(
+        tmp_path,
+        gate_run(6, "code-review", "skipped_no_key", run=1),
+        gate_run(6, "security-review", "skipped_no_key", run=1),
+        gate_run(6, "code-review", "pass", run=2, reviewed_after_merge=True),
+        gate_run(6, "security-review", "pass", run=2, reviewed_after_merge=True),
+    )
+
+    predicate = attestations.llm_review([commit(6)], log, range_from="v1", range_to="v2")
+
+    assert predicate["unreviewed"] == []
+    (pr,) = predicate["prs"]
+    assert pr["reviewed_after_merge"] is True
+    notes = attestations.render_notes(predicate)
+    assert "**Reviewed after merge**" in notes and "- #6" in notes
+
+
 def test_notes_without_gaps_have_no_gap_sections(tmp_path: Path) -> None:
     log = write_log(tmp_path, gate_run(1, "code-review", "pass", risk="low"))
     notes = attestations.render_notes(

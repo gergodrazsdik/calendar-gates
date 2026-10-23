@@ -177,5 +177,23 @@ output can't simply be trusted either.
       - #93's 39287691571 gives the 5 tampered checks, skipping triage and workflow-review, which
         were confirmed the first time;
       - a healthy run is skipped entirely, and a CI run is refused.
+  - **Review after merge, for PRs that never had a review** (2026-10-24). Dependabot PRs ran
+    without the API key (`skipped_no_key`) until it became a Dependabot secret, and a merged PR
+    can't get a `pull_request` run any more.
+    - **The run:** `llm-review.yml` runs on `workflow_dispatch` with a PR number.
+      - Its `target` job refuses anything but a PR merged into the default branch.
+      - It refuses a dispatch from any other branch, so the workflow file and the gate are both
+        the default branch's.
+      - It reviews the PR's merged head exactly like a `pull_request` run.
+      - It posts no labels or comments, and honours no override.
+    - **The collector:** it accepts `workflow_dispatch` runs of llm-review only from the default
+      branch.
+      - It takes the PR from the run name (`review after merge: #N`, strictly matched), checks
+        through the API that it is merged, and validates the records against the PR's merged head
+        instead of the event's.
+      - Records are marked `reviewed_after_merge`, a collector-only field like
+        `workflow_modified`; an artifact that sets it is tamper.
+    - **The attestation:** it carries the flag per PR, and the release notes list those PRs, so
+      "reviewed" never silently means "reviewed before merging".
 - The collector compares the record with the job's conclusion from the Actions jobs API (the
   `llm / <check>` job *is* that check run), so it needs `actions: read` and no `checks: read`.

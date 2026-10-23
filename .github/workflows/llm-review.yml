@@ -13,26 +13,100 @@
 # ADR 0005: every check appends an audit record (.llm-gate/audit.jsonl) and uploads it as
 # audit-<run>-<attempt>-<check> (triage: -triage); audit-collect.yml (default branch) validates
 # it into audit-log.
+#
+# Review after merge (workflow_dispatch, ADR 0005): the same review of a PR that merged without one,
+# e.g. a Dependabot PR before the API key was a Dependabot secret. The `target` job reads the PR from
+# the API and refuses anything but a merged PR into the default branch, dispatched on the default
+# branch (so this file, too, is the default branch's). The records are those of a normal run for the
+# PR's merged head; the collector marks them reviewed_after_merge, and the release notes say so.
+# Nothing is posted to the merged PR: no labels, no comment, and no override to honour.
 name: llm-review
+run-name: >-
+  ${{ github.event_name == 'workflow_dispatch'
+  && format('review after merge: #{0}', inputs.pr) || github.event.pull_request.title }}
 
 on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, labeled, unlabeled]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: The merged pull request to review (its number)
+        required: true
+        type: string
 
 permissions: {}
 
 concurrency:
-  group: llm-review-${{ github.event.pull_request.number }}
+  group: llm-review-${{ github.event.pull_request.number || inputs.pr }}
   cancel-in-progress: true
 
 jobs:
+  # Which PR, at which head, against which base: from the event, or for a review after merge from
+  # the API. Every later job takes these outputs instead of github.event.pull_request.
+  target:
+    name: target
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      pr: ${{ steps.pr.outputs.pr }}
+      head_sha: ${{ steps.pr.outputs.head_sha }}
+      base_ref: ${{ steps.pr.outputs.base_ref }}
+      updated_at: ${{ steps.pr.outputs.updated_at }}
+      after_merge: ${{ steps.pr.outputs.after_merge }}
+    steps:
+      - name: The pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+          EVENT_HEAD: ${{ github.event.pull_request.head.sha }}
+          EVENT_BASE: ${{ github.event.pull_request.base.ref }}
+          EVENT_UPDATED: ${{ github.event.pull_request.updated_at }}
+          INPUT_PR: ${{ inputs.pr }}
+          REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [ "$EVENT_NAME" != workflow_dispatch ]; then
+            {
+              echo "pr=$EVENT_PR"
+              echo "head_sha=$EVENT_HEAD"
+              echo "base_ref=$EVENT_BASE"
+              echo "updated_at=$EVENT_UPDATED"
+              echo "after_merge=false"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          [[ $INPUT_PR =~ ^[0-9]+$ ]] || { echo "::error::pr must be a number"; exit 1; }
+          [ "$REF" = "refs/heads/$DEFAULT_BRANCH" ] || {
+            echo "::error::a review after merge runs from $DEFAULT_BRANCH, not $REF"; exit 1; }
+          pr=$(gh api "repos/$REPO/pulls/$INPUT_PR" \
+            --jq '{merged, base: .base.ref, head: .head.sha, updated_at}')
+          [ "$(jq -r '.merged' <<< "$pr")" = true ] || {
+            echo "::error::#$INPUT_PR is not merged; open PRs are reviewed by their own events"; exit 1; }
+          [ "$(jq -r '.base' <<< "$pr")" = "$DEFAULT_BRANCH" ] || {
+            echo "::error::#$INPUT_PR did not merge into $DEFAULT_BRANCH"; exit 1; }
+          {
+            echo "pr=$INPUT_PR"
+            echo "head_sha=$(jq -r '.head' <<< "$pr")"
+            echo "base_ref=$DEFAULT_BRANCH"
+            echo "updated_at=$(jq -r '.updated_at' <<< "$pr")"
+            echo "after_merge=true"
+          } >> "$GITHUB_OUTPUT"
+          echo "::notice title=llm-review::Reviewing #$INPUT_PR after merge, at its merged head."
+
   # Triage (ADR 0008): the PR's risk from deterministic rules (paths, size, AI-assisted), raised
   # by a cheap model if it disagrees, or a recorded `/llm-risk` (from audit-log, never labels).
   # The risk decides which checks run, which block, and their engine and model; every check
   # still reports below, so no required check goes missing.
   triage:
     name: triage
+    needs: target
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -42,14 +116,14 @@ jobs:
       gate_sha: ${{ steps.gate.outputs.sha }}
       risk: ${{ steps.triage.outputs.risk }}
     env:
-      PR: ${{ github.event.pull_request.number }}
+      PR: ${{ needs.target.outputs.pr }}
       REPO: ${{ github.repository }}
-      LLM_GATE_PR: ${{ github.event.pull_request.number }}
+      LLM_GATE_PR: ${{ needs.target.outputs.pr }}
     steps:
       - name: Gate tooling from the base branch's current head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.base.ref }}
+          ref: ${{ needs.target.outputs.base_ref }}
           path: gate
           persist-credentials: false
       - name: Pin the gate commit for this run
@@ -58,7 +132,7 @@ jobs:
       - name: The PR head (data only)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ needs.target.outputs.head_sha }}
           path: src
           fetch-depth: 0 # the diff is taken from the merge base with origin/<base>
           persist-credentials: false
@@ -71,7 +145,7 @@ jobs:
       - name: The PR's commits and description, and manual risk changes
         env:
           GH_TOKEN: ${{ github.token }}
-          BASE_REF: ${{ github.base_ref }}
+          BASE_REF: ${{ needs.target.outputs.base_ref }}
         run: |
           gh api "repos/$REPO/pulls/$PR" --jq '{body, head_ref: .head.ref}' > "$RUNNER_TEMP/pr.json"
           git -C src log -z --format=%B "origin/$BASE_REF..HEAD" \
@@ -89,8 +163,8 @@ jobs:
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .llm-gate/cache
-          key: llm-gate-triage-pr${{ github.event.pull_request.number }}-${{ github.sha }}
-          restore-keys: llm-gate-triage-pr${{ github.event.pull_request.number }}-
+          key: llm-gate-triage-pr${{ needs.target.outputs.pr }}-${{ github.sha }}
+          restore-keys: llm-gate-triage-pr${{ needs.target.outputs.pr }}-
 
       # Without a key (forks, Dependabot) the rules alone decide; the model can only raise.
       # A base branch whose gate has no triage yet (the PR that introduces it, an old base)
@@ -100,7 +174,7 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           LLM_MODEL_CHEAP: ${{ vars.LLM_MODEL_CHEAP }}
-          BASE_REF: ${{ github.base_ref }}
+          BASE_REF: ${{ needs.target.outputs.base_ref }}
         run: |
           gate=(uv run --project gate/tools/llm-gate --locked llm-gate
             --repo src --config gate/tools/llm-gate/checks.yaml)
@@ -129,7 +203,7 @@ jobs:
         if: steps.triage.outcome == 'success'
         with:
           path: .llm-gate/cache
-          key: llm-gate-triage-pr${{ github.event.pull_request.number }}-${{ github.sha }}
+          key: llm-gate-triage-pr${{ needs.target.outputs.pr }}-${{ github.sha }}
 
       - name: Upload the audit record
         if: always() && hashFiles('.llm-gate/audit.jsonl') != ''
@@ -143,7 +217,7 @@ jobs:
       # Labels set with GITHUB_TOKEN start no workflow runs (no loop). A person's risk:* label
       # does start one, and triage puts its own back: only /llm-risk changes the risk.
       - name: Labels
-        if: steps.triage.outputs.risk != ''
+        if: steps.triage.outputs.risk != '' && needs.target.outputs.after_merge != 'true'
         continue-on-error: true # a fork PR's token is read-only; the risk is in the outputs
         env:
           GH_TOKEN: ${{ github.token }}
@@ -167,7 +241,7 @@ jobs:
 
   llm:
     name: llm / ${{ matrix.check }}
-    needs: triage
+    needs: [target, triage]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -193,10 +267,10 @@ jobs:
           - workflow-review
     env:
       CHECK: ${{ matrix.check }}
-      PR: ${{ github.event.pull_request.number }}
+      PR: ${{ needs.target.outputs.pr }}
       # Audit context (llm-gate reads these by name; ADR 0005).
-      LLM_GATE_PR: ${{ github.event.pull_request.number }}
-      LLM_GATE_PR_EVENT_AT: ${{ github.event.pull_request.updated_at }}
+      LLM_GATE_PR: ${{ needs.target.outputs.pr }}
+      LLM_GATE_PR_EVENT_AT: ${{ needs.target.outputs.updated_at }}
       # The PR's triage risk (ADR 0008): llm-gate decides from it whether this check is needed,
       # blocks, and with which engine and model (checks.yaml triage.levels).
       LLM_GATE_RISK: ${{ needs.triage.outputs.risk }}
@@ -210,13 +284,13 @@ jobs:
       - name: The PR head (data and read-only context only)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ needs.target.outputs.head_sha }}
           path: src
           fetch-depth: 0 # the diff is taken from the merge base with origin/<base>
           persist-credentials: false
       - name: Show what runs and what is reviewed
         env:
-          BASE_REF: ${{ github.base_ref }}
+          BASE_REF: ${{ needs.target.outputs.base_ref }}
         run: |
           echo "gate: tools/llm-gate and prompts from $(git -C gate rev-parse HEAD) ($BASE_REF now)"
           echo "src:  reviewed PR head $(git -C src rev-parse HEAD)"
@@ -252,7 +326,8 @@ jobs:
       # label and re-runs this run, and a re-run keeps the original event's labels.
       - name: Override reason
         id: override
-        if: steps.key.outputs.run == 'true'
+        # After merge there is nothing to override: the review only records what it finds.
+        if: steps.key.outputs.run == 'true' && needs.target.outputs.after_merge != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -293,7 +368,7 @@ jobs:
           LLM_GATE_OVERRIDE: ${{ steps.override.outputs.honoured == 'true' }}
           LLM_GATE_OVERRIDE_BY: ${{ steps.override.outputs.by }}
           LLM_GATE_OVERRIDE_REASON: ${{ steps.override.outputs.reason }}
-          BASE_REF: ${{ github.base_ref }}
+          BASE_REF: ${{ needs.target.outputs.base_ref }}
         run: |
           set +e
           uv run --project gate/tools/llm-gate --locked llm-gate \
@@ -316,7 +391,7 @@ jobs:
       # Posting is done here by the workflow (with the base commit's script), not by the model.
       # A failed comment (for example a read-only token) must not decide the check.
       - name: Sticky PR comment
-        if: steps.review.outcome == 'success'
+        if: steps.review.outcome == 'success' && needs.target.outputs.after_merge != 'true'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}

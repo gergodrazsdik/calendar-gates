@@ -406,7 +406,11 @@ CHECKS = {"code-review", "docs-drift", "security-review"}
 
 
 def collect_run(
-    tmp_path: Path, *, triage_expected: audit.TriageExpected | None, jobs: Any = None
+    tmp_path: Path,
+    *,
+    triage_expected: audit.TriageExpected | None,
+    jobs: Any = None,
+    after_merge: bool = False,
 ) -> dict[str, Any]:
     out = tmp_path / "out"
     collected = audit.collect(
@@ -419,6 +423,7 @@ def collect_run(
         out=out,
         day=date(2026, 10, 17),
         triage=triage_expected,
+        after_merge=after_merge,
     )
     return {
         c.artifact: [json.loads(x) for x in (out / c.path).read_text().splitlines()]
@@ -1048,6 +1053,41 @@ def test_a_triage_artifact_of_the_current_attempt_wins_over_an_earlier_one(tmp_p
     }
     assert kinds["audit-100-1-triage"] == "tamper_suspected"
     assert kinds["audit-100-2-triage"] == "triage"
+
+
+def test_a_review_after_merge_marks_every_record(tmp_path: Path) -> None:
+    # llm-review's workflow_dispatch on a merged PR (ADR 0005): validated like any run, then marked.
+    artifact(tmp_path, "audit-100-1-code-review", audit.dumps(gate_run(risk="medium")))
+    artifact(tmp_path, "audit-100-1-triage", audit.dumps(triage_record()))
+
+    result = collect_run(tmp_path, triage_expected=expected(), after_merge=True)
+
+    records = [r for rs in result.values() for r in rs]
+    assert [r["type"] for r in records] == ["triage", "gate_run"]
+    assert all(r["reviewed_after_merge"] is True for r in records)
+
+
+def test_an_ordinary_run_is_not_marked(tmp_path: Path) -> None:
+    artifact(tmp_path, "audit-100-1-code-review", audit.dumps(gate_run(risk="medium")))
+    artifact(tmp_path, "audit-100-1-triage", audit.dumps(triage_record()))
+
+    result = collect_run(tmp_path, triage_expected=expected())
+
+    assert all(r.get("reviewed_after_merge") is None for rs in result.values() for r in rs)
+
+
+@pytest.mark.parametrize("name", ["audit-100-1-triage", "audit-100-1-code-review"])
+def test_an_artifact_may_not_claim_a_review_after_merge(tmp_path: Path, name: str) -> None:
+    record = triage_record() if name.endswith("triage") else gate_run(risk="medium")
+    raw = json.loads(audit.dumps(record))
+    raw["reviewed_after_merge"] = True
+    artifact(tmp_path, name, json.dumps(raw))
+    if not name.endswith("triage"):
+        artifact(tmp_path, "audit-100-1-triage", audit.dumps(triage_record()))
+
+    result = collect_run(tmp_path, triage_expected=expected())
+
+    assert "sets fields only the collector may set" in " ".join(problems(result, name))
 
 
 def test_an_artifact_may_not_claim_a_reused_attempt(tmp_path: Path) -> None:

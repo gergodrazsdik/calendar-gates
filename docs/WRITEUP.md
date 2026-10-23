@@ -216,6 +216,15 @@ nothing):
     admitted.
   - **The fix:** the range now starts at the last *published* release, and `verify-release`
     checks it for every release (ADR 0009).
+- **v0.4.0's five unreviewed PRs needed two different repairs, not an override.**
+  - **#92 and #93** were reviewed and passed. The collector had discarded the records as
+    `tamper_suspected`, because GitHub reported their jobs' conclusions as null for minutes. The
+    collector now waits for conclusions (#110). A re-collect wrote the original records to new
+    paths while their artifacts still existed (#111). Both PRs stay listed as unverified.
+  - **#97, #98 and #102** were Dependabot PRs that ran without the API key, so nothing reviewed
+    them. The key is now a Dependabot secret, and a dispatched review of each merged head is
+    marked `reviewed_after_merge` in the attestation and the release notes. That keeps "reviewed"
+    from quietly meaning "reviewed before merging".
 
 ## 6. At larger scale
 

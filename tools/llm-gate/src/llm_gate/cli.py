@@ -211,6 +211,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="collect the run again into -recollected paths, only where its first collection "
         "confirmed nothing (needs --audit-dir; ADR 0005)",
     )
+    collect.add_argument(
+        "--after-merge",
+        action="store_true",
+        help="the run reviewed an already merged PR (llm-review's workflow_dispatch; ADR 0005)",
+    )
     collect.add_argument("--out", type=Path, required=True)
     collect.add_argument("--date", type=date.fromisoformat, help="default: today (UTC)")
     collect.add_argument(
@@ -631,6 +636,7 @@ def _audit(args: argparse.Namespace) -> int:
                 triage=_triage_expected(args),
                 recollect=args.recollect,
                 audit_dir=args.audit_dir,
+                after_merge=args.after_merge,
             )
         except audit.JobsNotFinished as error:
             # Not a verdict on the records: nothing was written, and a re-run collects them.

@@ -174,6 +174,8 @@ class GateRun(_Record):
     # Only the collector sets these; an artifact that sets them is rejected.
     workflow_modified: bool | None = None
     check_run_conclusion: Conclusion | None = None
+    # The run reviewed a PR that had already merged (llm-review's workflow_dispatch, ADR 0005).
+    reviewed_after_merge: bool | None = None
 
 
 class Triage(_Record):
@@ -201,6 +203,7 @@ class Triage(_Record):
     # from an earlier attempt of the same run, because "Re-run failed jobs" doesn't re-run a
     # successful triage job (ADR 0008).
     reused_from_attempt: Count | None = None
+    reviewed_after_merge: bool | None = None  # as on GateRun: collector only
 
 
 class Override(_Record):
@@ -755,7 +758,12 @@ def _record_problems(record: AuditRecord, expected: Expected, check: str | None)
         prompt = f".claude/commands/llm-{record.check}.md"
         if record.prompt_file != prompt:
             problems.append(f"prompt_file is not {prompt}")
-        if record.workflow_modified is not None or record.check_run_conclusion is not None:
+        collector_only = (
+            record.workflow_modified,
+            record.check_run_conclusion,
+            record.reviewed_after_merge,
+        )
+        if any(value is not None for value in collector_only):
             problems.append("sets fields only the collector may set")
         exits = VERDICT_EXITS[record.verdict]
         if record.override_honoured:
@@ -783,7 +791,7 @@ def _record_problems(record: AuditRecord, expected: Expected, check: str | None)
     if isinstance(record, Triage):
         if check is not None and check != TRIAGE_ARTIFACT:
             problems.append(f"a triage record in the artifact for {check!r}")
-        if record.reused_from_attempt is not None:
+        if record.reused_from_attempt is not None or record.reviewed_after_merge is not None:
             problems.append("sets fields only the collector may set")
     return problems
 
@@ -950,6 +958,7 @@ def collect(
     triage: TriageExpected | None = None,
     recollect: bool = False,
     audit_dir: Path | None = None,
+    after_merge: bool = False,
 ) -> list[Collected]:
     """Validate every `audit-<run_id>-<attempt>-<check>` artifact directory under `artifacts`
     and write one file per artifact under `out/events/YYYY/MM/DD/`. `jobs` maps job names of the
@@ -961,7 +970,10 @@ def collect(
     `recollect` collects a run a second time (ADR 0005): the same validation, written to
     `<run>-<attempt>-<check>-recollected.jsonl`, and only for an artifact whose first file in
     `audit_dir` (the audit-log checkout) holds nothing but `tamper_suspected`. Confirmed records
-    are never doubled; a skipped one comes back with `skipped` set and nothing written."""
+    are never doubled; a skipped one comes back with `skipped` set and nothing written.
+
+    `after_merge` marks every record `reviewed_after_merge`: the run reviewed a PR that had
+    already merged (llm-review's workflow_dispatch). The release notes list such PRs."""
     if recollect and audit_dir is None:
         raise ValueError("a re-collect needs the audit-log checkout to compare with")
     unfinished = sorted(name for name, conclusion in jobs.items() if conclusion is None)
@@ -1030,6 +1042,8 @@ def collect(
                 problems += _triage_problems(records, triage, jobs, reused=reused)
             if not problems and isinstance(records[0], Triage) and reused:
                 records = [records[0].model_copy(update={"reused_from_attempt": reused_attempt})]
+            if not problems and isinstance(records[0], Triage) and after_merge:
+                records = [records[0].model_copy(update={"reviewed_after_merge": True})]
             run_triage = (
                 records[0] if not problems and isinstance(records[0], Triage) else "invalid"
             )
@@ -1056,6 +1070,7 @@ def collect(
                         update={
                             "workflow_modified": workflow_modified,
                             "check_run_conclusion": conclusion,
+                            "reviewed_after_merge": True if after_merge else None,
                         }
                     )
                 finished.append(_withhold(record) if workflow_modified else record)
