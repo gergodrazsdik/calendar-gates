@@ -41,6 +41,9 @@ deviation is recorded in the ADR named here.
   one.
 - **The live `/llm-fp` → eval-case loop:** waiting for a genuine false positive.
 
+**Phase 22** (workload hardening, [ADR 0011](adr/0011-workload-hardening.md)) was added on
+2026-10-23 and is in progress.
+
 ---
 
 ## 0. Scope
@@ -636,6 +639,56 @@ Results (2026-10-17): drill 19's only `/llm-fp` had marked a true positive, so t
 discarded at review. Drill 23 ran locally, without pushing to GHCR: the retag was admitted. The local
 build under `0.3.1` was admitted *but pinned to the attested digest*, so the release ran and the local
 bytes didn't. Under an unknown tag it was denied ([WRITEUP](WRITEUP.md) §5).
+
+---
+
+## Phase 22: Workload hardening at admission
+
+Added 2026-10-23, after v2 was done. Phases 18-19 decide *which* image runs in `calendar-gates`.
+Nothing decides *how* it runs. The chart's securityContext is a default, not a control. The design
+and its reasons are in [ADR 0011](adr/0011-workload-hardening.md). Each step below is one PR, and
+the steps that change what's enforced start in plan mode.
+
+1. **Decision** (this PR): ADR 0011, this phase, and the autogen note in ADR 0010.
+2. **`calendar-gates-workload` policy** (`deploy/policies/base/workload.yaml`): a
+   `ValidatingPolicy` on `pods` only, Deny, with the dev overlay switching it to Audit. Rules as
+   in ADR 0011.
+   - **Offline tests** in `deploy/policies/tests/workload/`. The chart's pod passes, and each rule
+     has its own failing case:
+     - container overrides pod (`runAsUser: 0`, `runAsNonRoot: false`, seccomp `Unconfined`);
+     - an unset uid, and an unset `allowPrivilegeEscalation`;
+     - `drop [ALL]` plus `add [NET_RAW]`, lowercase `all`, `add [NET_BIND_SERVICE]`;
+     - a `Localhost` profile;
+     - a root init container, a privileged init container;
+     - group 0;
+     - a projected service-account token;
+     - a writable root filesystem;
+     - no memory limit.
+   - **Chart check** in `just lint-policies` and `ci.yml`: `helm template` with the namespace set,
+     then `kyverno apply`, requiring at least one pass.
+3. **PSA labels.**
+   - `calendar-gates`: `enforce: restricted`, `enforce-version: v1.35`, `warn`/`audit` at
+     `latest`.
+   - `calendar-gates-dev`: `enforce: baseline`, with `warn`/`audit` at `restricted`.
+   - In the same PR, give `admission-smoke`'s negative pods a compliant `securityContext` (PSA
+     refuses before the webhooks run). Add negatives using the release digest: `runAsUser: 0`
+     refused by PSA, and `readOnlyRootFilesystem: false` refused by `calendar-gates-workload`.
+   - Label k8s-smoke's throwaway namespace (`ci.yml`) the same way, so every PR proves the chart
+     is `restricted`-clean.
+4. **Bypass guards.**
+   - A `ValidatingPolicy` on Namespace updates that keeps the `pod-security.kubernetes.io/*`
+     labels on both namespaces.
+   - An `admission-smoke` probe: a `PolicyException` for a refused pod, which must still be
+     refused.
+5. **Drills.** Rewrite drill 13's expected result (PLAN.md), and run drill 24 below.
+
+| # | Drill | Expected |
+|---|---|---|
+| 24 | Set `readOnlyRootFilesystem: false` in the chart | `lint` fails on the PR with the `calendar-gates-workload` message; PSA alone would admit it. `helm upgrade` past CI is refused at the Deployment (autogen); in `calendar-gates-dev` it is admitted with a PolicyReport entry |
+
+**Done when:** a release's `admission-smoke` shows the release admitted, a root pod refused by PSA,
+a writable root filesystem refused by `calendar-gates-workload`, and the dev namespace reporting
+instead of refusing.
 
 ---
 
