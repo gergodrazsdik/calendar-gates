@@ -324,6 +324,14 @@ pod with the chart's `deployment.yaml`.
   `calendar-gates-dev`, which audits. A local build goes there too
   (`just k8s-deploy calendar-gates-dev`).
 - **See the findings:** `just k8s-policy-report [namespace]` lists the Audit findings.
+  - **If it shows nothing for a while,** check the reports controller with
+    `kubectl --context kind-calendar-gates -n kyverno get pods`.
+  - **Seen on 2026-10-23:** after the project cluster had been stopped for days, the controller
+    crash-looped (client rate limiter timeouts, "failed to wait for cache sync") and wrote no
+    PolicyReports.
+  - **Fix:** restart it with
+    `kubectl --context kind-calendar-gates -n kyverno rollout restart deploy/kyverno-reports-controller`.
+    The fresh pod came up clean and caught up within seconds.
 - **Test offline:** `just lint-policies` runs the policy tests that need no registry and checks the
   rendered chart against `calendar-gates-workload`; it's part of `just ci` and the `lint` job.
 - **Fix a workload denial:** the message names the rule and the containers. The chart's

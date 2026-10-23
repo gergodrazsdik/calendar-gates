@@ -42,7 +42,7 @@ deviation is recorded in the ADR named here.
 - **The live `/llm-fp` → eval-case loop:** waiting for a genuine false positive.
 
 **Phase 22** (workload hardening, [ADR 0011](adr/0011-workload-hardening.md)) was added on
-2026-10-23 and is in progress: steps 1 (decision), 2 (`calendar-gates-workload`), 3 (Pod Security Admission) and 4 (bypass guards) are done.
+2026-10-23 and is done: the decision (#100), `calendar-gates-workload` (#101), Pod Security Admission (#103), the bypass guards (#104) and drill 24 (#105). Its `admission-smoke` changes run for the first time at the next release.
 
 ---
 
@@ -685,6 +685,17 @@ the steps that change what's enforced start in plan mode.
 | # | Drill | Expected |
 |---|---|---|
 | 24 | Set `readOnlyRootFilesystem: false` in the chart | `lint` fails on the PR with the `calendar-gates-workload` message; PSA alone would admit it. `helm upgrade` past CI is refused at the Deployment (autogen); in `calendar-gates-dev` it is admitted with a PolicyReport entry |
+
+Results (2026-10-23): drill 24 behaved as predicted (#105, a draft left open).
+- **On the PR:** `lint` failed on the rendered chart, naming both Deployments, and so did `gates`.
+  `k8s-smoke` passed, because PSA `restricted` doesn't check the root filesystem. `llm /
+  security-review` blocked on its own, with a medium finding.
+- **On the project cluster:** a `helm upgrade` of the drilled chart into `calendar-gates` was refused
+  at the Deployment, and Helm rolled back at once. In `calendar-gates-dev` it was admitted, and the
+  Deployment, ReplicaSet and pods were reported.
+- **Drill 13** (`runAsUser: 0`) was re-checked on the same cluster: the chart check fails; the
+  Deployment draws a PSA warning and is refused by `calendar-gates-workload`; a bare pod is refused
+  by PSA. Its expected result in PLAN.md is updated.
 
 **Done when:** a release's `admission-smoke` shows the release admitted, a root pod refused by PSA,
 a writable root filesystem refused by `calendar-gates-workload`, and the dev namespace reporting
