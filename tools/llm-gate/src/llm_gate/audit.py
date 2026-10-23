@@ -912,6 +912,16 @@ def _with_reused_triage(
     return [p for p in directories if p not in others], attempt
 
 
+class JobsNotFinished(Exception):
+    """The triggering run's jobs have no conclusion yet, so nothing can be confirmed or written.
+
+    Not tampering: right after `workflow_run: completed` the Actions API can still report
+    `conclusion: null` for jobs that finished moments before, and on 2026-10-19 it did for minutes.
+    Collecting then wrote `tamper_suspected` into the very paths the real records belonged in, and
+    the append-only log kept them (#92, #93; ADR 0005). Failing instead leaves the paths free, so a
+    re-run of the collector records the run properly."""
+
+
 def collect(
     artifacts: Path,
     *,
@@ -928,7 +938,11 @@ def collect(
     and write one file per artifact under `out/events/YYYY/MM/DD/`. `jobs` maps job names of the
     triggering run to their conclusions (Actions API); `checks` are the checks in the default
     branch's checks.yaml; `override` is `find_override` on the PR's issue events and comments as
-    the collector fetched them (or why there is none)."""
+    the collector fetched them (or why there is none). Raises `JobsNotFinished`, before anything
+    is written, if any of those jobs has no conclusion yet."""
+    unfinished = sorted(name for name, conclusion in jobs.items() if conclusion is None)
+    if unfinished:
+        raise JobsNotFinished(f"no conclusion yet for: {', '.join(unfinished)}")
     folder = Path("events", f"{day:%Y}", f"{day:%m}", f"{day:%d}")
     prefix = f"{expected.workflow_run_id}-{expected.run_attempt}"
     directories = sorted(p for p in artifacts.iterdir() if p.is_dir())

@@ -138,5 +138,26 @@ output can't simply be trusted either.
   review itself is unaffected); widen the pattern when that becomes real.
 - A record whose job was cancelled or never finished is written as `tamper_suspected` too: the
   name means "couldn't be confirmed", not proof of an attack, and its `problems` say which.
+  **Amended 2026-10-24: "not finished yet" is no longer one of them.**
+  - **What happened:** right after `workflow_run: completed`, the jobs API can still report
+    `conclusion: null` for jobs that finished moments earlier. On 2026-10-19 it did for minutes.
+
+    | Run | Marked complete | Collected | Null conclusions |
+    |---|---|---|---|
+    | 39283814132 (#92) | 13 min after its last job | 2 s later | all |
+    | 39286007434 (#93) | 8 min after | 2 s later | all |
+    | 39287691571 (#93's merged head) | 8 s after | 3 s later | five of seven |
+
+    Each of those reviews ran and passed (the same API lists every conclusion today), but the
+    collector wrote `tamper_suspected` into exactly the `<run>-<attempt>-<check>.jsonl` paths their
+    records belonged in.
+  - **What it cost:** the log is append-only, so a re-run can't fix those paths, and the release
+    attestation lists both PRs as unreviewed. That is part of why v0.4.0 was refused.
+  - **The fix:** the collector waits up to about 5 minutes for every job of the attempt to report
+    a conclusion. If one still doesn't, the job fails **without writing anything**, so an ordinary
+    re-run later records the run properly. `audit.collect` raises `JobsNotFinished` on any `null`
+    conclusion before it touches a file, and the CLI exits 3. So the code can't turn an
+    unfinished job into a tamper event, whatever the workflow does. A cancelled or skipped job is
+    still `tamper_suspected`: it finished, and didn't confirm the record.
 - The collector compares the record with the job's conclusion from the Actions jobs API (the
   `llm / <check>` job *is* that check run), so it needs `actions: read` and no `checks: read`.
