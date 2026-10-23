@@ -14,11 +14,28 @@ repo=${GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}
 range=$to
 [ -n "$from" ] && range="$from..$to"
 
+# One API call per commit, so one dropped connection used to fail the whole list; on a flaky link
+# (2026-10-24, from a WSL machine) nearly every run of 19 calls lost one. Each call is retried a
+# few times, and the script still fails if one never succeeds: a commit missing from the list
+# would vanish from the release's review claim.
+tries=5
+pulls_of() {
+    local sha=$1 try
+    for try in $(seq "$tries"); do
+        if gh api "repos/$repo/commits/$sha/pulls" \
+            --jq "[.[] | select(.merged_at and .merge_commit_sha == \"$sha\")][0]
+                  | {commit: \"$sha\", pr: (.number // null), head_sha: (.head.sha // null),
+                     merged_at: (.merged_at // null)}"; then
+            return 0
+        fi
+        [ "$try" = "$tries" ] || sleep $((try * 2))
+    done
+    echo "release-commits.sh: the pull requests of $sha could not be read after $tries tries" >&2
+    return 1
+}
+
 # --first-parent: the commits main itself got (squash merges), not the history of merged branches.
 git rev-list --reverse --first-parent "$range" | while read -r sha; do
     [[ $sha =~ ^[0-9a-f]{40}$ ]] || continue
-    gh api "repos/$repo/commits/$sha/pulls" \
-        --jq "[.[] | select(.merged_at and .merge_commit_sha == \"$sha\")][0]
-              | {commit: \"$sha\", pr: (.number // null), head_sha: (.head.sha // null),
-                 merged_at: (.merged_at // null)}"
+    pulls_of "$sha"
 done | jq -s .
