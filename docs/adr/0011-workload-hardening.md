@@ -49,7 +49,9 @@ engine choice. Where they disagreed, the decisions below say which way it went.
    pod's, then Kubernetes' default (an unset `allowPrivilegeEscalation` counts as true):
    - `runAsUser` set explicitly and greater than 0. PSA accepts an unset uid and lets the image
      decide.
-   - `runAsGroup` not 0, and no 0 in `fsGroup` or `supplementalGroups`. PSA doesn't check groups.
+   - `runAsGroup` set explicitly and not 0, and no 0 in `fsGroup` or `supplementalGroups`. PSA
+     doesn't check groups. "Explicitly" was settled when the policy was written: an unset gid is
+     the image's, just as an unset uid is.
    - `readOnlyRootFilesystem: true`. This isn't in PSA.
    - `capabilities.drop` contains exactly `ALL` and `add` is empty. The app listens on 8080, so it
      has no use for `NET_BIND_SERVICE`.

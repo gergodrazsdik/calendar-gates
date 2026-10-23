@@ -1,0 +1,120 @@
+# How pods run in `calendar-gates` (docs/adr/0011-workload-hardening.md). The image policies decide
+# which bytes run; this one decides with what privileges. Pod Security Admission `restricted` is the
+# floor (step 3 of PLAN-v2 Phase 22); this policy adds what PSA doesn't check (uid set explicitly,
+# groups, read-only root, service-account tokens, memory) or allows more loosely (added
+# capabilities, Localhost seccomp), and repeats PSA's identity rules so they can be tested offline
+# and against the rendered chart in CI (scripts/check-chart-admission.sh).
+#
+# Every rule reads the container's own setting, then the pod's, then the Kubernetes default (an
+# unset allowPrivilegeEscalation is true; an unset uid or gid is whatever the image says).
+#
+# `pods` only, not `pods/ephemeralcontainers`: matching the subresource turns Kyverno's autogen off
+# (ADR 0010), and autogen is what makes a bad chart fail at `helm install` instead of leaving its
+# ReplicaSet with FailedCreate. Ephemeral containers can't be set when a pod is created; they are
+# covered by PSA and by calendar-gates-images, which refuses every foreign debug image.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: calendar-gates-workload
+spec:
+  validationActions: [Deny]
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: calendar-gates
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  variables:
+    - name: containers
+      expression: object.spec.containers + object.spec.?initContainers.orValue([])
+    - name: psc
+      expression: object.spec.?securityContext.orValue({})
+    - name: rootish
+      expression: >-
+        variables.containers.filter(c,
+          c.?securityContext.?runAsNonRoot.orValue(variables.psc.?runAsNonRoot.orValue(false)) != true
+          || c.?securityContext.?runAsUser.orValue(variables.psc.?runAsUser.orValue(0)) <= 0
+        ).map(c, c.name)
+    - name: rootGroup
+      expression: >-
+        variables.containers.filter(c,
+          c.?securityContext.?runAsGroup.orValue(variables.psc.?runAsGroup.orValue(0)) <= 0
+        ).map(c, c.name)
+    - name: escalating
+      expression: >-
+        variables.containers.filter(c,
+          c.?securityContext.?allowPrivilegeEscalation.orValue(true) != false
+          || c.?securityContext.?privileged.orValue(false) == true
+        ).map(c, c.name)
+    - name: writableRoot
+      expression: >-
+        variables.containers.filter(c,
+          c.?securityContext.?readOnlyRootFilesystem.orValue(false) != true
+        ).map(c, c.name)
+    # Exactly `ALL`: the runtime matches capability names case-insensitively, PSA doesn't, so a
+    # lowercase `all` is ambiguous. No `add` at all: the app listens on 8080 and needs none, not
+    # even the NET_BIND_SERVICE that PSA allows.
+    - name: capable
+      expression: >-
+        variables.containers.filter(c,
+          !c.?securityContext.?capabilities.?drop.orValue([]).exists(d, d == 'ALL')
+          || size(c.?securityContext.?capabilities.?add.orValue([])) > 0
+        ).map(c, c.name)
+    # RuntimeDefault only: PSA also accepts Localhost, a profile file on the node nobody reviews.
+    - name: unconfined
+      expression: >-
+        variables.containers.filter(c,
+          c.?securityContext.?seccompProfile.?type.orValue(
+            variables.psc.?seccompProfile.?type.orValue('')) != 'RuntimeDefault'
+        ).map(c, c.name)
+    - name: unlimited
+      expression: >-
+        variables.containers.filter(c,
+          !('memory' in c.?resources.?limits.orValue({}))
+        ).map(c, c.name)
+  validations:
+    - expression: size(variables.rootish) == 0
+      messageExpression: >-
+        'containers must run as non-root with runAsNonRoot: true and an explicit runAsUser above 0: '
+        + variables.rootish.join(', ')
+    - expression: size(variables.rootGroup) == 0
+      messageExpression: >-
+        'containers must run with an explicit runAsGroup above 0: '
+        + variables.rootGroup.join(', ')
+    - expression: >-
+        variables.psc.?fsGroup.orValue(1) != 0
+        && !variables.psc.?supplementalGroups.orValue([]).exists(g, g == 0)
+      message: the pod must not use group 0 as fsGroup or in supplementalGroups
+    - expression: size(variables.escalating) == 0
+      messageExpression: >-
+        'containers must set allowPrivilegeEscalation: false and must not be privileged: '
+        + variables.escalating.join(', ')
+    - expression: size(variables.writableRoot) == 0
+      messageExpression: >-
+        'containers must set readOnlyRootFilesystem: true (mount an emptyDir where they write): '
+        + variables.writableRoot.join(', ')
+    - expression: size(variables.capable) == 0
+      messageExpression: >-
+        'containers must drop ALL capabilities and add none: ' + variables.capable.join(', ')
+    - expression: size(variables.unconfined) == 0
+      messageExpression: >-
+        'containers must use the RuntimeDefault seccomp profile (pod or container level): '
+        + variables.unconfined.join(', ')
+    - expression: >-
+        !object.spec.?hostNetwork.orValue(false)
+        && !object.spec.?hostPID.orValue(false)
+        && !object.spec.?hostIPC.orValue(false)
+      message: the pod must not use the host's network, PID or IPC namespace
+    - expression: >-
+        object.spec.?automountServiceAccountToken.orValue(true) == false
+        && !object.spec.?volumes.orValue([]).exists(v,
+          v.?projected.?sources.orValue([]).exists(s, has(s.serviceAccountToken)))
+      message: >-
+        the pod must set automountServiceAccountToken: false and must not mount a service-account
+        token through a projected volume
+    - expression: size(variables.unlimited) == 0
+      messageExpression: >-
+        'containers must set a memory limit: ' + variables.unlimited.join(', ')

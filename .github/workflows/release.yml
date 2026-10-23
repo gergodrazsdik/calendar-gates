@@ -419,39 +419,56 @@ jobs:
           for image in $running; do
             [[ $image == *"@$DIGEST" ]] || { echo "::error::$image is not the release digest $DIGEST"; exit 1; }
           done
-      - name: Unattested and foreign images are denied in calendar-gates
+      - name: Unattested and foreign images, and a writable root, are denied in calendar-gates
         run: |
+          # Each test pod runs as the chart's pod does (ADR 0011), so it breaks only the policy the
+          # case is about: a bare `kubectl run` would also fail calendar-gates-workload, and the
+          # webhooks are called in parallel, so either could answer.
+          # pod name, image of the app container, image of an init container ("" for none),
+          # readOnlyRootFilesystem
+          pod() {
+            local init=""
+            [ -n "$3" ] && init="initContainers: [{name: sneak, image: \"$3\", $(container)}]"
+            cat <<EOF
+          apiVersion: v1
+          kind: Pod
+          metadata: {name: $1, namespace: calendar-gates}
+          spec:
+            automountServiceAccountToken: false
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 1654
+              runAsGroup: 1654
+              seccompProfile: {type: RuntimeDefault}
+            $init
+            containers: [{name: app, image: "$2", $(container "$4")}]
+          EOF
+          }
+          container() { # the chart's container securityContext and memory limit, on one line
+            local sc="allowPrivilegeEscalation: false, readOnlyRootFilesystem: ${1:-true}, capabilities: {drop: [ALL]}"
+            echo "securityContext: {$sc}, resources: {limits: {memory: 64Mi}}"
+          }
           # Each image policy has its own webhook, called in parallel: an image that fails several
           # Deny policies may be refused by any one of them first, so the check takes a regex.
-          refused() { # pod name, image, the policy (an ERE) that must refuse it
-            if out=$(kubectl -n calendar-gates run "$1" --image="$2" --restart=Never --dry-run=server 2>&1); then
-              echo "::error::$2 was admitted in calendar-gates"; exit 1
+          refused() { # description, the policy (an ERE) that must refuse it; the pod on stdin
+            if out=$(kubectl create --dry-run=server -f - 2>&1); then
+              echo "::error::$1 was admitted in calendar-gates"; exit 1
             fi
             echo "$out"
-            grep -qE "Policy ($3) failed" <<< "$out" || { echo "::error::$2 was not refused by $3"; exit 1; }
+            grep -qE "Policy ($2) failed" <<< "$out" || { echo "::error::$1 was not refused by $2"; exit 1; }
           }
           # All three attestation policies deny `edge`, and their webhooks are called in parallel,
           # so any one of them can be the one that answers first. `calendar-gates-approved` has
           # been in that set since it went Deny in v0.3.2 (#71) but wasn't listed here, which made
           # this assertion a race: v0.3.3 failed on it after refusing the image correctly.
           unattested='calendar-gates-release|calendar-gates-llm-review|calendar-gates-approved'
-          refused edge "$IMAGE:edge" "$unattested"
-          refused foreign "$FOREIGN" calendar-gates-images
+          pod edge "$IMAGE:edge" "" | refused "the edge image" "$unattested"
+          pod foreign "$FOREIGN" "" | refused "a foreign image" calendar-gates-images
           # An unattested image hidden in an init container, next to the attested release.
-          if out=$(kubectl create --dry-run=server -f - 2>&1 <<EOF
-          apiVersion: v1
-          kind: Pod
-          metadata: {name: init-edge, namespace: calendar-gates}
-          spec:
-            initContainers: [{name: sneak, image: "$IMAGE:edge"}]
-            containers: [{name: app, image: "$IMAGE@$DIGEST"}]
-          EOF
-          ); then
-            echo "::error::an edge init container was admitted in calendar-gates"; exit 1
-          fi
-          echo "$out"
-          grep -qE "Policy ($unattested) failed" <<< "$out" \
-            || { echo "::error::the edge init container was not refused by $unattested"; exit 1; }
+          pod init-edge "$IMAGE@$DIGEST" "$IMAGE:edge" | refused "an edge init container" "$unattested"
+          # The release itself, with a writable root filesystem: every image policy admits it, so
+          # only the workload policy can refuse it (ADR 0011, the gap PSA leaves).
+          pod writable-root "$IMAGE@$DIGEST" "" false | refused "a writable root filesystem" calendar-gates-workload
       - name: calendar-gates-dev admits edge and reports it
         run: |
           kubectl -n calendar-gates-dev run edge --image="$IMAGE:edge" --restart=Never
@@ -473,6 +490,8 @@ jobs:
             kubectl get validatingpolicies,imagevalidatingpolicies -o wide 2>&1 || true
             kubectl get pods -A 2>&1 || true
             kubectl -n calendar-gates get events --sort-by=.lastTimestamp 2>&1 | tail -n 30 || true
+            # A refused pod of an admitted Deployment shows up only here, as its ReplicaSet's event.
+            kubectl get events -A --field-selector reason=FailedCreate 2>&1 | tail -n 20 || true
             kubectl -n kyverno logs deploy/kyverno-admission-controller --tail=60 2>&1 || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

@@ -68,7 +68,8 @@ Details, fixes and overrides: `docs/gates.md`.
 
 1. `pr-title`: Conventional Commit PR title.
 2. `format`: CSharpier check + `dotnet format style/analyzers --verify-no-changes`.
-3. `lint`: actionlint, zizmor, hadolint, yamllint, shellcheck, ruff, mypy, pytest, helm lint + kubeconform.
+3. `lint`: actionlint, zizmor, hadolint, yamllint, shellcheck, ruff, mypy, pytest, helm lint + kubeconform,
+   the Kyverno policy tests and the rendered chart against the workload policy.
 4. `build-test / dotnet`: build + unit + integration tests.
 5. `http-tests`: ijhttp against the built container.
 6. `grype`: image vulnerability scan, fails on high.
@@ -94,8 +95,10 @@ Details, fixes and overrides: `docs/gates.md`.
    `just k8s-deploy calendar-gates-dev` and `just k8s-http calendar-gates-dev`. On kind-local:
    `just cluster=local k8s-load k8s-deploy k8s-http` (port-forward, [ADR 0003](docs/adr/0003-kind-access.md)).
 10. `gates`: aggregator over the `ci.yml` gates.
-11. Admission (releases, [ADR 0010](docs/adr/0010-admission-control.md)): Kyverno admits only
-    attested release images in `calendar-gates` and audits `calendar-gates-dev`.
+11. Admission (releases, [ADR 0010](docs/adr/0010-admission-control.md),
+    [ADR 0011](docs/adr/0011-workload-hardening.md)): Kyverno admits only attested release images,
+    in hardened pods (non-root, read-only root, no capabilities, no token), in `calendar-gates`
+    and audits `calendar-gates-dev`.
     `release.yml`'s `admission-smoke` proves it on every release. Locally: `just k8s-up
     k8s-policy-up`, `just k8s-policy-report`; offline tests: `just lint-policies`.
 
