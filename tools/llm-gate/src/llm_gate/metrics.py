@@ -2,8 +2,8 @@
 
 Inputs: the `audit-log` branch checked out (`just audit-pull`), the merged PRs from the GitHub API
 (`gh api --paginate .../pulls?state=closed`), and optionally the latest eval reports. Plain Python:
-the log is small JSONL, and DuckDB has no wheel for this Python yet (it would compile from source in
-every CI job).
+the log is small JSONL, and DuckDB had no wheel for Python 3.15, which llm-gate targeted when this
+was written (it would have compiled from source in every CI job).
 """
 
 import json

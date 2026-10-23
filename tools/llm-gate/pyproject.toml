@@ -5,7 +5,7 @@ description = "LLM review gate for calendar-gates: runs review prompts through t
 readme = "README.md"
 license = "MIT"
 authors = [{ name = "Gergő Drazsdik", email = "gergo.drazsdik@gmail.com" }]
-requires-python = ">=3.15"
+requires-python = ">=3.14"
 dependencies = [
     "anthropic>=1.11",
     "claude-agent-sdk>=0.2.160",
