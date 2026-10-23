@@ -225,6 +225,32 @@ def test_unreviewed_and_unverified(tmp_path: Path) -> None:
     assert "**Unverified**" in notes
 
 
+def test_a_recollected_review_counts_and_its_tamper_events_stay_on_record(tmp_path: Path) -> None:
+    # #92 on 2026-10-19: the first collection wrote tamper_suspected, a re-collect the records.
+    day = tmp_path / "events" / "2026" / "10" / "17"
+    day.mkdir(parents=True)
+    tamper = {
+        "type": "tamper_suspected",
+        "pr": 5,
+        "head_sha": HEAD,
+        "ts": "2026-10-17T10:00:00Z",
+        "artifact": "audit-9-1-code-review",
+        "problems": ["llm / code-review concluded None, so the record can't be checked"],
+    }
+    (day / "9-1-code-review.jsonl").write_text(json.dumps(tamper) + "\n")
+    (day / "9-1-code-review-recollected.jsonl").write_text(
+        json.dumps(gate_run(5, "code-review", "pass", run=9))
+        + "\n"
+        + json.dumps(gate_run(5, "security-review", "pass", run=9))
+        + "\n"
+    )
+
+    predicate = attestations.llm_review([commit(5)], tmp_path, range_from="v1", range_to="v2")
+
+    assert predicate["unreviewed"] == []
+    assert predicate["unverified"] == [{"number": 5, "reason": "tamper_suspected (1)"}]
+
+
 def test_notes_without_gaps_have_no_gap_sections(tmp_path: Path) -> None:
     log = write_log(tmp_path, gate_run(1, "code-review", "pass", risk="low"))
     notes = attestations.render_notes(
