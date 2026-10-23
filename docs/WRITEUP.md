@@ -191,9 +191,21 @@ nothing):
 - **Platform limits shaped the design:**
   - a personal repository can't exempt GitHub Actions from a ruleset, so the audit branch is
     append-only through the contents API, with no update rule;
-  - DuckDB has no wheel for Python 3.15, so the metrics are plain Python;
+  - DuckDB had no wheel for Python 3.15, so the metrics are plain Python;
   - labels set with `GITHUB_TOKEN` don't trigger runs, so `/llm-override` re-runs the review
-    explicitly.
+    explicitly;
+  - Dependabot supports Python up to 3.14, so llm-gate went back from 3.15 to 3.14 (next bullet).
+- **Dependabot never updated the gate's own dependencies.** `tools/llm-gate` required Python
+  `>=3.15` from the start, and Dependabot's uv jobs aborted on it before reading the lock
+  (`tool_version_not_supported`). Every one of them failed, in Dependabot's own logs only, from the
+  first day until 2026-10-23. All changes to `uv.lock` were made by hand. F076 had fixed a second
+  reason for those updates to stall without noticing that they had never run.
+  - **How it surfaced:** a security alert for `opentelemetry-api` stayed open after the fix
+    (#107) reached `main`.
+  - **The fix:** the project moved to 3.14 (the code needed nothing newer, and all 459 tests
+    pass). Move back to 3.15 once Dependabot supports it.
+  - **What it shows:** a configured updater that never ran looked the same as one with nothing to
+    update.
 
 ## 6. At larger scale
 

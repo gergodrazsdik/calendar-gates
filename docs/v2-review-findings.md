@@ -1578,7 +1578,10 @@ llm-feedback.yml deliberately sets GH_TOKEN only on the steps that call the API.
 - **Status:** ✅ fixed — #82 made the stall visible (lint failed once a cooldown passed 90 days);
   #88 removed it: `exclude-newer = "14 days"` is a rolling window, which is the fix the
   maintainer reviewer suggested before uv 0.13 made it available, and check-cooldown.py now
-  fails if the cooldown turns back into a date or leaves the 14-90 day range
+  fails if the cooldown turns back into a date or leaves the 14-90 day range.
+  **Addendum (2026-10-23):** the stall was real, but Dependabot's uv jobs had never got that far.
+  Every one failed before reading the lock, because `requires-python = ">=3.15"` is above what
+  Dependabot supports (3.14). llm-gate moved to Python 3.14 (WRITEUP §5).
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `.github/dependabot.yml:30` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `wr-18` (low, medium confidence)
