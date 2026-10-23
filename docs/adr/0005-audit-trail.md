@@ -159,5 +159,23 @@ output can't simply be trusted either.
     conclusion before it touches a file, and the CLI exits 3. So the code can't turn an
     unfinished job into a tamper event, whatever the workflow does. A cancelled or skipped job is
     still `tamper_suspected`: it finished, and didn't confirm the record.
+  - **Re-collect, for the paths already taken (same date).**
+    - **How it runs:** `audit-collect.yml` also runs on `workflow_dispatch` with a run id and an
+      attempt. Dispatch needs write access.
+      - **The run:** read from the API, not from inputs. It must be a finished `pull_request` run
+        of `llm-review.yml`.
+      - **The validation:** the same as a first collection, from the default branch's code: jobs,
+        compare, triage recomputation, override, steering check.
+    - **Where it writes:** to `<run>-<attempt>-<check>-recollected.jsonl`, and only for a check
+      whose first file holds nothing but `tamper_suspected`. Confirmed records are never doubled.
+    - **The append-only rule:** the original file and its tamper events stay, so the PR moves from
+      unreviewed to unverified (`tamper_suspected (n)`), not to clean. Every new file is itself
+      append-only.
+    - **The limit:** it needs the run's `audit-*` artifacts, which are kept for 7 days.
+    - **Checked locally**, by running the workflow's steps up to the write against the real runs:
+      - #92's 39283814132 gives 6 `gate_run`s and the triage;
+      - #93's 39287691571 gives the 5 tampered checks, skipping triage and workflow-review, which
+        were confirmed the first time;
+      - a healthy run is skipped entirely, and a CI run is refused.
 - The collector compares the record with the job's conclusion from the Actions jobs API (the
   `llm / <check>` job *is* that check run), so it needs `actions: read` and no `checks: read`.

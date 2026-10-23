@@ -235,6 +235,17 @@ changes CI state for no convenience gain.
     after about 5 minutes. Nothing was written, so re-run that `audit-collect` run once the review
     run's jobs all show a conclusion. Before 2026-10-24 this case was written as
     `tamper_suspected` instead, and the append-only log keeps those events (#92, #93; ADR 0005).
+  - **Re-collecting a run whose records were wrongly refused:**
+    `gh workflow run audit-collect.yml -f run_id=<llm-review run> -f run_attempt=<n>`.
+    - **Before you start:** it works only while that run's `audit-*` artifacts exist, which is
+      7 days.
+    - **What it runs:** the same validation as the first collection, written to
+      `<run>-<attempt>-<check>-recollected.jsonl`.
+    - **Where it writes:** only for checks whose first file holds nothing but
+      `tamper_suspected`. Anything confirmed the first time is skipped, and the job summary says
+      so.
+    - **What changes:** the PR stops being unreviewed. Its tamper events stay on the log, so it
+      stays listed as unverified.
 
 ## Release gates (`release.yml`)
 

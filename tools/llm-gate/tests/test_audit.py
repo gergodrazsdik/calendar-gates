@@ -479,6 +479,80 @@ def test_a_job_with_no_conclusion_yet_stops_the_collection(
     assert not (tmp_path / "out").exists()
 
 
+def recollect(tmp_path: Path, log: Path) -> list[audit.Collected]:
+    return audit.collect(
+        tmp_path / "artifacts",
+        expected=EXPECTED,
+        checks={"code-review"},
+        jobs={"llm / code-review": "failure"},
+        workflow_modified=False,
+        override=NO_OVERRIDE,
+        out=tmp_path / "out",
+        day=date(2026, 10, 16),
+        recollect=True,
+        audit_dir=log,
+    )
+
+
+def first_collection(log: Path, *lines: dict[str, Any]) -> None:
+    day = log / "events" / "2026" / "10" / "16"
+    day.mkdir(parents=True, exist_ok=True)
+    (day / "100-1-code-review.jsonl").write_text("".join(json.dumps(x) + "\n" for x in lines))
+
+
+@pytest.mark.parametrize(
+    "first",
+    [
+        None,  # the first collection wrote nothing for this check
+        {"type": "tamper_suspected", "problems": ["llm / code-review concluded None"]},
+    ],
+)
+def test_a_recollect_writes_its_own_path_where_nothing_was_confirmed(
+    tmp_path: Path, first: dict[str, Any] | None
+) -> None:
+    artifact(tmp_path, "audit-100-1-code-review", audit.dumps(gate_run()))
+    log = tmp_path / "audit-log"
+    if first:
+        first_collection(log, first)
+
+    (info,) = recollect(tmp_path, log)
+
+    assert info.path == "events/2026/10/16/100-1-code-review-recollected.jsonl"
+    assert (info.records, info.tamper, info.skipped) == (1, False, None)
+    (line,) = (tmp_path / "out" / info.path).read_text().splitlines()
+    assert json.loads(line)["type"] == "gate_run"
+
+
+def test_a_recollect_never_doubles_confirmed_records(tmp_path: Path) -> None:
+    artifact(tmp_path, "audit-100-1-code-review", audit.dumps(gate_run()))
+    log = tmp_path / "audit-log"
+    first_collection(log, json.loads(audit.dumps(gate_run())))
+
+    (info,) = recollect(tmp_path, log)
+
+    assert info.records == 0
+    assert (
+        info.skipped == "events/2026/10/16/100-1-code-review.jsonl already holds confirmed records"
+    )
+    assert not (tmp_path / "out").exists()
+
+
+def test_a_recollect_needs_the_log_to_compare_with(tmp_path: Path) -> None:
+    artifact(tmp_path, "audit-100-1-code-review", audit.dumps(gate_run()))
+    with pytest.raises(ValueError, match="audit-log checkout"):
+        audit.collect(
+            tmp_path / "artifacts",
+            expected=EXPECTED,
+            checks={"code-review"},
+            jobs={"llm / code-review": "failure"},
+            workflow_modified=False,
+            override=NO_OVERRIDE,
+            out=tmp_path / "out",
+            day=date(2026, 10, 16),
+            recollect=True,
+        )
+
+
 def test_only_checks_from_the_default_branch_are_collected(tmp_path: Path) -> None:
     artifact(tmp_path, "audit-100-1-made-up", audit.dumps(gate_run(check="made-up")))
     ((info, lines),) = collect(tmp_path)
@@ -695,6 +769,46 @@ def test_cli_collect_exits_3_while_a_job_has_no_conclusion(
     assert captured.out == ""
     assert "not finished: no conclusion yet for: llm / code-review" in captured.err
     assert not (tmp_path / "out").exists()
+
+
+def test_cli_recollect(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    artifact(tmp_path, "audit-100-1-code-review", audit.dumps(gate_run()))
+    jobs = tmp_path / "jobs.jsonl"
+    jobs.write_text('{"name": "llm / code-review", "conclusion": "failure"}\n')
+    empty = tmp_path / "empty.json"
+    empty.write_text("[]")
+    log = tmp_path / "audit-log"
+    first_collection(log, {"type": "tamper_suspected", "problems": ["concluded None"]})
+
+    code = main(
+        [
+            "audit",
+            "collect",
+            *expected_args(),
+            "--artifacts",
+            str(tmp_path / "artifacts"),
+            "--checks",
+            '["code-review"]',
+            "--jobs",
+            str(jobs),
+            "--out",
+            str(tmp_path / "out"),
+            "--date",
+            "2026-10-16",
+            "--events",
+            str(empty),
+            "--comments",
+            str(empty),
+            "--audit-dir",
+            str(log),
+            "--recollect",
+        ]
+    )
+
+    assert code == 0
+    (summary,) = json.loads(capsys.readouterr().out)
+    assert summary["path"] == "events/2026/10/16/100-1-code-review-recollected.jsonl"
+    assert (summary["records"], summary["skipped"]) == (1, None)
 
 
 def test_cli_override(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

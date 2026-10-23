@@ -877,6 +877,21 @@ class Collected:
     artifact: str
     records: int
     tamper: bool
+    skipped: str | None = None  # why nothing was written to `path` (a re-collect only)
+
+
+RECOLLECTED = "-recollected"
+
+
+def _confirmed_before(path: Path) -> bool:
+    """Whether a log file already holds anything but `tamper_suspected`, i.e. records the first
+    collection confirmed. A re-collect only fills in for one that couldn't."""
+    if not path.is_file():
+        return False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip() and json.loads(line).get("type") != "tamper_suspected":
+            return True
+    return False
 
 
 def _with_reused_triage(
@@ -933,18 +948,28 @@ def collect(
     out: Path,
     day: date,
     triage: TriageExpected | None = None,
+    recollect: bool = False,
+    audit_dir: Path | None = None,
 ) -> list[Collected]:
     """Validate every `audit-<run_id>-<attempt>-<check>` artifact directory under `artifacts`
     and write one file per artifact under `out/events/YYYY/MM/DD/`. `jobs` maps job names of the
     triggering run to their conclusions (Actions API); `checks` are the checks in the default
     branch's checks.yaml; `override` is `find_override` on the PR's issue events and comments as
     the collector fetched them (or why there is none). Raises `JobsNotFinished`, before anything
-    is written, if any of those jobs has no conclusion yet."""
+    is written, if any of those jobs has no conclusion yet.
+
+    `recollect` collects a run a second time (ADR 0005): the same validation, written to
+    `<run>-<attempt>-<check>-recollected.jsonl`, and only for an artifact whose first file in
+    `audit_dir` (the audit-log checkout) holds nothing but `tamper_suspected`. Confirmed records
+    are never doubled; a skipped one comes back with `skipped` set and nothing written."""
+    if recollect and audit_dir is None:
+        raise ValueError("a re-collect needs the audit-log checkout to compare with")
     unfinished = sorted(name for name, conclusion in jobs.items() if conclusion is None)
     if unfinished:
         raise JobsNotFinished(f"no conclusion yet for: {', '.join(unfinished)}")
     folder = Path("events", f"{day:%Y}", f"{day:%m}", f"{day:%d}")
     prefix = f"{expected.workflow_run_id}-{expected.run_attempt}"
+    suffix = RECOLLECTED if recollect else ""
     directories = sorted(p for p in artifacts.iterdir() if p.is_dir())
     problem = None
     if len(directories) > MAX_ARTIFACTS:
@@ -952,7 +977,7 @@ def collect(
     elif (size := _total_bytes(directories)) > MAX_RUN_BYTES:
         problem = f"{size} bytes of artifacts, over the {MAX_RUN_BYTES} limit; none collected"
     if problem:
-        target = folder / f"{prefix}-too-much.jsonl"
+        target = folder / f"{prefix}-too-much{suffix}.jsonl"
         _write(out / target, [_tamper(expected, "(all)", [problem])])
         return [Collected(target.as_posix(), "(all)", 1, tamper=True)]
 
@@ -1035,7 +1060,12 @@ def collect(
                     )
                 finished.append(_withhold(record) if workflow_modified else record)
 
-        target = folder / f"{prefix}-{check}.jsonl"
+        target = folder / f"{prefix}-{check}{suffix}.jsonl"
+        first = folder / f"{prefix}-{check}.jsonl"
+        if recollect and audit_dir is not None and _confirmed_before(audit_dir / first):
+            reason = f"{first.as_posix()} already holds confirmed records"
+            collected.append(Collected(target.as_posix(), safe_name, 0, False, skipped=reason))
+            continue
         if problems:
             finished = [_tamper(expected, safe_name, problems)]
         _write(out / target, finished)

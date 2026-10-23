@@ -205,6 +205,12 @@ def build_parser() -> argparse.ArgumentParser:
     collect.add_argument(
         "--workflow-modified", action="store_true", help="the PR changed the review workflow"
     )
+    collect.add_argument(
+        "--recollect",
+        action="store_true",
+        help="collect the run again into -recollected paths, only where its first collection "
+        "confirmed nothing (needs --audit-dir; ADR 0005)",
+    )
     collect.add_argument("--out", type=Path, required=True)
     collect.add_argument("--date", type=date.fromisoformat, help="default: today (UTC)")
     collect.add_argument(
@@ -226,7 +232,9 @@ def build_parser() -> argparse.ArgumentParser:
         "what the collector recomputes the run's triage floor from (ADR 0008)",
     )
     collect.add_argument(
-        "--audit-dir", type=Path, help="audit-log checkout (the PR's /llm-risk changes)"
+        "--audit-dir",
+        type=Path,
+        help="audit-log checkout (the PR's /llm-risk changes; what a --recollect compares with)",
     )
 
     override = asub.add_parser("override", help="find the reason for the override label")
@@ -621,6 +629,8 @@ def _audit(args: argparse.Namespace) -> int:
                 out=args.out,
                 day=args.date or datetime.now(UTC).date(),
                 triage=_triage_expected(args),
+                recollect=args.recollect,
+                audit_dir=args.audit_dir,
             )
         except audit.JobsNotFinished as error:
             # Not a verdict on the records: nothing was written, and a re-run collects them.
