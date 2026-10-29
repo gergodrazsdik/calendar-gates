@@ -3,7 +3,7 @@
 
 # Build on the builder's own platform: the output is portable IL (framework-dependent, no
 # RID), so the same publish runs on every target platform without QEMU-emulated builds.
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0@sha256:747cbade5bfd918a175ac32f8f1d931edec2c7d0d5397a3de72eaef1ac1f66d2 AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0@sha256:de4fe90a98845d75910b9769662465c84de1a934665c431279d1382b2bddc02b AS build
 WORKDIR /src
 
 # Restore layer: only what restore needs, so source edits don't invalidate the package cache
