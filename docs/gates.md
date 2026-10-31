@@ -20,7 +20,7 @@ is required too (see below).
 
 | Check | Local | Fails when | Fix | Override |
 |---|---|---|---|---|
-| `pr-title` | `scripts/check-commit-msg.sh --title "<title>"` | PR title is not a Conventional Commit (it becomes the squash commit) | Edit the title, then push (title edits alone don't re-run CI) | none |
+| `pr-title` | `scripts/check-commit-msg.sh --title "<title>"` | PR title is not a Conventional Commit (it becomes the squash commit), or is over 100 characters; Dependabot's generated titles (author `dependabot[bot]`) are exempt from the length limit only | Edit the title (the edit re-runs this check) | none |
 | `format` | `just fmt-check` | CSharpier would change layout, or a code-style/analyzer rule fires | `just fmt`; for rule findings fix the code (the message names the rule) | none; rules live in `.editorconfig` and are changed in their own PR |
 | `lint` | `just lint lint-chart lint-policies` | actionlint, zizmor, hadolint, yamllint, shellcheck, ruff, mypy, the llm-gate tests, the ruleset consistency check, the Kyverno policy tests (`kyverno test`), the rendered chart against `calendar-gates-workload` (`scripts/check-chart-admission.sh`), `helm lint` or kubeconform report a finding | Fix the finding; suppress only inline with a reason (`# zizmor: ignore[...]`, `# shellcheck disable=...`, `# noqa`) | Repo-wide rule changes in `.github/zizmor.yml`, `.yamllint.yaml` |
 | `build-test / dotnet` | `just build test` | Build warning (warnings are errors) or a failing test | The **test results** check run lists failures with file/line; coverage is in the job summary | none |

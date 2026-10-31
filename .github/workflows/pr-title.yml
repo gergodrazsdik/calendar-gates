@@ -30,4 +30,6 @@ jobs:
       - name: Conventional Commit title (becomes the squash commit)
         env:
           TITLE: ${{ github.event.pull_request.title }}
-        run: scripts/check-commit-msg.sh --title "$TITLE"
+          # The PR's author, not the actor: a human's re-run or title edit must not change the result.
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: scripts/check-commit-msg.sh --title "$TITLE" --author "$AUTHOR"
