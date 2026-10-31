@@ -24,6 +24,13 @@ suite and `/language:<lang>` categories.
 - **`ubuntu-26.04`, this workflow only.** No released actionlint knows the label, so
   `.github/actionlint.yaml` lists it until one does.
 
+## Result
+
+Both setups scanned the same PR commit (`20abd8c`). Default setup logged the warning again, at 76%
+and 86%. The manual build ran the same quality query and logged no warning. The log prints the
+percentages only when the warning fires, so this shows the improvement without giving the new
+figures. It also doesn't confirm the generated-code explanation above.
+
 ## Consequences
 
 - Every PR pays for one more C# build, and the workflow is ours to maintain. Dependabot keeps its
