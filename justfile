@@ -516,7 +516,7 @@ gh-setup:
         gh api -X POST "repos/$repo/environments/release/deployment-branch-policies" --silent \
             -f name='v*' -f type=tag
     fi
-    echo "Done. CodeQL default setup: run 'just gh-codeql' once there is C# and Python code (Phase 2+)."
+    echo "Done."
 
 # Apply .github/rulesets/*.json (create, or update the ruleset with the same name)
 [group('github')]
@@ -555,9 +555,3 @@ gh-rulesets-diff:
         uv run --locked --script scripts/ruleset-live-diff.py "$file" "$tmp/live.json" || status=1
     done
     exit "$status"
-
-# Turn on CodeQL default setup (languages are detected from the repo, so run it once code exists)
-[group('github')]
-[confirm('Enable CodeQL default setup on github.com/gergodrazsdik/calendar-gates?')]
-gh-codeql:
-    gh api -X PATCH repos/{{ repo }}/code-scanning/default-setup -f state=configured

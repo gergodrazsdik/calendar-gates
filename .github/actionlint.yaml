@@ -1,0 +1,6 @@
+# actionlint 1.7.12, the latest release, doesn't know GitHub's hosted `ubuntu-26.04` label
+# (rhysd/actionlint#682). This list is its only way to accept a label. Remove the entry once a
+# release knows it; the label is hosted, not self-hosted.
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04

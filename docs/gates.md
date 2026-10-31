@@ -22,7 +22,7 @@ is required too (see below).
 |---|---|---|---|---|
 | `pr-title` | `scripts/check-commit-msg.sh --title "<title>"` | PR title is not a Conventional Commit (it becomes the squash commit), or is over 100 characters; Dependabot's generated titles (author `dependabot[bot]`) are exempt from the length limit only | Edit the title (the edit re-runs this check) | none |
 | `format` | `just fmt-check` | CSharpier would change layout, or a code-style/analyzer rule fires | `just fmt`; for rule findings fix the code (the message names the rule) | none; rules live in `.editorconfig` and are changed in their own PR |
-| `lint` | `just lint lint-chart lint-policies` | actionlint, zizmor, hadolint, yamllint, shellcheck, ruff, mypy, the llm-gate tests, the ruleset consistency check, the Kyverno policy tests (`kyverno test`), the rendered chart against `calendar-gates-workload` (`scripts/check-chart-admission.sh`), `helm lint` or kubeconform report a finding | Fix the finding; suppress only inline with a reason (`# zizmor: ignore[...]`, `# shellcheck disable=...`, `# noqa`) | Repo-wide rule changes in `.github/zizmor.yml`, `.yamllint.yaml` |
+| `lint` | `just lint lint-chart lint-policies` | actionlint, zizmor, hadolint, yamllint, shellcheck, ruff, mypy, the llm-gate tests, the ruleset consistency check, the Kyverno policy tests (`kyverno test`), the rendered chart against `calendar-gates-workload` (`scripts/check-chart-admission.sh`), `helm lint` or kubeconform report a finding | Fix the finding; suppress only inline with a reason (`# zizmor: ignore[...]`, `# shellcheck disable=...`, `# noqa`) | Repo-wide rule changes in `.github/zizmor.yml`, `.yamllint.yaml`, `.github/actionlint.yaml` |
 | `build-test / dotnet` | `just build test` | Build warning (warnings are errors) or a failing test | The **test results** check run lists failures with file/line; coverage is in the job summary | none |
 | `image` | `just image` | Docker build fails | Build output in the job log | none |
 | `http-tests` | `just image http-docker` | An `http/calendar.http` handler assertion fails against the built container | The **http test results** check run names the request; container logs are printed on failure | none |
@@ -111,6 +111,13 @@ changes CI state for no convenience gain.
   artifact, so every later job tests (and publishes) the same bytes.
 - **grype** results also go to Security → Code scanning (category `grype`), uploaded even when the
   gate fails.
+- **CodeQL** (`codeql.yml`, [ADR 0012](adr/0012-codeql-advanced-setup.md)) scans on PRs, on pushes
+  to `main` and weekly, but is not a gate: no required check depends on it. C# is built
+  (`build-mode: manual`); Python and Actions use `build-mode: none`. Default setup must stay off in
+  the repository settings, because GitHub rejects this workflow's uploads while it is on. If C#
+  drops below CodeQL's analysis-quality thresholds, the `analyze (csharp)` log prints "Low C#
+  analysis quality" with both percentages in `Perform CodeQL Analysis`; it prints no percentages
+  when they pass.
 - **k8s-smoke** installs the chart with the tested image on a throwaway kind cluster
   (`helm/kind-action`), with `--rollback-on-failure`, then runs the contract tests through a
   port-forward ([ADR 0003](adr/0003-kind-access.md)). The namespace comes from
