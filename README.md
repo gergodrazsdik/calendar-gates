@@ -35,7 +35,7 @@ Anthropic API key in `pass` (`api/anthropic-calendar-gates`).
 | k8s | `k8s-up`, `k8s-policy-up` (Kyverno and the admission policies), `k8s-load`, `k8s-deploy [ns]`, `k8s-deploy-release <version>`, `k8s-http`, `k8s-status`, `k8s-logs`, `k8s-policy-report [ns]`, `k8s-down`, `k8s-cluster-down`. They target the project's cluster `kind-calendar-gates`; `just cluster=local …` targets kind-local ([ADR 0010](docs/adr/0010-admission-control.md)) |
 | llm | `llm <check> [engine]`, `llm-compare <check>`, `llm-list`, `eval`, `eval-baseline` (these cost API credits), `audit-pull`, `metrics [days]` |
 | release | `release <version>`: signed tag from an up-to-date `main`; `verify-release <version>`: its four attestations |
-| github | `gh-setup`, `gh-rulesets`, `gh-codeql` (repository settings as code) |
+| github | `gh-setup`, `gh-rulesets` (repository settings as code) |
 
 ## How changes and releases flow
 
