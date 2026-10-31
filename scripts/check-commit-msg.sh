@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Conventional Commit check for a commit message file (lefthook commit-msg: {1}) or, with
 # --title, for a single line (the PR title check in CI uses the same rule).
-# Usage: check-commit-msg.sh <message-file> | check-commit-msg.sh --title "<title>"
+# Usage: check-commit-msg.sh <message-file> | check-commit-msg.sh --title "<title>" [--author "<login>"]
 set -euo pipefail
 
 types='build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test'
@@ -9,9 +9,13 @@ pattern="^($types)(\([a-z0-9._/-]+\))?!?: [^ ].*$"
 max_length=100
 
 title=false
+author=
 if [[ ${1:-} == --title ]]; then
     title=true
-    header=${2:?usage: check-commit-msg.sh --title "<title>"}
+    header=${2:?usage: check-commit-msg.sh --title "<title>" [--author "<login>"]}
+    if [[ ${3:-} == --author ]]; then
+        author=${4:?usage: check-commit-msg.sh --title "<title>" --author "<login>"}
+    fi
 else
     header=$(head -n 1 "${1:?usage: check-commit-msg.sh <message-file>}")
 fi
@@ -32,6 +36,12 @@ Expected: <type>[(scope)][!]: <description>
          fix!: return 400 for reversed workday ranges
 EOF
     exit 1
+fi
+
+# Dependabot writes its own titles, and a long group or directory name can push one past the limit
+# with nothing in dependabot.yml to shorten it. The format above still applies to it.
+if [[ $author == "dependabot[bot]" ]]; then
+    exit 0
 fi
 
 if ((${#header} > max_length)); then
