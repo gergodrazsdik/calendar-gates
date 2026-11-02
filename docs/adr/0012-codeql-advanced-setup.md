@@ -22,7 +22,9 @@ suite and `/language:<lang>` categories.
 - **Python and Actions stay on `build-mode: none`.** They have nothing to compile.
 - **Not a required check**, as before.
 - **`ubuntu-26.04`, this workflow only.** No released actionlint knows the label, so
-  `.github/actionlint.yaml` lists it until one does.
+  `.github/actionlint.yaml` lists it until one does. **Amended 2026-11-02:** every workflow except
+  `release.yml` now runs on 26.04 too. `release.yml` stays on 24.04 until a release can prove the
+  move, because it only runs on a tag and a failure part-way spends a version.
 
 ## Result
 

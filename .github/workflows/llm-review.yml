@@ -47,7 +47,7 @@ jobs:
   # the API. Every later job takes these outputs instead of github.event.pull_request.
   target:
     name: target
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions:
       pull-requests: read
@@ -107,7 +107,7 @@ jobs:
   triage:
     name: triage
     needs: target
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -242,7 +242,7 @@ jobs:
   llm:
     name: llm / ${{ matrix.check }}
     needs: [target, triage]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
       contents: read
