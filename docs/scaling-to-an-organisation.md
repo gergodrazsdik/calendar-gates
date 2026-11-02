@@ -372,7 +372,7 @@ may only raise risk, so its worst case is cost, not weakened review.
 ### E4. Developer environments and the local loop
 
 Twenty developers on mixed macOS, Linux and Windows will not reproduce a one-machine setup. What
-breaks today: `just lint-policies` demands Kyverno **exactly** 1.19.1; local linters come from PATH
+breaks today: `just lint-policies` demands Kyverno **exactly** 1.19.2; local linters come from PATH
 while CI runs pinned containers; `pass show` fronts the API key; `podman`, `home_directory()` and two
 kind clusters are machine-specific; the repo name and owner are hardcoded in several places.
 

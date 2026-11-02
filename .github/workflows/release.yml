@@ -27,10 +27,10 @@ env:
   # Tool versions Dependabot cannot see (F080): one definition each, used through ${{ env.* }}
   # below, and checked against ci.yml and the justfile by scripts/check-tool-pins.py. kubectl is
   # deliberately *not* ci.yml's version: the project cluster runs 1.35 for Kyverno (ADR 0010).
-  HELM_VERSION: v4.3.0
+  HELM_VERSION: v4.3.1
   KIND_VERSION: v0.33.0
   KUBECTL_VERSION: v1.35.8
-  GRYPE_VERSION: v0.120.1
+  GRYPE_VERSION: v0.121.0
   SYFT_VERSION: v1.54.1
   # yamllint disable-line rule:line-length
   IJHTTP_IMAGE: docker.io/jetbrains/intellij-http-client:261.25134.95@sha256:1fdeab28e7eacac2ec8e0564499248452e29c55c380497eb92088bd49cfc3096
@@ -112,7 +112,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -163,7 +163,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -216,14 +216,14 @@ jobs:
           fetch-depth: 0 # the commits since the previous release
           persist-credentials: false
       # No cache in the signing job: nothing another run wrote may run here (as in build).
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: grype
           path: ${{ runner.temp }}/grype
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -313,7 +313,7 @@ jobs:
       VERSION: ${{ needs.verify.outputs.version }}
       DIGEST: ${{ needs.build.outputs.digest }}
     steps:
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -523,7 +523,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -576,7 +576,7 @@ jobs:
           name: chart
           path: dist
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
