@@ -25,8 +25,8 @@ def cache_key(
     diff: str,
     shape: Mapping[str, object] = MappingProxyType({}),
 ) -> str:
-    """The inputs a review depends on. `shape` is the engine's own `request_shape`: the limits,
-    tool lists and output schema that decide what it asks for.
+    """The inputs a review depends on. `shape` is the engine's own `request_shape`: the SDK
+    version, limits, tool lists and output schema that decide what it asks for.
 
     Leaving those out made the cache lie about the one thing it is used to measure. `llm-eval`
     scores the PR's gate against a committed baseline, and its keys differ only by case and

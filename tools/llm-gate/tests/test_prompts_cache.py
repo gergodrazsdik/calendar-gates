@@ -3,11 +3,13 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import cast
 
+import pytest
 from conftest import make_check, result
 
 from llm_gate.cache import Cache, cache_key
 from llm_gate.config import TRIAGE, load_gate_config
 from llm_gate.diff import OmittedFile
+from llm_gate.engines import agent_engine, api_engine
 from llm_gate.engines.agent_engine import AgentEngine
 from llm_gate.engines.api_engine import MAX_TOKENS, ApiEngine
 from llm_gate.prompts import diff_block, render, strip_frontmatter
@@ -81,6 +83,36 @@ def test_cache_key_covers_the_engine_request_shape() -> None:
     assert key(shape={**SHAPE, "schema": {"x": 1}}) != base  # a different answer shape
     # Order is not an input: the same settings written differently are the same request.
     assert key(shape=dict(reversed(list(SHAPE.items())))) == base
+
+
+def test_a_bump_of_an_engines_own_sdk_misses_the_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The key used to ignore dependency versions, so an SDK bump replayed every stored answer and
+    `llm-eval` reported the baseline for a PR it had not scored (seen on #116: $0.0000 paid). Each
+    engine depends only on its own SDK: a bump of the other one must stay free."""
+    check = make_check(tmp_path)
+    versions = {"anthropic": "1.0.0", "claude-agent-sdk": "2.0.0"}
+    monkeypatch.setattr(agent_engine, "version", versions.__getitem__)
+    monkeypatch.setattr(api_engine, "version", versions.__getitem__)
+
+    def keys() -> tuple[str, str]:
+        return (
+            key(engine="agent", shape=AgentEngine().request_shape(check)),
+            key(engine="api", shape=ApiEngine().request_shape(check)),
+        )
+
+    agent, api = keys()
+
+    versions["claude-agent-sdk"] = "2.0.1"
+    bumped_agent, same_api = keys()
+    assert bumped_agent != agent
+    assert same_api == api
+
+    versions["anthropic"] = "1.0.1"
+    same_agent, bumped_api = keys()
+    assert same_agent == bumped_agent
+    assert bumped_api != api
 
 
 def test_both_engines_declare_what_shapes_their_request(tmp_path: Path) -> None:

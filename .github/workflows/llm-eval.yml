@@ -77,7 +77,8 @@ jobs:
         with:
           cache-dependency-glob: tools/llm-gate/uv.lock
 
-      # Results are cached per case, repeat, prompt and model: re-runs of an unchanged PR are free.
+      # Results are cached per case, repeat, prompt, model and engine request shape (which holds
+      # the SDK version): re-runs of an unchanged PR are free.
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: steps.key.outputs.run == 'true'
         with:

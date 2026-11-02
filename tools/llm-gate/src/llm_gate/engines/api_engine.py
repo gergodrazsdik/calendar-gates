@@ -2,6 +2,7 @@
 
 import time
 from collections.abc import Mapping
+from importlib.metadata import version
 from typing import Any
 
 import anthropic
@@ -104,8 +105,13 @@ class ApiEngine:
     def request_shape(self, check: Check) -> Mapping[str, object]:
         # The reply budget and the schema the model must answer in. A smaller MAX_TOKENS turns a
         # long review into a truncation error, and a changed schema changes what comes back, so
-        # neither may be served from a cache filled before the change.
-        return {"max_tokens": MAX_TOKENS, "schema": Review.model_json_schema()}
+        # neither may be served from a cache filled before the change. The same goes for the SDK
+        # that builds the request and parses the reply.
+        return {
+            "sdk": version("anthropic"),
+            "max_tokens": MAX_TOKENS,
+            "schema": Review.model_json_schema(),
+        }
 
     def review(self, request: ReviewRequest) -> EngineResult:
         started = time.monotonic()

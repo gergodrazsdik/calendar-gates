@@ -18,6 +18,7 @@ import os
 import time
 from collections.abc import AsyncIterator, Callable, Mapping
 from datetime import UTC, datetime
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
@@ -230,8 +231,11 @@ class AgentEngine:
         # What the reviewer is allowed to do and how far it may go. The tool lists and the inline
         # settings are the read fence (F003): a cached review taken with a wider fence is not
         # evidence about this one, which is also why CACHE_VERSION was bumped when the fence
-        # arrived. max_turns and budget_usd decide whether a long review finishes at all.
+        # arrived. max_turns and budget_usd decide whether a long review finishes at all. The SDK
+        # bundles the Claude Code CLI that runs the review, so a bump can change the answer with
+        # every setting here equal.
         return {
+            "sdk": version("claude-agent-sdk"),
             "max_turns": check.max_turns,
             "budget_usd": check.budget_usd,
             "allowed_tools": ALLOWED_TOOLS,
