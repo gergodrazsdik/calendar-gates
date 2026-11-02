@@ -327,7 +327,7 @@ yourself ([ADR 0009](adr/0009-build-once-attest-promote.md)). Deploy it with `ju
 
 ## Admission control (the project cluster)
 
-Kyverno 1.19.1 on `kind-calendar-gates` (`just k8s-up k8s-policy-up`,
+Kyverno 1.19.2 on `kind-calendar-gates` (`just k8s-up k8s-policy-up`,
 [ADR 0010](adr/0010-admission-control.md), [ADR 0011](adr/0011-workload-hardening.md)) enforces
 six policies: four on the image, one on how the pod runs, and one guarding the namespace labels.
 

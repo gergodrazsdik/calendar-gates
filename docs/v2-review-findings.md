@@ -1,6 +1,6 @@
 # v2 review findings
 
-A review of the whole repository at `43ec3c2` (2026-10-17), after PLAN-v2 was wrapped up. Written as the input for deciding what to fix; the Status section below records what has happened to each item since (115 of 119 actionable items fixed, none open). Generated from the reviewers' and the council's JSON; the scratch files are not kept.
+A review of the whole repository at `43ec3c2` (2026-10-17), after PLAN-v2 was wrapped up. Written as the input for deciding what to fix; the Status section below records what has happened to each item since (118 of 119 actionable items fixed, none open). Generated from the reviewers' and the council's JSON; the scratch files are not kept.
 
 A second, smaller review on 2026-10-19 produced the follow-up findings F134-F140 at the end of this document.
 
@@ -33,12 +33,12 @@ A second, smaller review on 2026-10-19 produced the follow-up findings F134-F140
 | accepted | 0 | 0 | 0 | 2 | 1 | 3 |
 | rejected | 0 | 0 | 0 | 0 | 11 | 11 |
 
-**Fixed so far: 116 of 119** (2 partial, 0 open, 1 unverifiable). By severity:
+**Fixed so far: 118 of 119** (0 partial, 0 open, 1 unverifiable). By severity:
 
 | Status | critical | high | medium | low | info | total |
 |---|---|---|---|---|---|---|
-| ✅ fixed | 0 | 2 | 16 | 72 | 26 | 116 |
-| 🟡 partial | 0 | 0 | 0 | 2 | 0 | 2 |
+| ✅ fixed | 0 | 2 | 16 | 74 | 26 | 118 |
+| 🟡 partial | 0 | 0 | 0 | 0 | 0 | 0 |
 | open | 0 | 0 | 0 | 0 | 0 | 0 |
 | ⚪ unverifiable | 0 | 0 | 1 | 0 | 0 | 1 |
 
@@ -171,6 +171,10 @@ a job that runs no PR code removes the question.
   environments (F081). F003 was the last open medium until #77; after #82 only two items are open
   at all, and after #86 none is. What is left is three partial items, each with its reason on the
   item, and [F050](#f050), which is unverifiable without building the bypass it describes.
+- **2026-11-02** closed the last two partials. F048's status was stale: the approval policy had
+  been on Deny since #71. F091 needed `feedback_rejected` in ADR 0005 and a rewritten README on
+  `audit-log`. That README commit (`2c8b2b4`) is the branch's one hand-made commit, made through
+  the contents API with the owner's login, so GitHub shows it as unverified.
 - **#71** made the approval attestation required, proven on the project cluster: v0.3.2 admitted,
   v0.3.1 denied by name, an image volume denied. That test also found that the F058 readiness wait
   from #63 never matched Kyverno's actual condition, which #71 fixes.
@@ -238,8 +242,8 @@ Open items are sorted after fixed ones of the same severity, so the top of each 
 | [F081](#f081) | ✅ fixed | medium | medium | C | A malformed or empty ?year= on /api/friday13 gets a 400 without `errors` in Production and a 500 in Development, not the 400 ValidationProblem | small | S:C/medium M:C/medium I:C/medium |
 | [F084](#f084) | ✅ fixed | medium | medium | C | "A failed smoke leaves a draft; re-running the workflow refreshes it" no longer holds under build-once releases | trivial | S:C/medium M:C/medium I:C/medium |
 | [F003](#f003) | ✅ fixed | medium | high | A | The agent reviewer's file reads are not fenced to the reviewed checkout, and its output is published unredacted | small | S:P/medium M:C/medium I:C/low |
-| [F048](#f048) | 🟡 partial | low | medium | B | Every attestation Kyverno requires exists before the release is approved or smoke-tested, so rejected and failed candidates are admitted | medium | S:C/low M:C/low I:C/low |
-| [F091](#f091) | 🟡 partial | low | low | C | The audit/v1 type lists in ADR 0005 and in the audit-log branch README are out of date | small | S:C/low M:C/low I:C/low |
+| [F048](#f048) | ✅ fixed | low | medium | B | Every attestation Kyverno requires exists before the release is approved or smoke-tested, so rejected and failed candidates are admitted | medium | S:C/low M:C/low I:C/low |
+| [F091](#f091) | ✅ fixed | low | low | C | The audit/v1 type lists in ADR 0005 and in the audit-log branch README are out of date | small | S:C/low M:C/low I:C/low |
 | [F013](#f013) | ✅ fixed | low | medium | A | `llm-gate run --risk` for a check the level runs (demoted to advisory, engine switched) is never exercised | small | S:C/low M:C/low I:C/low |
 | [F014](#f014) | ✅ fixed | low | medium | A | Only `feedback` is tested as a record type a PR's artifact may not carry; `risk_override` is not | trivial | S:C/low M:C/low I:C/low |
 | [F015](#f015) | ✅ fixed | low | medium | A | The 'exactly one triage record' rule is untested; the test named for it passes through a different check | trivial | S:C/low M:C/low I:C/low |
@@ -1903,7 +1907,7 @@ The Easter and Friday13 integration tests check both 1582 and 10000. LeapYearRej
 
 **Every attestation Kyverno requires exists before the release is approved or smoke-tested, so rejected and failed candidates are admitted**
 
-- **Status:** 🟡 partial — #69: publish attests release-approved/v1 and a policy requires it, on Audit until v0.3.2 carries it
+- **Status:** ✅ fixed — #69: publish attests release-approved/v1 and a policy requires it; #71: that policy denies, proven on the project cluster (v0.3.2 admitted, v0.3.1 denied)
 - **Severity:** low (reviewers: medium) · **outcome:** confirmed · **fix cost:** medium
 - **Where:** `deploy/policies/base/release.yaml:30` · **area:** workflows, release, deploy, scripts
 - **Reported by:** `cr-ops-02` (medium, high confidence)
@@ -1926,7 +1930,7 @@ The Deny policies admit an image once provenance, a vuln-scan with no critical f
 
 **The audit/v1 type lists in ADR 0005 and in the audit-log branch README are out of date**
 
-- **Status:** 🟡 partial — #63: ADR 0005's record types updated; the `audit-log` branch README is still stale
+- **Status:** ✅ fixed — #63 and the 2026-11-02 docs PR: ADR 0005's record types, including `feedback_rejected`; `2c8b2b4` on `audit-log`: the branch README
 - **Severity:** low (reviewers: low) · **outcome:** confirmed · **fix cost:** small
 - **Where:** `docs/adr/0005-audit-trail.md:18` · **area:** API, tests, docs
 - **Reported by:** `api-14` (low, high confidence), `dd-16` (low, high confidence), `dd-18` (low, high confidence)
