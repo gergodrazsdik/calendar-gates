@@ -16,7 +16,7 @@ output can't simply be trusted either.
 - **Schema `audit/v1`** (`tools/llm-gate/src/llm_gate/audit.py`, pydantic, unknown fields
   rejected): one JSON object per line with the run context (`repo`, `pr`, `head_sha`, `base_sha`,
   `actor`, `workflow_run_id`, `run_attempt`, `run_url`) and a `type`: `gate_run`, `triage`,
-  `override`, `feedback`, `risk_override`, `eval_run`, `tamper_suspected`.
+  `override`, `feedback`, `feedback_rejected`, `risk_override`, `eval_run`, `tamper_suspected`.
 - A `gate_run` holds what the decision was made with and what came out: the gate commit, prompt
   and config hashes, the diff's hash and size, model, usage and cost, cache hit, the agent's tool
   calls, finding titles with stable ids, verdict, exit code, override. **Not stored**: the diff
