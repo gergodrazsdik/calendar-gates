@@ -45,6 +45,8 @@ class Engine(Protocol):
         stored answer exactly -- and `llm-eval` compares against a baseline, so a PR that halved
         `max_turns` or emptied the read-only tool list, changing no prompt, scored as if nothing
         had happened (F012, F139). Each engine declares its own, so a new option that shapes the
-        request is covered by whoever adds it rather than by remembering to edit a list here.
+        request is covered by whoever adds it rather than by remembering to edit a list here. That
+        includes the version of the SDK it calls, and only that SDK: a bump of the other engine's
+        SDK, or of an unrelated dependency, stays a cache hit.
         """
         ...

@@ -89,8 +89,9 @@ whose only case is an `fp-regression` has no recall to lose (F037).
 `--compare` checks the run against `baseline.json` using `thresholds.yaml`. The report goes to
 `reports/eval/<check>-<prompt sha>.json`. Repeats are separate cache entries and reruns of unchanged
 cases are free, so changing one prompt only pays for that check's reviews. The key also covers each
-engine's request shape -- `max_turns`, `budget_usd`, the tool lists, the output schema -- so
-changing a limit re-scores rather than replaying answers taken under the old one (F139).
+engine's request shape -- its SDK version, `max_turns`, `budget_usd`, the tool lists, the output
+schema -- so changing a limit or bumping that engine's SDK re-scores rather than replaying answers
+taken under the old one (F139).
 
 ```sh
 just eval                                   # every check the cases name, its configured engine
@@ -98,6 +99,10 @@ just eval --check code-review --engine both --repeats 1   # quick, both engines
 just eval-baseline                          # baseline.json from the last run; commit it in a PR
 uv run --project tools/llm-gate llm-gate eval add-from-fp cr-3f2a
 ```
+
+**An SDK bump costs twice too.** Going by the run on #116, a `claude-agent-sdk` bump re-scores the
+agent engine's reviews for about $2.10 and an `anthropic` bump the API engine's reviews and triage
+for about $1.20, each in the PR and again on `main`. Other dependency bumps stay free.
 
 **Adding a case costs twice.** The Actions cache is scoped per ref: a PR's entries cannot be read
 from `main`, and `main`'s run is the one that fills the cache every later PR restores. So a PR that

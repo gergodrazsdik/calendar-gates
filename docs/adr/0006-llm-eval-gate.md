@@ -92,6 +92,12 @@ missed bugs or annoyed authors later.
   changes how a request is *built* rather than what it contains still needs that bump. The eval
   gate's own review (code-review blocks at high risk on `tools/llm-gate/**`) is what is supposed
   to catch a missing bump.
+  **Amended 2026-11-02: SDK versions joined the key.** A Dependabot bump of an SDK changes no
+  prompt or setting, so it replayed every stored answer and reported the baseline (#116 paid
+  $0.0000). Each engine's `request_shape` now holds the version of the SDK it calls, and triage's
+  key holds `anthropic`'s. Only that SDK: bumping anything else stays a hit, because a key over the
+  whole lock file would pay for a full eval on every type-stub bump. The cost is real and accepted:
+  an SDK bump pays for that engine's reviews twice, in the PR and on `main`.
 - **Adding eval cases costs twice, which the paragraph above hides.** The cache that makes a PR
   cheap is scoped per ref, so a PR cannot read `main`'s future entries and `main` cannot read the
   PR's: the push that merges a case-adding PR re-scores those cases from scratch. #95's eight clean

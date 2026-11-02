@@ -21,6 +21,7 @@ import subprocess
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
+from importlib.metadata import version
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 
@@ -272,7 +273,9 @@ def assess(
     system = render(prompt, "the file list and the unified diff in the elements below")
     user = user_content(changes, diff_text, base, config.max_diff_kb)
     key = hashlib.sha256(
-        json.dumps([TRIAGE_CACHE_VERSION, config.model, system, user, cache_salt]).encode()
+        json.dumps(
+            [TRIAGE_CACHE_VERSION, version("anthropic"), config.model, system, user, cache_salt]
+        ).encode()
     ).hexdigest()
     path = _cache_path(cache_dir, key)
     if path and path.is_file():
