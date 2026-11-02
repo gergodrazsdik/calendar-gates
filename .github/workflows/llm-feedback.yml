@@ -33,7 +33,7 @@ jobs:
       github.event.issue.pull_request
       && startsWith(github.event.comment.body, '/llm-')
       && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: write # the record on the audit-log branch

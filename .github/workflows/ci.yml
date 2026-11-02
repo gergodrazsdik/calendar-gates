@@ -40,7 +40,7 @@ jobs:
 
   format:
     name: format
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -60,7 +60,7 @@ jobs:
 
   lint:
     name: lint
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -147,7 +147,7 @@ jobs:
 
   image:
     name: image
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -195,7 +195,7 @@ jobs:
   http-tests:
     name: http-tests
     needs: image
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -233,7 +233,7 @@ jobs:
   grype:
     name: grype
     needs: image
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -272,7 +272,7 @@ jobs:
   k8s-smoke:
     name: k8s-smoke
     needs: image
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -343,7 +343,7 @@ jobs:
     name: publish-edge
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [format, lint, build-test, image, http-tests, grype, k8s-smoke]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       packages: write # push to ghcr.io
@@ -382,7 +382,7 @@ jobs:
     name: gates
     if: always()
     needs: [format, lint, build-test, image, http-tests, grype, k8s-smoke]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions: {}
     steps:
