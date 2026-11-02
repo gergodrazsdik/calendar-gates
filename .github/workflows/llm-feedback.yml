@@ -17,8 +17,6 @@ name: llm-feedback
 # safe is above — this file and the gate code come from the default branch, the PR is never checked
 # out, the job doesn't start for non-collaborators, only write/maintain/admin roles are heard inside
 # it, and the comment is read from the event file rather than interpolated into a shell.
-# ZIZMOR_VERSION is still 1.30.1 (1.31.1 is inside the 14-day cooldown), so this suppression is
-# inert until that pin moves; it is here because the finding is what the next bump will raise.
 on: # zizmor: ignore[dangerous-triggers]
   issue_comment:
     types: [created]
@@ -51,7 +49,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           cache-dependency-glob: tools/llm-gate/uv.lock
 

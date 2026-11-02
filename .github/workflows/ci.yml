@@ -22,17 +22,17 @@ env:
   # than the line limit and cannot be wrapped.
   # yamllint disable rule:line-length
   JUST_VERSION: 1.58.0
-  HELM_VERSION: v4.3.0
+  HELM_VERSION: v4.3.1
   KIND_VERSION: v0.33.0
   KUBECTL_VERSION: v1.37.0
-  GRYPE_VERSION: v0.120.1
-  ZIZMOR_VERSION: 1.30.1
+  GRYPE_VERSION: v0.121.0
+  ZIZMOR_VERSION: 1.31.1
   YAMLLINT_VERSION: 1.38.0
   RUFF_VERSION: 0.16.10
   ACTIONLINT_IMAGE: docker.io/rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
   HADOLINT_IMAGE: docker.io/hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d
   KUBECONFORM_IMAGE: ghcr.io/yannh/kubeconform:v0.8.0@sha256:faffaf43f95aa6425306e1ab8d6fcad72acb9049158f38e574c085ea1ec0f64e
-  KYVERNO_CLI_IMAGE: ghcr.io/kyverno/kyverno-cli:v1.19.1@sha256:ced7b2be0b04250cabfe695f15307f69eb715fe23234816388af4f3812915b2a
+  KYVERNO_CLI_IMAGE: ghcr.io/kyverno/kyverno-cli:v1.19.2@sha256:322ec5044d600930cb3af0e56dc33154a2d1d1fba58f4cadad3f47be7e78b11c
   IJHTTP_IMAGE: docker.io/jetbrains/intellij-http-client:261.25134.95@sha256:1fdeab28e7eacac2ec8e0564499248452e29c55c380497eb92088bd49cfc3096
   # yamllint enable rule:line-length
 
@@ -72,7 +72,7 @@ jobs:
           # that the cases still apply (F017).
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: false
       - name: actionlint
@@ -263,7 +263,7 @@ jobs:
           exit "$status"
       - name: Upload SARIF (also on failure)
         if: ${{ !cancelled() && hashFiles('grype.sarif') != '' }}
-        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           sarif_file: grype.sarif
           category: grype
@@ -359,7 +359,7 @@ jobs:
           tags: |
             type=edge,branch=main
             type=sha,prefix=sha-
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
