@@ -95,3 +95,37 @@ def test_a_bot_login_is_never_a_writer(tmp_path: Path, gh_stub: Path) -> None:
 
 def test_no_commands_at_all_is_an_empty_list(tmp_path: Path, gh_stub: Path) -> None:
     assert writers([comment("alice", "looks good to me")], tmp_path, gh_stub) == []
+
+
+TOO_LONG = "chore(deps): bump " + "x" * 100
+
+
+@pytest.mark.parametrize(
+    ("title", "author", "passes"),
+    [
+        (TOO_LONG, "dependabot[bot]", True),  # Dependabot can't shorten its own titles (#119)
+        (TOO_LONG, "someone", False),
+        (TOO_LONG, None, False),
+        (TOO_LONG, "dependabot", False),  # a lookalike login gets no exemption
+        ("x" * 120, "dependabot[bot]", False),  # the exemption covers length, not the format
+        ("chore: short", "someone", True),
+    ],
+)
+def test_only_dependabot_may_exceed_the_pr_title_length(
+    title: str, author: str | None, passes: bool
+) -> None:
+    author_args = ["--author", author] if author else []
+    done = subprocess.run(
+        [
+            "bash",
+            str(REPO_ROOT / "scripts" / "check-commit-msg.sh"),
+            "--title",
+            title,
+            *author_args,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert (done.returncode == 0) is passes, done.stderr
