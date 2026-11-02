@@ -29,11 +29,11 @@ supports), and no host ports. Access stays a port-forward (ADR 0003).
   policies, and `k8s-cluster-down` deletes it. Every `k8s-*` recipe targets it by default;
   `just cluster=local …` targets kind-local as in v1.
 
-**Kyverno is pinned.** Kyverno is **1.19.1**, chart **3.9.1**. The chart is unsigned, so its
+**Kyverno is pinned.** Kyverno is **1.19.2**, chart **3.9.2**. The chart is unsigned, so its
 sha256 is pinned in `deploy/kyverno/chart.sha256`. Every image is pinned by digest in
 `deploy/kyverno/values.yaml`, after `cosign verify-attestation` showed SLSA provenance from
-slsa-github-generator for kyverno/kyverno at the v1.19.1 commit. The chart has no digest field,
-so the digest is part of the tag (`v1.19.1@sha256:…`), where it wins.
+slsa-github-generator for kyverno/kyverno at the v1.19.2 commit. The chart has no digest field,
+so the digest is part of the tag (`v1.19.2@sha256:…`), where it wins.
 
 **The spike: `ImageValidatingPolicy` v1 reads GitHub attestations.** `actions/attest` pushes
 Sigstore bundles as OCI referrers. An `intoto` attestation with a keyless GitHub identity verifies
