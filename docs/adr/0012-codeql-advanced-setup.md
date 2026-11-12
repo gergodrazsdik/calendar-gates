@@ -24,7 +24,10 @@ suite and `/language:<lang>` categories.
 - **`ubuntu-26.04`, this workflow only.** No released actionlint knows the label, so
   `.github/actionlint.yaml` lists it until one does. **Amended 2026-11-02:** every workflow except
   `release.yml` now runs on 26.04 too. `release.yml` stays on 24.04 until a release can prove the
-  move, because it only runs on a tag and a failure part-way spends a version.
+  move, because it only runs on a tag and a failure part-way spends a version. **Amended
+  2026-11-12:** `release.yml` moved too, once v0.5.0 had proven the .NET 11 base image on 24.04
+  runners, so the runner OS was the only change left. The proof is a pre-release tag
+  (`v0.5.1-rc.1`): a failed pre-release spends an rc number, not a version.
 
 ## Result
 
