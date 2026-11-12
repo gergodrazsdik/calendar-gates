@@ -3,7 +3,7 @@
 
 # Build on the builder's own platform: the output is portable IL (framework-dependent, no
 # RID), so the same publish runs on every target platform without QEMU-emulated builds.
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0@sha256:de4fe90a98845d75910b9769662465c84de1a934665c431279d1382b2bddc02b AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:11.0@sha256:65f3c7c6a25a239ab3e6719f2896147e7b68242ff2d8818dd70498bde6ef8bea AS build
 WORKDIR /src
 
 # Restore layer: only what restore needs, so source edits don't invalidate the package cache
@@ -23,8 +23,8 @@ RUN dotnet publish src/CalendarGates.Api --no-restore -c Release -o /app \
     -p:Commit="$COMMIT" \
     -p:EnableSourceControlManagerQueries=false
 
-# Runtime: Ubuntu chiseled, no shell or package manager, runs as the non-root `app` user (1654)
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled@sha256:c89a6a61f494f20a5ae302990e814627a8d91b332fd4a8e7c1707c2d4da9555d AS runtime
+# Runtime: Ubuntu 26.04 (resolute) chiseled, no shell or package manager, runs as the non-root `app` user (1654)
+FROM mcr.microsoft.com/dotnet/aspnet:11.0-resolute-chiseled@sha256:fc0ee12f9ea79bde6cda88c7a34e5467fe383dbb62276be0ec13e5e9cc1654ac AS runtime
 LABEL org.opencontainers.image.title="calendar-gates" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.source="https://github.com/gergodrazsdik/calendar-gates"

@@ -32,7 +32,7 @@ change done. `http-tests`, `grype` and `k8s-smoke` have their own recipes (`just
 `just http`, `just k8s-*`). Recipes arrive with the phase
 that needs them, so the list is the truth, not this file.
 
-- .NET SDK is pinned in `global.json` (10.0.x). `dotnet test` runs on Microsoft.Testing.Platform.
+- .NET SDK is pinned in `global.json` (11.0.x). `dotnet test` runs on Microsoft.Testing.Platform.
 - Local tools: `dotnet tool restore` (CSharpier, MinVer CLI from `.config/dotnet-tools.json`).
 - Python: `uv run ...` inside `tools/llm-gate/`, never pip.
 - Containers: `docker` is podman locally; containers publish on host port **8081** (kind-local owns 8080).
