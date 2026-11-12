@@ -36,12 +36,11 @@ jobs:
 
       - name: Test report
         if: ${{ !cancelled() }}
-        uses: dorny/test-reporter@d1b5dff021aa968b288b02285a8bf47471c5928a # v3.2.0
+        uses: ./.github/actions/test-report # check run with annotations, up to 3 attempts (#866)
         with:
           name: test results
           path: TestResults/*.trx
           reporter: dotnet-trx
-          use-actions-summary: false # a check run with annotations on the failing line
 
       - name: Coverage summary
         if: ${{ !cancelled() }}

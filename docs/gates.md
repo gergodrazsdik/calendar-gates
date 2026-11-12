@@ -32,6 +32,16 @@ is required too (see below).
 | `llm-eval` (`llm-eval.yml`) | `just eval` | The PR changes a review prompt or `tools/llm-gate/` and scores worse than `evals/baseline.json` beyond `evals/thresholds.yaml` (recall, false blocks, flips, cost), or a `forbid` rule of an fp-regression case matches again (`fp_regressions`, which updating the baseline cannot clear), or **a check's engine/model has no baseline entry** (change one and the entry comes with it), or the eval doesn't finish within its budget | Fix the prompt or code; or, if the new scores are the intended trade-off, update the baseline in the same PR (`just eval-baseline`) and say why | `evals/thresholds.yaml` (changing it weakens the gate: say so) |
 | `gates` | n/a | Any gate it needs did not succeed (failed, cancelled or skipped) | Fix that gate | none |
 
+**Test reports** (`test results`, `http test results`, `k8s http test results`) are posted by
+`.github/actions/test-report`, a wrapper around `dorny/test-reporter`. They aren't gates: in
+`build-test`, `http-tests` and `k8s-smoke` the test step itself fails the job when a test fails
+(`dotnet test` and ijhttp exit non-zero), so the report runs with `fail-on-error: false`. Since
+November 2026 GitHub sometimes answers 404 to the check-run update that follows the create
+(dorny/test-reporter#866), which turned passing jobs red. The wrapper makes up to three attempts,
+10 s apart. A failed attempt leaves its check run `in_progress`, but GitHub shows only the newest
+check run per name, so a later successful attempt hides it. A report that fails three times still
+fails the job: re-run it. Drop the retries once upstream ships its own.
+
 ## Tool versions
 
 Dependabot watches the action SHAs in `uses:`, NuGet packages, the Dockerfile's base images and
