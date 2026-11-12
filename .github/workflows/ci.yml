@@ -223,7 +223,7 @@ jobs:
         run: docker logs calendar-gates
       - name: HTTP test report
         if: ${{ !cancelled() && hashFiles('reports/report.xml') != '' }}
-        uses: ./.github/actions/test-report # check run with annotations, retried once (#866)
+        uses: ./.github/actions/test-report # check run with annotations, up to 3 attempts (#866)
         with:
           name: http test results
           path: reports/report.xml
