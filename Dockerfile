@@ -24,7 +24,7 @@ RUN dotnet publish src/CalendarGates.Api --no-restore -c Release -o /app \
     -p:EnableSourceControlManagerQueries=false
 
 # Runtime: Ubuntu chiseled, no shell or package manager, runs as the non-root `app` user (1654)
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled@sha256:c89a6a61f494f20a5ae302990e814627a8d91b332fd4a8e7c1707c2d4da9555d AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled@sha256:7c625e44e5d588b4d7b2a913e94ca4bd5098ce47442da404829e4c7936a764e1 AS runtime
 LABEL org.opencontainers.image.title="calendar-gates" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.source="https://github.com/gergodrazsdik/calendar-gates"
