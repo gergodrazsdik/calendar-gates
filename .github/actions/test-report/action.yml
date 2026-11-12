@@ -32,7 +32,7 @@ runs:
       uses: dorny/test-reporter@d1b5dff021aa968b288b02285a8bf47471c5928a # v3.2.0
       with:
         name: ${{ inputs.name }}
-        path: ${{ inputs.path }}.temporary-no-such-file # TEMPORARY: forces the next attempt
+        path: ${{ inputs.path }}
         reporter: ${{ inputs.reporter }}
         use-actions-summary: "false" # a check run with annotations on the failing line
         fail-on-error: "false"
@@ -46,7 +46,7 @@ runs:
       uses: dorny/test-reporter@d1b5dff021aa968b288b02285a8bf47471c5928a # v3.2.0
       with:
         name: ${{ inputs.name }}
-        path: ${{ inputs.path }}.temporary-no-such-file # TEMPORARY: forces the next attempt
+        path: ${{ inputs.path }}
         reporter: ${{ inputs.reporter }}
         use-actions-summary: "false"
         fail-on-error: "false"
