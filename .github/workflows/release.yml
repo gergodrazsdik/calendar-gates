@@ -38,7 +38,7 @@ env:
 jobs:
   verify:
     name: verify
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -100,7 +100,7 @@ jobs:
   build:
     name: build
     needs: [verify, build-test]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -152,7 +152,7 @@ jobs:
   scan:
     name: scan
     needs: build
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -196,7 +196,7 @@ jobs:
   attest:
     name: attest
     needs: [verify, build, scan]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -300,7 +300,7 @@ jobs:
   approve:
     name: approve
     needs: [verify, build, attest]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     environment: release
     permissions:
@@ -351,7 +351,7 @@ jobs:
   admission-smoke:
     name: admission-smoke
     needs: [verify, build, approve]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     permissions:
       contents: read
@@ -510,7 +510,7 @@ jobs:
   smoke:
     name: smoke
     needs: [verify, build, approve]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -554,7 +554,7 @@ jobs:
   promote:
     name: promote
     needs: [verify, build, attest, approve, admission-smoke, smoke]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
       contents: write # the GitHub Release
