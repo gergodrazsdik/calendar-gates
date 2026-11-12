@@ -37,9 +37,10 @@ is required too (see below).
 `build-test`, `http-tests` and `k8s-smoke` the test step itself fails the job when a test fails
 (`dotnet test` and ijhttp exit non-zero), so the report runs with `fail-on-error: false`. Since
 November 2026 GitHub sometimes answers 404 to the check-run update that follows the create
-(dorny/test-reporter#866), which turned passing jobs red. The wrapper retries the report once and
-marks the first attempt's orphaned check run `neutral`. A report that fails twice still fails the
-job: re-run it. Drop the retry once upstream ships one.
+(dorny/test-reporter#866), which turned passing jobs red. The wrapper makes up to three attempts,
+10 s apart. A failed attempt leaves its check run `in_progress`, but GitHub shows only the newest
+check run per name, so a later successful attempt hides it. A report that fails three times still
+fails the job: re-run it. Drop the retries once upstream ships its own.
 
 ## Tool versions
 
