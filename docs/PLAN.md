@@ -15,13 +15,13 @@ that goes through the gates it adds.
 | Topic | Decision |
 |---|---|
 | Repo | `github.com/gergodrazsdik/calendar-gates`, **public** (rulesets, code scanning, free Actions minutes), MIT license |
-| Runtime | .NET 10 LTS, pinned in `global.json` (`rollForward: latestFeature`, fully-qualified version); `dotnet test` in Microsoft.Testing.Platform mode |
+| Runtime | .NET 11 (STS), pinned in `global.json` (`rollForward: latestFeature`, fully-qualified version); `dotnet test` in Microsoft.Testing.Platform mode |
 | API style | Minimal API, `TimeProvider` injected everywhere "now" is needed, ProblemDetails, built-in OpenAPI |
 | Formatter | **CSharpier** owns all C# layout. `dotnet format style/analyzers` only for code-style and analyzer rules, never `whitespace` |
 | Tests | **TUnit** for both test projects (its own async assertions, runs on Microsoft.Testing.Platform); unit tests on calculators, integration tests via `TUnit.AspNetCore` (`TestWebApplicationFactory<Program>`); `.http` files run by `ijhttp` against the container and the kind deployment |
 | Hooks | lefthook: pre-commit format + secrets, commit-msg Conventional Commits, pre-push tests |
 | Task runner | `justfile` is the single entry point, locally and in CI where possible |
-| Container | Multi-stage Dockerfile, runtime `mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled` (non-root, no shell), port 8080 |
+| Container | Multi-stage Dockerfile, runtime `mcr.microsoft.com/dotnet/aspnet:11.0-resolute-chiseled` (non-root, no shell), port 8080 |
 | Registry | GHCR, tags from `docker/metadata-action`, SBOM + provenance attestations |
 | Versioning | MinVer from git tags (`v` prefix); dev builds get SemVer pre-release versions automatically |
 | LLM gate | Python (uv), **two engines** behind one interface: Anthropic SDK (diff in prompt, structured JSON) and Claude Agent SDK (agentic, reads the repo, read-only tools). Prompts live in `.claude/commands/*.md`, shared with interactive Claude Code |
