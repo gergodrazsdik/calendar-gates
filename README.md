@@ -18,7 +18,7 @@ just ci      # the deterministic gates locally: format, lint, chart lint, policy
 just         # list every recipe
 ```
 
-Requires the .NET 10 SDK (pinned in `global.json`), [just](https://just.systems) and
+Requires the .NET 11 SDK (pinned in `global.json`), [just](https://just.systems) and
 [uv](https://docs.astral.sh/uv/). `just lint`, which `just ci` runs, also needs `shellcheck`,
 `hadolint`, `helm`, `kubeconform` and the `kyverno` CLI on `PATH` (the other linters are fetched
 by `uvx`, pinned). The container, Kubernetes and LLM recipes need podman, kind/helm and an
