@@ -22,12 +22,22 @@ runs:
     # fail-on-error false: a failing test already fails the job in the test step, so this step
     # fails only when *reporting* fails (API error, missing or unparsable report), and a genuine
     # test failure doesn't post its report twice.
+    - name: "TEMPORARY, reverted before merge: stand-in for an orphaned check run"
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        CHECK_NAME: ${{ inputs.name }}
+      run: >-
+        gh api -X POST "repos/$REPO/check-runs" -f name="$CHECK_NAME" -f head_sha="$SHA"
+        -f status=in_progress --jq '"stand-in check run \(.id)"'
     - id: first
       continue-on-error: true
       uses: dorny/test-reporter@d1b5dff021aa968b288b02285a8bf47471c5928a # v3.2.0
       with:
         name: ${{ inputs.name }}
-        path: ${{ inputs.path }}
+        path: ${{ inputs.path }}.temporary-no-such-file # TEMPORARY: forces the retry
         reporter: ${{ inputs.reporter }}
         use-actions-summary: "false" # a check run with annotations on the failing line
         fail-on-error: "false"
