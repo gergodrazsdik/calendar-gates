@@ -647,6 +647,9 @@ class Thresholds(_Strict):
     max_verdict_accuracy_drop: float = 0.10  # absolute
     max_flip_rate: float = 0.10  # absolute, on the current run
     max_cost_increase: float = 0.25  # relative
+    # Absolute, USD: a cost rise below this passes whatever the ratio, because a relative limit on a
+    # check that costs a fraction of a cent is measuring noise.
+    min_cost_increase_usd: float = 0.01
     max_risk_accuracy_drop: float = 0.15  # absolute, triage
     budget_usd: float = 6.0  # per `eval run` invocation, all checks and engines together
 
@@ -775,8 +778,13 @@ def compare(run: EvalRun, baseline: Mapping[str, Any], thresholds: Thresholds) -
             metric="cost_usd",
             baseline=before_cost,
             current=new.cost_usd,
-            limit=f"rise ≤ {thresholds.max_cost_increase:.0%}",
-            ok=not before_cost or new.cost_usd <= before_cost * (1 + thresholds.max_cost_increase),
+            limit=(
+                f"rise ≤ {thresholds.max_cost_increase:.0%}"
+                f" or ${thresholds.min_cost_increase_usd:g}"
+            ),
+            ok=not before_cost
+            or new.cost_usd <= before_cost * (1 + thresholds.max_cost_increase)
+            or new.cost_usd - before_cost <= thresholds.min_cost_increase_usd + 1e-9,
         )
     )
     if run.check != TRIAGE:
