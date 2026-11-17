@@ -8,9 +8,9 @@ k8s_ns := "calendar-gates"
 # Tool versions Dependabot cannot see (F080), defined once here and once in each workflow's `env:`.
 # scripts/check-tool-pins.py fails the lint gate when the two disagree, and the weekly Gate health
 # job reports which of them upstream has moved past.
-zizmor_version := "1.31.1"
+zizmor_version := "1.32.0"
 yamllint_version := "1.38.0"
-ruff_version := "0.17.1"
+ruff_version := "0.17.3"
 kyverno_cli_version := "1.19.2"
 
 # Kubernetes (docs/adr/0010-admission-control.md): the project's own kind cluster, with Kyverno, is
