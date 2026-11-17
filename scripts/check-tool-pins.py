@@ -123,7 +123,13 @@ def justfile_pins(path: Path) -> dict[str, str]:
     }
 
 
-_PRERELEASE = re.compile(r"-(rc|alpha|beta|pre)", re.IGNORECASE)
+# A stable release is a plain dotted number, `1.2.3` or `v1.2.3`; anything after the number marks a
+# pre-release. Matching the stable shape rather than listing pre-release markers covers both
+# spellings upstreams use: semver tags (`v1.37.0-rc.1`) and PEP 440 versions, which have no hyphen
+# (zizmor's `1.32.0rc2`, `1.0a1`, `2.0.dev0`). A `-(rc|alpha|...)` pattern missed the PEP 440 ones
+# and reported zizmor `1.32.0rc2` as the version to bump to. Post-releases (`1.0.post1`) are
+# skipped too, which errs on the side of not asking for a bump.
+_STABLE = re.compile(r"v?\d+(?:\.\d+)*")
 
 
 def _parse_time(value: str) -> datetime:
@@ -182,7 +188,7 @@ def latest(kind: str, source: str) -> tuple[str | None, str | None]:
                 for f in files
                 if not f.get("yanked")
             ]
-            if uploads and not _PRERELEASE.search(version):
+            if uploads and _STABLE.fullmatch(version):
                 released.append((min(uploads), version.removeprefix("v")))
     else:
         for release in data:
@@ -191,7 +197,7 @@ def latest(kind: str, source: str) -> tuple[str | None, str | None]:
             if (
                 release.get("prerelease")
                 or release.get("draft")
-                or _PRERELEASE.search(tag)
+                or not _STABLE.fullmatch(tag)
             ):
                 continue
             if when:
