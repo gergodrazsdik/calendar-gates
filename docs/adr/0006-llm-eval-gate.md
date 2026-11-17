@@ -20,7 +20,18 @@ missed bugs or annoyed authors later.
 - `evals/baseline.json` holds the scores to beat, per check and engine/model. Updating it is a
   deliberate, reviewed change (`just eval-baseline` in a PR). `evals/thresholds.yaml` says how much
   worse a PR may be: recall may drop by at most 0.05, the false-block rate may rise by at most 0.025,
-  the flip rate must stay at or below 0.10, and cost may rise by at most 25 %.
+  the flip rate must stay at or below 0.10, and cost may rise by at most 25 % (or by less than
+  $0.01, amended 2026-11-17).
+- **Amended 2026-11-17: a cost rise under $0.01 passes whatever the ratio.** The cost limit was
+  purely relative, and docs-drift is one case reviewed three times by Haiku, a quarter of a cent
+  per run. After #131's SDK bump re-scored it on `main`, it cost $0.0032 against a baseline of
+  $0.0024: +33 %, $0.0008, and the comparison failed. Every later PR touching the gate replayed
+  that cached number and failed with it, Dependabot's opentelemetry-api security fix (#136) first
+  among them. A ratio on sub-cent amounts measures output-length variance, not a prompt that got
+  expensive. `min_cost_increase_usd: 0.01` lets a rise below a cent pass. What it gives up: a
+  check that cheap may now grow up to about four times its cost (docs-drift to about $0.012 per
+  eval run) without failing. code-review and security-review cost over $1 a run, so the 25 % still
+  decides there. `tests/test_evals.py` pins both sides against the real `thresholds.yaml`.
 - **Amended 2026-10-19: the false-block limit admits one divergent sample, not two.** It was 0 --
   "no new false blocks" -- which reads as the strictest possible setting and was in practice a
   coin-flip, because the corpus is 10 clean cases for code-review and 9 for security-review: a
