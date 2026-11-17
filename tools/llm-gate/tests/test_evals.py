@@ -634,6 +634,26 @@ def test_one_divergent_clean_sample_is_tolerated_and_two_are_not() -> None:
     )
 
 
+def test_a_cost_rise_fails_only_when_it_is_both_relative_and_real_money() -> None:
+    """The cost limit was purely relative, so docs-drift -- one case at a fraction of a cent -- went
+    from $0.0024 to $0.0032 after an SDK bump, +33%, and failed every PR touching the gate (#136). A
+    rise now fails only when it is over 25% *and* over the absolute floor, so the big checks are
+    still held to the ratio and the tiny ones are not held to noise."""
+    thresholds = evals.load_thresholds(
+        REPO_ROOT / "tools" / "llm-gate" / "evals" / "thresholds.yaml"
+    )
+
+    def cost_fails(before: float, after: float) -> bool:
+        run = eval_run(cost_usd=after)
+        rows = evals.compare(run, baseline_for(run, cost_usd=before), thresholds)
+        return failed(rows, "cost_usd")
+
+    assert not cost_fails(0.0024, 0.0032)  # #136: +33%, but $0.0008
+    assert cost_fails(0.0024, 0.02)  # over 25% and over the floor
+    assert cost_fails(0.50, 0.70)  # +40% on a check that costs real money
+    assert not cost_fails(0.50, 0.62)  # +24%
+
+
 def case_result(name: str, expected: str, *verdicts: str) -> evals.CaseResult:
     return evals.CaseResult(
         case=name,

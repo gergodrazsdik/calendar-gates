@@ -17,6 +17,11 @@ max_false_block_increase: 0.025 # absolute; one divergent sample per check, not 
 max_verdict_accuracy_drop: 0.10 # absolute; one case drifting in every repeat is about 0.06
 max_flip_rate: 0.10 # absolute, on the current run
 max_cost_increase: 0.25 # relative
+# Absolute, in USD over one check's whole run. A rise below it passes whatever the ratio: docs-drift
+# is one case at a fraction of a cent, and ordinary variance after an SDK bump (#131) moved it from
+# $0.0024 to $0.0032, +33%, which failed #136 and every later run. For the checks that cost real
+# money (code-review, security-review: over $1 a run) the 25% still decides.
+min_cost_increase_usd: 0.01
 # Absolute, over all triage repeats. On its own it would let one case be wrong every time, so
 # `cases_wrong_every_repeat` must also be 0 (F018); `model_below_floor` is reported, not gated,
 # because the floor wins whatever the model says (F030). Since 2026-10-19 that same rule applies to
