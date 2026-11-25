@@ -10,7 +10,7 @@ k8s_ns := "calendar-gates"
 # job reports which of them upstream has moved past.
 zizmor_version := "1.32.0"
 yamllint_version := "1.38.0"
-ruff_version := "0.17.3"
+ruff_version := "0.17.6"
 kyverno_cli_version := "1.19.2"
 
 # Kubernetes (docs/adr/0010-admission-control.md): the project's own kind cluster, with Kyverno, is
