@@ -11,7 +11,7 @@ k8s_ns := "calendar-gates"
 zizmor_version := "1.32.0"
 yamllint_version := "1.38.0"
 ruff_version := "0.17.6"
-kyverno_cli_version := "1.19.2"
+kyverno_cli_version := "1.20.0"
 
 # Kubernetes (docs/adr/0010-admission-control.md): the project's own kind cluster, with Kyverno, is
 # the default; `just cluster=local <recipe>` targets kind-local as in v1. The project cluster's
@@ -318,7 +318,7 @@ lint-policies:
     #!/usr/bin/env bash
     set -euo pipefail
     want={{ kyverno_cli_version }} # as deploy/kyverno and ci.yml's kyverno-cli image
-    got=$(kyverno version 2> /dev/null | awk '/^Version:/ {print $2}')
+    got=$(kyverno version 2> /dev/null | awk '/^Version:/ {sub(/^v/, "", $2); print $2}')
     [ "$got" = "$want" ] || { echo "kyverno CLI $want needed, found ${got:-none}" >&2; exit 1; }
     kubectl --context {{ kube_context }} kustomize deploy/policies > /dev/null
     uv run --locked --script scripts/check-policy-clauses.py

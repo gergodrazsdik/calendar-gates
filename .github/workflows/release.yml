@@ -367,7 +367,7 @@ jobs:
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: ${{ env.HELM_VERSION }}
-      # The project cluster's definition (node image pinned by digest; Kubernetes 1.35 for Kyverno 1.19).
+      # The project cluster's definition (node image pinned by digest; Kubernetes 1.35, as tested with Kyverno 1.20).
       - uses: helm/kind-action@ea822c7bf1874f08e5a491df991c228edffc3376 # v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
