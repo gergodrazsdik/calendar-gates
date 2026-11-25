@@ -11,7 +11,7 @@
   </ItemGroup>
   <ItemGroup Label="Tests">
     <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="11.0.0" />
-    <PackageVersion Include="TUnit" Version="1.78.0" />
-    <PackageVersion Include="TUnit.AspNetCore" Version="1.78.0" />
+    <PackageVersion Include="TUnit" Version="1.80.0" />
+    <PackageVersion Include="TUnit.AspNetCore" Version="1.80.0" />
   </ItemGroup>
 </Project>
