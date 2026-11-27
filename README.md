@@ -1,5 +1,12 @@
 # calendar-gates
 
+> **Status: finished and archived (2026-11).** This was a learning project and it did its job.
+> It is no longer maintained: dependencies are frozen at their last versions, and the open
+> code-scanning alerts on the container image (Ubuntu packages with no fix published when it was
+> archived) are expected. To pick it up again, unarchive the repository, merge the Dependabot
+> backlog one PR at a time (`main` has to be up to date before each merge), rebuild the local
+> cluster with `just k8s-up k8s-policy-up` and add a new Anthropic API key for the LLM gate.
+
 A GitHub Actions playground: a tiny ASP.NET Core API about dates (ISO weeks, Friday the 13th,
 Easter, workdays, leap years) wrapped in merge gates for formatting, linting, tests, HTTP contract
 tests, vulnerability scanning, a Kubernetes smoke test and an LLM reviewer built on the Claude
