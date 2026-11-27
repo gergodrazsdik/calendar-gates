@@ -23,17 +23,15 @@ public static class VersionEndpoints
     /// </summary>
     internal static VersionResponse Read(Assembly assembly)
     {
-        var informational =
-            assembly
-                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
-                ?.InformationalVersion
+        var informational = assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion
             ?? "0.0.0";
         var parts = informational.Split('+', 2);
-        var commit =
-            assembly
-                .GetCustomAttributes<AssemblyMetadataAttribute>()
-                .FirstOrDefault(a => a.Key == "Commit")
-                ?.Value
+        var commit = assembly
+            .GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(a => a.Key == "Commit")
+            ?.Value
             ?? (parts.Length > 1 ? parts[1] : "unknown");
         return new VersionResponse(parts[0], commit);
     }
